@@ -187,16 +187,17 @@ def test_every_role_maps_to_a_bracket_label():
         assert re.fullmatch(r"\[[a-z ]+\]", build._label(_r(0, role))), role
 
 
-def _plan(*regions):
-    return build._plan({"id": "0" * 16 + "-01", "regions": list(regions)})
+def _plan(*regions, **context):
+    return build._plan({"id": "0" * 16 + "-01", "regions": list(regions)} | context)
 
 
-def test_circles_draw_as_ellipses_and_rounded_shapes_as_rounded():
-    plan = _plan(_r(0, "card", geom="ellipse", box=(0.1, 0.1, 0.2, 0.2)),
-                 _r(1, "card", geom="roundRect", box=(0.5, 0.1, 0.2, 0.2)),
-                 _r(2, "card", geom="rect", box=(0.1, 0.5, 0.2, 0.2)),
-                 _r(3, "card", box=(0.5, 0.5, 0.2, 0.2)))  # records built before geometry was extracted
-    assert [(p["i"], p["kind"]) for p in plan] == [(0, "ellipse"), (1, "round"), (2, "rect"), (3, "rect")]
+def test_shapes_keep_their_geometry_in_the_plan():
+    plan = _plan(_r(0, "card", geom="ellipse", fill="accent", box=(0.1, 0.1, 0.3, 0.3)),
+                 _r(1, "card", geom="roundRect", fill="accent", box=(0.5, 0.1, 0.3, 0.3)),
+                 _r(2, "card", geom="rect", fill="accent", box=(0.1, 0.5, 0.3, 0.3)),
+                 _r(3, "card", fill="accent", box=(0.5, 0.5, 0.3, 0.3)))  # records built before geometry was extracted
+    assert [(p["i"], p["geom"], p["frame"]) for p in plan] == [
+        (0, "ellipse", True), (1, "roundRect", True), (2, "rect", True), (3, None, True)]
 
 
 def test_decoration_and_tiny_regions_are_dropped_unless_number_icon_or_logo():
@@ -223,8 +224,8 @@ def test_lines_connectors_and_dividers_stay_thin_lines():
     plan = _plan(_r(0, "divider", "line", box=(0.1, 0.5, 0.8, 0.0)),
                  _r(1, "connector", "line", box=(0.2, 0.2, 0.1, 0.3)),
                  _r(2, "divider", "shape", box=(0.1, 0.8, 0.8, 0.004)))
-    assert [(p["kind"], p["xy"]) for p in plan] == [
-        ("line", (0.1, 0.5, 0.9, 0.5)), ("line", (0.2, 0.2, 0.30000000000000004, 0.5)), ("line", (0.1, 0.802, 0.9, 0.802))]
+    assert [(p["kind"], p["pts"]) for p in plan] == [
+        ("line", [(0.1, 0.5), (0.9, 0.5)]), ("line", [(0.2, 0.2), (0.30000000000000004, 0.5)]), ("line", [(0.1, 0.802), (0.9, 0.802)])]
 
 
 def test_near_duplicate_boxes_merge_into_the_larger():
@@ -237,7 +238,7 @@ def test_near_duplicate_boxes_merge_into_the_larger():
 
 
 def test_unlabelled_container_holding_other_boxes_is_drawn_without_label():
-    plan = _plan(_r(0, "card", box=(0.1, 0.1, 0.6, 0.6)),
+    plan = _plan(_r(0, "card", box=(0.1, 0.1, 0.6, 0.6), fill="neutral-light"),
                  _r(1, "body", "text", box=(0.2, 0.2, 0.2, 0.1), text=_txt()))
     assert [(p["i"], p["label"]) for p in plan] == [(0, None), (1, "[text]")]
 
@@ -260,9 +261,9 @@ def test_wireframe_draws_only_outlines_lines_and_bracket_labels(built, monkeypat
     img = Image.open(io.BytesIO(build.wireframe(dna)))
     W, H = img.size
     drawn = {c[0] for c in calls}
-    assert drawn <= {"rectangle", "rounded_rectangle", "ellipse", "line", "text", "textlength"}, drawn
+    assert drawn <= {"rectangle", "line", "text", "textlength"}, drawn
     texts = [c for c in calls if c[0] == "text"]
-    assert sorted(c[1][1] for c in texts) == ["[bar chart]", "[bullets]", "[image]", "[shape]", "[shape]", "[shape]", "[table]", "[text]"]
+    assert sorted(c[1][1] for c in texts) == ["[bar chart]", "[bullets]", "[image]", "[shape]", "[shape]", "[table]", "[text]"]  # the empty OLE box is dropped
     boxes = [p for p in build._plan(dna) if p["kind"] != "line"]
     for c in texts:  # every label sits inside its own box
         l, t, r_, b = real(img).textbbox(c[1][0], c[1][1], font=c[2]["font"], anchor=c[2]["anchor"])
@@ -283,8 +284,7 @@ def test_labels_are_omitted_when_the_box_is_too_small(built, monkeypatch):
     calls, real = [], build.ImageDraw.Draw
     monkeypatch.setattr(build.ImageDraw, "Draw", lambda img: _Rec(real(img), calls))
     build.wireframe(dna)
-    assert [c[0] for c in calls if c[0] == "text"] == []
-    assert [c[0] for c in calls if c[0] == "rectangle"] == ["rectangle"]
+    assert [c[0] for c in calls if c[0] in ("text", "line", "rectangle")] == []  # a number has no frame to fall back on
 
 
 def test_wireframe_background_is_white(built):
@@ -334,3 +334,208 @@ def test_container_label_never_lands_on_a_labelled_box_inside_it(built, monkeypa
     monkeypatch.setattr(build.ImageDraw, "Draw", lambda img: _Rec(real(img), calls))
     build.wireframe(dna)
     assert [c[1][1] for c in calls if c[0] == "text"] == ["[text]"]
+
+
+BOX = (0, 0, 200, 100)
+RECT = [[(0, 0), (200, 0), (200, 100), (0, 100), (0, 0)]]
+
+
+def test_preset_outlines_are_true_polygons():
+    assert build._outline("chevron", None, BOX) == [[(0, 0), (150, 0), (200, 50), (150, 100), (0, 100), (50, 50), (0, 0)]]
+    assert build._outline("rightArrow", None, BOX) == [
+        [(0, 25), (150, 25), (150, 0), (200, 50), (150, 100), (150, 75), (0, 75), (0, 25)]]
+    assert build._outline("leftArrow", None, BOX) == [
+        [(200, 25), (50, 25), (50, 0), (0, 50), (50, 100), (50, 75), (200, 75), (200, 25)]]
+    assert build._outline("diamond", None, BOX) == [[(100, 0), (200, 50), (100, 100), (0, 50), (100, 0)]]
+    assert build._outline("triangle", None, BOX) == [[(100, 0), (200, 100), (0, 100), (100, 0)]]
+    (ring,) = build._outline("ellipse", None, BOX)
+    assert len(ring) >= 32 and ring[0] == ring[-1]
+    assert all(abs(((x - 100) / 100) ** 2 + ((y - 50) / 50) ** 2 - 1) < 1e-9 for x, y in ring)
+    assert len(build._outline("donut", None, BOX)) == 2  # outer and inner ring
+    callout = build._outline("wedgeRectCallout", None, BOX)
+    assert callout[0] == RECT[0] and max(y for x, y in callout[1]) > 100  # a box plus a pointer below it
+    assert len(build._outline("wedgeRoundRectCallout", None, BOX)) == 2  # rounded body, still with its pointer
+    assert build._outline("star5", None, BOX) == build._outline(None, None, BOX) == RECT  # unknown preset: its box
+    assert build._outline("rect", None, (10, 20, 30, 40)) == [[(10, 20), (30, 20), (30, 40), (10, 40), (10, 20)]]
+
+
+def test_freeform_outlines_follow_their_path_inside_the_box():
+    tri = [[[0.5, 0.0], [1.0, 1.0], [0.0, 1.0], [0.5, 0.0]]]
+    assert build._outline(None, tri, BOX) == [[(100, 0), (200, 100), (0, 100), (100, 0)]]
+    assert build._outline("rect", tri, BOX) == build._outline(None, tri, BOX)  # an explicit path wins
+
+
+SQUIGGLE = [[[round(0.5 + 0.5 * ((-1) ** k) * (k % 5) / 4, 3), round(k / 19, 3)] for k in range(20)]]
+
+
+def test_logos_and_icons_are_never_traced(built):
+    out, ids = built
+    dna = _dna(out, ids[1])
+    traced = [_r(0, "logo", "picture", geom="ellipse", path=SQUIGGLE, line="primary", box=(0.1, 0.1, 0.3, 0.3)),
+              _r(1, "icon", "shape", geom="chevron", path=SQUIGGLE, fill="accent", box=(0.5, 0.1, 0.3, 0.3))]
+    bare = [dict(r, geom=None, path=None, line=None, fill=None) for r in traced]
+    assert build.wireframe(dict(dna, regions=traced)) == build.wireframe(dict(dna, regions=bare))
+    assert [(p["frame"], p["label"]) for p in build._plan(dict(dna, regions=traced))] == [(False, "[logo]"), (False, "[icon]")]
+
+
+def test_merge_strips_outlines_from_logos_and_icons(deck, lib):
+    deck_id = extract.run(deck, lib, render=False)
+    slide = json.loads((lib / "work" / deck_id / "slide-02.json").read_text())
+    labels = fixture_labels(slide)
+    pic = next(r for r in slide["regions"] if r["type"] == "picture")
+    pic.update(geom="ellipse", path=SQUIGGLE)
+    labels["regions"][str(pic["i"])] = "logo"
+    dna = build.merge(slide, labels)
+    build.check_schema(dna)
+    assert (dna["regions"][pic["i"]]["geom"], dna["regions"][pic["i"]]["path"]) == (None, None)
+
+
+def test_small_complex_freeforms_are_never_traced():
+    tiny = lambda i, x: _r(i, "card", path=SQUIGGLE, fill="accent", box=(x, 0.1, 0.1, 0.1))  # 1% each, 20 points
+    plan = _plan(tiny(0, 0.1), tiny(1, 0.3), tiny(2, 0.5))  # a row of three: kept, but only as its box
+    assert plan and all(p["path"] is None for p in plan)
+
+
+def test_schema_accepts_normalised_outlines_only(built):
+    out, ids = built
+    dna = _dna(out, ids[1])
+    dna["regions"][0].update(path=[[[0.0, 0.5], [1.0, 0.25]]], arrow="end")
+    build.check_schema(dna)
+    for bad in ([[["Zorblax", 0.5], [1.0, 0.25]]], [[[0.0, 0.5, 0.1]]], [[[0.0, 5.0], [1.0, 0.0]]]):
+        with pytest.raises(jsonschema.ValidationError):
+            build.check_schema(copy.deepcopy(dna) | {"regions": [dict(dna["regions"][0], path=bad)]})
+
+
+def test_text_and_logo_labels_are_unframed_and_keep_their_alignment(built, monkeypatch):
+    out, ids = built
+    left = _r(0, "title", "text", box=(0.1, 0.05, 0.6, 0.1), text=_txt(), line="primary", fill="accent")
+    centre = _r(1, "body", "text", box=(0.2, 0.4, 0.6, 0.1), text=_txt() | {"align": "center"})
+    logo = _r(2, "logo", "picture", box=(0.85, 0.05, 0.1, 0.1))
+    dna = dict(_dna(out, ids[1]), regions=[left, centre, logo], insight_device="none")  # a filled title is no highlight here
+    calls, real = [], build.ImageDraw.Draw
+    monkeypatch.setattr(build.ImageDraw, "Draw", lambda img: _Rec(real(img), calls))
+    img = Image.open(io.BytesIO(build.wireframe(dna)))
+    texts = {c[1][1]: c for c in calls if c[0] == "text"}
+    assert set(texts) == {"[title]", "[text]", "[logo]"}
+    assert texts["[title]"][2]["anchor"] == "lm" and texts["[title]"][1][0][0] < 0.1 * img.width + 12
+    assert texts["[text]"][2]["anchor"] == "mm"
+    assert [c for c in calls if c[0] in ("line", "rectangle")] == []  # no frames at all
+
+
+def test_frames_only_where_the_shape_matters():
+    circle = lambda i, x: _r(i, "decoration", geom="ellipse", fill="accent", box=(x, 0.1, 0.08, 0.14))
+    plan = _plan(circle(0, 0.1), circle(1, 0.3), circle(2, 0.5),  # a row of three: compositional
+                 _r(3, "card", fill="accent", box=(0.1, 0.5, 0.1, 0.1)),  # an isolated small card: dropped
+                 _r(4, "decoration", fill="accent", box=(0.9, 0.9, 0.03, 0.03)),  # a speck: dropped
+                 _r(5, "card", line="accent", box=(0.5, 0.5, 0.4, 0.3)),  # large: framed
+                 _r(6, "card", fill="neutral-light", box=(0.25, 0.45, 0.15, 0.2)),  # holds region 7: framed
+                 _r(7, "body", "text", box=(0.27, 0.5, 0.1, 0.05), text=_txt()),
+                 _r(8, "card", geom="ellipse", fill="accent", box=(0.02, 0.8, 0.06, 0.1)),  # joined by a connector
+                 _r(9, "connector", "line", box=(0.08, 0.85, 0.2, 0.0)),
+                 _r(10, "callout", "text", dashed=True, line="accent", box=(0.6, 0.05, 0.2, 0.1), text=_txt()))
+    kept = {p["i"]: p for p in plan}
+    assert {i for i, p in kept.items() if p.get("frame")} == {0, 1, 2, 5, 6, 8, 10}
+    assert 3 not in kept and 4 not in kept and not kept[7]["frame"] and kept[9]["kind"] == "line"
+    assert kept[10]["dashed"] and kept[0]["label"] is None and kept[6]["label"] is None
+
+
+def test_record_context_decides_what_to_keep():
+    rows = [_r(k, "decoration", fill="neutral-light", box=(0.05, 0.2 + 0.25 * k, 0.9, 0.08)) for k in range(3)]
+    assert [p["kind"] for p in _plan(*rows, archetype="executive-summary")] == ["band"] * 3  # row bands
+    assert _plan(*rows[:1], archetype="other") == []
+    pair = [_r(k, "card", fill="accent", box=(0.1 + 0.3 * k, 0.3, 0.2, 0.2)) for k in range(2)]
+    assert [p["frame"] for p in _plan(*pair, archetype="options")] == [True, True]  # a 2-option grid
+    assert _plan(*pair, archetype="other") == []
+    path = _r(0, "decoration", "line", box=(0.1, 0.5, 0.8, 0.0))
+    assert [p["kind"] for p in _plan(path, archetype="customer-journey")] == ["line"]
+    assert _plan(path, archetype="other") == []
+
+
+def test_hero_numbers_are_drawn_larger_than_text(built, monkeypatch):
+    out, ids = built
+    dna = dict(_dna(out, ids[1]), regions=[_r(0, "big-number", "text", box=(0.1, 0.3, 0.3, 0.2), text=_txt(number="percent")),
+                                           _r(1, "body", "text", box=(0.6, 0.3, 0.3, 0.2), text=_txt())])
+    calls, real = [], build.ImageDraw.Draw
+    monkeypatch.setattr(build.ImageDraw, "Draw", lambda img: _Rec(real(img), calls))
+    build.wireframe(dna)
+    size = {c[1][1]: c[2]["font"].size for c in calls if c[0] == "text"}
+    assert size["[number]"] >= 1.5 * size["[text]"]
+
+
+def test_dashed_frames_stay_dashed(built):
+    out, ids = built
+    card = _r(0, "card", fill="accent", box=(0.1, 0.2, 0.8, 0.6))
+    for dashed in (False, True):
+        img = Image.open(io.BytesIO(build.wireframe(dict(_dna(out, ids[1]), regions=[dict(card, dashed=dashed)]))))
+        edge = {img.getpixel((x, int(0.2 * img.height))) for x in range(int(0.15 * img.width), int(0.85 * img.width))}
+        assert (255 in edge) is dashed and min(edge) < 255
+
+
+def test_lines_follow_their_path_and_draw_arrowheads(built):
+    out, ids = built
+    line = _r(0, "connector", "line", box=(0.1, 0.1, 0.4, 0.4), path=[[[1.0, 0.0], [0.0, 1.0]]])
+    (p,) = _plan(line)
+    assert p["pts"] == [(0.5, 0.1), (0.1, 0.5)]
+    plain = build.wireframe(dict(_dna(out, ids[1]), regions=[line]))
+    assert build.wireframe(dict(_dna(out, ids[1]), regions=[dict(line, arrow="end")])) != plain
+
+
+def test_shape_heavy_slide_stays_under_size_cap(built):
+    out, ids = built
+    dna = _dna(out, ids[1])
+    regions = []
+    for k in range(48):
+        x, y = (k % 8) / 8, (k // 8) / 6
+        regions.append(_r(len(regions), "card", fill="accent", dashed=k % 2 == 0, box=(x, y, 0.12, 0.16),
+                          path=[[[round((j * 7919 % 97) / 96, 3), round((j * 104729 % 89) / 88, 3)] for j in range(31)] + [[0.0, 0.0]]]))
+        regions.append(_r(len(regions), "big-number", "text", box=(x + 0.01, y + 0.05, 0.1, 0.06), text=_txt(number="plain")))
+    assert len(build.wireframe(dict(dna, regions=regions))) <= 30 * 1024
+
+
+def test_images_sitting_on_a_framed_shape_draw_as_its_label():
+    circle = lambda i, y: _r(i, "decoration", geom="ellipse", fill="accent", box=(0.5, y, 0.09, 0.16))
+    photo = lambda i, y: _r(i, "image", "picture", box=(0.47, y - 0.05, 0.16, 0.28))  # a cut-out on its circle
+    plan = _plan(circle(0, 0.1), photo(1, 0.1), circle(2, 0.4), photo(3, 0.4), circle(4, 0.7), photo(5, 0.7),
+                 _r(6, "image", "picture", box=(0.05, 0.1, 0.3, 0.3)))  # a plain photo keeps its frame
+    assert [(p["i"], p["frame"], p["label"]) for p in plan] == [
+        (0, True, None), (1, False, "[image]"), (2, True, None), (3, False, "[image]"), (4, True, None),
+        (5, False, "[image]"), (6, True, "[image]")]
+
+
+def test_a_label_blocked_at_its_aligned_spot_moves_to_the_centre(built, monkeypatch):
+    out, ids = built
+    dna = dict(_dna(out, ids[1]), regions=[_r(0, "title", "text", box=(0.03, 0.05, 0.65, 0.09), text=_txt()),
+                                           _r(1, "logo", "picture", box=(0.03, 0.03, 0.12, 0.12))])
+    calls, real = [], build.ImageDraw.Draw
+    monkeypatch.setattr(build.ImageDraw, "Draw", lambda img: _Rec(real(img), calls))
+    build.wireframe(dna)
+    texts = {c[1][1]: c[2]["anchor"] for c in calls if c[0] == "text"}
+    assert texts == {"[logo]": "lm", "[title]": "mm"}
+
+
+def test_tiny_ornaments_are_dropped_unless_a_line_runs_through_them():
+    dot = lambda i, x, y: _r(i, "decoration", geom="ellipse", fill="neutral-light", box=(x, y, 0.012, 0.022))
+    scattered = [dot(k, 0.05 + 0.07 * k, 0.9 - 0.004 * k) for k in range(5)]  # tiny, alike and roughly in a row
+    on_line = [dot(10 + k, 0.2 + 0.2 * k, 0.489) for k in range(3)]
+    plan = _plan(*scattered, *on_line, _r(20, "connector", "line", box=(0.1, 0.5, 0.8, 0.0)))
+    assert [p["i"] for p in plan if p["kind"] == "shape"] == [10, 11, 12]
+
+
+def test_nested_stacks_are_texture_not_composition():
+    stack = lambda i, x: [_r(i + k, "decoration", fill="accent", box=(x + 0.004 * k, 0.7, 0.047 - 0.004 * k, 0.084 - 0.007 * k))
+                          for k in range(4)]
+    plan = _plan(*stack(0, 0.6), *stack(10, 0.75), *stack(20, 0.9), insight_device="highlight-contrast")
+    assert plan == []
+
+
+def test_stripes_of_any_size_stacked_in_a_card_are_texture_but_venn_circles_are_not():
+    stripe = [[[0.96, 1.0], [0.0, 0.04], [0.0, 0.0], [1.0, 1.0], [0.96, 1.0]]]
+    stripes = [_r(10 * c + k, "decoration", fill="accent", path=stripe, box=(0.1 + 0.3 * c + 0.01 * k, 0.6, 0.12 - 0.02 * k, 0.2 - 0.03 * k))
+               for c in range(3) for k in range(4)]
+    texts = [_r(100 + c, "body", "text", box=(0.12 + 0.3 * c, 0.65, 0.08, 0.06), text=_txt()) for c in range(3)]
+    assert [p["i"] for p in _plan(*stripes, *texts)] == [100, 101, 102]  # text under the stripes keeps no frame
+    panel = [_r(0, "card", fill="neutral-light", box=(0.1, 0.1, 0.5, 0.5))] + [
+        _r(1 + k, "card", fill="accent", box=(0.12 + 0.16 * k, 0.2, 0.14, 0.3)) for k in range(3)]
+    assert [p["frame"] for p in _plan(*panel)] == [True] * 4  # a panel with its cards is no texture
+    venn = [_r(k, "decoration", geom="ellipse", line="accent", box=(0.3 + 0.12 * k, 0.3, 0.2, 0.35)) for k in range(3)]
+    assert [p["frame"] for p in _plan(*venn)] == [True, True, True]

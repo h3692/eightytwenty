@@ -11,6 +11,9 @@ def main(argv=None):
     p = sub.add_parser("extract", help="render + extract a .pptx; prints the new deck_id")
     p.add_argument("deck")
     p.add_argument("--skip-render", action="store_true", help="no slide PNGs (when LibreOffice is missing)")
+    p = sub.add_parser("reextract", help="re-extract a deck into its existing deck_id, keeping labels and renders")
+    p.add_argument("deck_id")
+    p.add_argument("deck")
     for name, help_ in (("label-prep", "write labeling worksheets"), ("build", "labels + geometry -> DNA, wireframe"),
                         ("leak-check", "check, write judge worksheet, promote passing records")):
         sub.add_parser(name, help=help_).add_argument("deck_id")
@@ -23,6 +26,8 @@ def main(argv=None):
 
     if a.stage == "extract":
         print(f"deck_id {extract.run(a.deck, a.library, render=not a.skip_render)}")
+    elif a.stage == "reextract":
+        print(f"deck_id {extract.run(a.deck, a.library, render=False, deck_id=a.deck_id)}")
     elif a.stage == "label-prep":
         work = label_prep.run(a.deck_id, a.library)
         print(f"Label each slide: in Claude Code, ask it to follow every {work}/slide-NN.prompt.txt")

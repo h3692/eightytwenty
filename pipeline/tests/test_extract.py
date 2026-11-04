@@ -161,3 +161,127 @@ def test_preset_geometry_is_extracted_from_a_closed_vocabulary(tmp_path, lib):
     deck_id = extract.run(path, lib, render=False)
     regions = json.loads((lib / "work" / deck_id / "slide-01.json").read_text())["regions"]
     assert [r["geom"] for r in regions] == ["ellipse", "roundRect", "rect", None]
+
+
+def _freeform_deck(tmp_path, build):
+    """One blank slide; build(slide) adds shapes. Returns the saved path."""
+    from pptx import Presentation
+    prs = Presentation()
+    prs.slide_width, prs.slide_height = 12192000, 6858000
+    build(prs.slides.add_slide(prs.slide_layouts[6]))
+    path = tmp_path / "shapes.pptx"
+    prs.save(path)
+    return path
+
+
+def _regions(path, lib):
+    deck_id = extract.run(path, lib, render=False)
+    return json.loads((lib / "work" / deck_id / "slide-01.json").read_text())["regions"]
+
+
+CIRCLE = ('<a:custGeom xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:avLst/><a:gdLst/><a:ahLst/>'
+          '<a:rect l="0" t="0" r="r" b="b"/><a:pathLst><a:path w="3155" h="3155">'
+          '<a:moveTo><a:pt x="0" y="1578"/></a:moveTo>'
+          '<a:cubicBezTo><a:pt x="0" y="706"/><a:pt x="706" y="0"/><a:pt x="1577" y="0"/></a:cubicBezTo>'
+          '<a:cubicBezTo><a:pt x="2448" y="0"/><a:pt x="3155" y="706"/><a:pt x="3155" y="1578"/></a:cubicBezTo>'
+          '<a:cubicBezTo><a:pt x="3155" y="2449"/><a:pt x="2448" y="3155"/><a:pt x="1577" y="3155"/></a:cubicBezTo>'
+          '<a:cubicBezTo><a:pt x="706" y="3155"/><a:pt x="0" y="2449"/><a:pt x="0" y="1578"/></a:cubicBezTo>'
+          '<a:close/></a:path></a:pathLst></a:custGeom>')
+
+
+def _custom(slide, x, y, w, h, xml):
+    from lxml import etree
+    from pptx.enum.shapes import MSO_SHAPE
+    s = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, x, y, w, h)
+    prst = s._element.xpath("./p:spPr/a:prstGeom")[0]
+    prst.addprevious(etree.fromstring(xml))
+    prst.getparent().remove(prst)
+    return s
+
+
+def test_freeform_paths_are_normalised_simplified_and_capped(tmp_path, lib):
+    import math
+    def build(slide):
+        zig = [(int(4000 * k / 99), int(3000 if k % 2 else 0) + int(1000 * math.sin(k))) for k in range(100)]
+        ff = slide.shapes.build_freeform(*zig[0], scale=1000)  # 4 x 4 inches of points, a large shape
+        ff.add_line_segments(zig[1:], close=True)
+        ff.convert_to_shape()
+        flat = slide.shapes.build_freeform(0, 0, scale=1000)
+        flat.add_line_segments([(k * 100, 0) for k in range(1, 60)] + [(5900, 3000)], close=False)
+        flat.convert_to_shape(1000000, 1000000)
+    zig, flat = _regions(_freeform_deck(tmp_path, build), lib)
+    for r in (zig, flat):
+        assert r["geom"] is None
+        pts = [p for sub in r["path"] for p in sub]
+        assert all(isinstance(v, float) and 0 <= v <= 1 for p in pts for v in p)
+    assert 3 <= sum(map(len, zig["path"])) <= 32
+    assert zig["path"][0][0] == zig["path"][0][-1]  # closed outline repeats its start
+    assert flat["path"] == [[[0.0, 0.0], [1.0, 0.0], [1.0, 1.0]]]  # 59 collinear points collapse into one segment
+
+
+def test_near_circular_freeform_becomes_an_ellipse_but_squat_or_angular_ones_keep_their_path(tmp_path, lib):
+    tri = ('<a:custGeom xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:pathLst><a:path w="100" h="100">'
+           '<a:moveTo><a:pt x="50" y="0"/></a:moveTo><a:lnTo><a:pt x="100" y="100"/></a:lnTo>'
+           '<a:lnTo><a:pt x="0" y="100"/></a:lnTo><a:close/></a:path></a:pathLst></a:custGeom>')
+    regions = _regions(_freeform_deck(tmp_path, lambda s: (
+        _custom(s, 0, 0, 2000000, 2000000, CIRCLE), _custom(s, 0, 0, 4000000, 1000000, CIRCLE),
+        _custom(s, 0, 0, 2000000, 2000000, tri))), lib)
+    assert (regions[0]["geom"], regions[0]["path"]) == ("ellipse", None)
+    assert regions[1]["geom"] is None and len(regions[1]["path"][0]) > 4
+    assert regions[2]["path"] == [[[0.5, 0.0], [1.0, 1.0], [0.0, 1.0], [0.5, 0.0]]]
+
+
+def test_small_complex_freeforms_never_store_an_outline(tmp_path, lib):
+    import math
+    star = [(int(500 + (500 if k % 2 else 200) * math.cos(k * math.pi / 10)),
+             int(500 + (500 if k % 2 else 200) * math.sin(k * math.pi / 10))) for k in range(20)]
+    def build(slide):
+        for size in (300000, 4000000):  # ~0.1% of the slide, then ~20%
+            ff = slide.shapes.build_freeform(*star[0], scale=size / 1000)
+            ff.add_line_segments(star[1:], close=True)
+            ff.convert_to_shape()
+    small, big = _regions(_freeform_deck(tmp_path, build), lib)
+    assert small["path"] is None
+    assert big["path"] is not None
+
+
+def test_lines_keep_direction_bends_and_arrowheads(tmp_path, lib):
+    from lxml import etree
+    from pptx.enum.shapes import MSO_CONNECTOR
+    def build(slide):
+        a = slide.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, 3000000, 0, 0, 2000000)  # drawn right-to-left: flipH
+        etree.SubElement(a.line._get_or_add_ln(), "{http://schemas.openxmlformats.org/drawingml/2006/main}tailEnd").set("type", "triangle")
+        slide.shapes.add_connector(MSO_CONNECTOR.ELBOW, 0, 0, 3000000, 2000000)
+    a, b = _regions(_freeform_deck(tmp_path, build), lib)
+    assert a["geom"] == "line"
+    assert a["path"] == [[[1.0, 0.0], [0.0, 1.0]]] and a["arrow"] == "end"
+    assert b["geom"] == "bentConnector3" and b["path"] == [[[0.0, 0.0], [0.5, 0.0], [0.5, 1.0], [1.0, 1.0]]]
+    assert b["arrow"] is None
+
+
+def test_custom_dash_patterns_count_as_dashed(tmp_path, lib):
+    from lxml import etree
+    from pptx.enum.shapes import MSO_SHAPE
+    def build(slide):
+        s = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, 100, 100)
+        s.line.width = 12700
+        cd = etree.SubElement(s.line._get_or_add_ln(), "{http://schemas.openxmlformats.org/drawingml/2006/main}custDash")
+        ds = etree.SubElement(cd, "{http://schemas.openxmlformats.org/drawingml/2006/main}ds")
+        ds.set("d", "400000"), ds.set("sp", "300000")
+    assert _regions(_freeform_deck(tmp_path, build), lib)[0]["dashed"] is True
+
+
+def test_reextract_keeps_the_deck_id_and_its_labels(deck, lib):
+    from pipeline.__main__ import main
+    deck_id = extract.run(deck, lib, render=False)
+    work = lib / "work" / deck_id
+    (work / "labels").mkdir()
+    (work / "labels" / "slide-01.json").write_text('{"kept": true}')
+    slide = work / "slide-01.json"
+    slide.write_text(slide.read_text().replace('"path"', '"old"'))
+    main(["reextract", deck_id, str(deck), "--library", str(lib)])
+    assert sorted(p.name for p in (lib / "work").iterdir()) == [deck_id]
+    assert (work / "labels" / "slide-01.json").read_text() == '{"kept": true}'
+    assert '"path"' in slide.read_text() and json.loads(slide.read_text())["deck_id"] == deck_id
+    with pytest.raises(SystemExit):
+        main(["reextract", "0" * 16, str(deck), "--library", str(lib)])  # only an existing deck can be re-extracted

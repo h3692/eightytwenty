@@ -26,13 +26,26 @@ SCHEME_ROLES = {"accent1": "primary", "dk1": "neutral-dark", "dk2": "neutral-dar
 ALIGN = {PP_ALIGN.CENTER: "center", PP_ALIGN.RIGHT: "right", PP_ALIGN.JUSTIFY: "justify"}
 NUMBER = re.compile(r"[\s+\-~<>≈]*([$€£¥])?\s*\d[\d.,]*\s*(%|x|×|k|m|bn|b)?\s*\+?", re.I)
 EMU_PER_PT = 12700
+# Line presets as polylines in the unit box (curved connectors drawn straight).
+LINE_PATHS = {"line": [(0, 0), (1, 1)], "straightConnector1": [(0, 0), (1, 1)], "bentConnector2": [(0, 0), (1, 0), (1, 1)],
+              **{f"bentConnector{n}": [(0, 0), (0.5, 0), (0.5, 1), (1, 1)] for n in (3, 4, 5)},
+              **{f"curvedConnector{n}": [(0, 0), (1, 1)] for n in (2, 3, 4, 5)}}
+MAX_PATH_POINTS = 32
+# Safety: a small freeform with many points may be a brand mark; its outline is never stored.
+SMALL_AREA, MAX_SMALL_POINTS = 0.03, 12
+A = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
 
 
-def run(pptx_path, library, render=True):
-    """Extract one deck into library/work/<deck_id>/ and return the new opaque deck_id."""
-    deck_id = secrets.token_hex(8)  # random, never derived from the file name
+def run(pptx_path, library, render=True, deck_id=None):
+    """Extract one deck into library/work/<deck_id>/ and return the new opaque deck_id.
+
+    With deck_id, re-extract into that existing deck, keeping its labels (and renders unless render is set)."""
+    work = Path(library) / "work" / (deck_id or "")
+    if deck_id and not (work / "text").is_dir():
+        raise SystemExit(f"no extracted deck {deck_id} under {Path(library) / 'work'}")
+    deck_id = deck_id or secrets.token_hex(8)  # random, never derived from the file name
     work = Path(library) / "work" / deck_id
-    (work / "text").mkdir(parents=True)
+    (work / "text").mkdir(parents=True, exist_ok=True)
     prs = Presentation(str(pptx_path))
     visible = [s for s in prs.slides if s._element.get("show") != "0"]
     raw = [_slide(s, prs.slide_width, prs.slide_height) for s in visible]
@@ -88,7 +101,8 @@ def _walk(shapes, xf, parent, regions, text, width, height):
         r = {"i": len(regions), "parent": parent, "type": _type(shape),
              "box": {"x": round(x / width, 4), "y": round(y / height, 4), "w": round(w / width, 4), "h": round(h / height, 4)},
              "fill": _fill(shape), "line": _line(shape), "dashed": _dashed(shape), "geom": _geom(shape),
-             "text": None, "chart": None, "table": None}
+             "path": None, "arrow": _arrow(shape), "text": None, "chart": None, "table": None}
+        r["geom"], r["path"] = _outline(shape, r["geom"], w, h, r["box"]["w"] * r["box"]["h"])
         regions.append(r)
         if r["type"] == "group":
             g = shape._element.grpSpPr.xfrm
@@ -199,12 +213,15 @@ def _line(shape):
 
 def _dashed(shape):
     # Raw XML, not line.dash_style: python-pptx's enum has no mapping for presets like "dot" and raises.
-    return any(v != "solid" for v in shape._element.xpath("./p:spPr/a:ln/a:prstDash/@val"))
+    return (any(v != "solid" for v in shape._element.xpath("./p:spPr/a:ln/a:prstDash/@val"))
+            or bool(shape._element.xpath("./p:spPr/a:ln/a:custDash")))
 
 
 def _geom(shape):
     """Preset geometry name (ellipse, roundRect, ...), kept only if it is a known OOXML autoshape preset."""
     for v in shape._element.xpath("./p:spPr/a:prstGeom/@prst"):
+        if v in LINE_PATHS:
+            return v
         try:
             MSO_AUTO_SHAPE_TYPE.from_xml(v)
             return v
@@ -259,3 +276,93 @@ def _resolve(r, palette):
         t["color"] = _role(t["color"], palette)
         r["text"] = t
     return r
+
+
+def _arrow(shape):
+    ends = [bool(shape._element.xpath(f"./p:spPr/a:ln/a:{e}[@type and @type != 'none']")) for e in ("headEnd", "tailEnd")]
+    return {(True, False): "start", (False, True): "end", (True, True): "both"}.get(tuple(ends))
+
+
+def _outline(shape, geom, w, h, area):
+    """(geom, path): the outline normalised to the shape's own box, flips applied, simplified to <= MAX_PATH_POINTS.
+
+    A near-circular freeform in a roughly square box becomes geom "ellipse"; small complex freeforms get no path.
+    shortcut: rotation is ignored, so rotated freeforms draw unrotated; read a:xfrm/@rot if that shows up wrong."""
+    if geom in LINE_PATHS:
+        subs = [[(float(x), float(y)) for x, y in LINE_PATHS[geom]]]
+    else:
+        subs = _custom_path(shape, w, h)
+        if not subs:
+            return geom, None
+        pts = [p for sub in subs for p in sub]
+        if len(subs) == 1 and w and h and 0.85 <= w / h <= 1.18 and len(pts) >= 12 and all(
+                0.42 <= math.dist(p, (0.5, 0.5)) <= 0.58 for p in pts):
+            return "ellipse", None
+        if area < SMALL_AREA and len(pts) > MAX_SMALL_POINTS:
+            return geom, None
+    xf = shape._element.xpath("./p:spPr/a:xfrm") or shape._element.xpath("./p:xfrm")
+    fh, fv = (xf[0].get("flipH") in ("1", "true"), xf[0].get("flipV") in ("1", "true")) if xf else (False, False)
+    subs = [[(1 - x if fh else x, 1 - y if fv else y) for x, y in sub] for sub in subs]
+    eps = 0.005
+    while True:
+        out = [s for s in (_rdp(sub, eps) for sub in subs) if len(s) >= 2]
+        if sum(map(len, out)) <= MAX_PATH_POINTS:
+            return geom, [[[round(x, 3), round(y, 3)] for x, y in s] for s in out] or None
+        if eps > 1:
+            return geom, None  # too many separate pieces to outline
+        eps *= 2
+
+
+def _custom_path(shape, w, h):
+    """Flatten a:custGeom into unit-box polylines (closed ones repeat their start); None if a point uses a guide name."""
+    subs = []
+    for path in shape._element.xpath("./p:spPr/a:custGeom/a:pathLst/a:path"):
+        pw, ph = float(path.get("w") or w or 1) or 1, float(path.get("h") or h or 1) or 1
+        cur = None
+        for cmd in path:
+            tag = cmd.tag.replace(A, "")
+            try:
+                pts = [(int(p.get("x")) / pw, int(p.get("y")) / ph) for p in cmd.findall(f"{A}pt")]
+            except (TypeError, ValueError):
+                return None
+            if tag == "moveTo":
+                cur = [pts[0]]
+                subs.append(cur)
+            elif cur is None:
+                continue
+            elif tag == "lnTo":
+                cur.append(pts[0])
+            elif tag in ("cubicBezTo", "quadBezTo"):
+                ctrl = [cur[-1], *pts]
+                cur += [_bezier(ctrl, k / 12) for k in range(1, 13)]
+            elif tag == "arcTo":
+                try:
+                    wr, hr = int(cmd.get("wR")) / pw, int(cmd.get("hR")) / ph
+                    st, sw = math.radians(int(cmd.get("stAng")) / 60000), math.radians(int(cmd.get("swAng")) / 60000)
+                except (TypeError, ValueError):
+                    return None
+                cx, cy = cur[-1][0] - wr * math.cos(st), cur[-1][1] - hr * math.sin(st)
+                cur += [(cx + wr * math.cos(st + sw * k / 12), cy + hr * math.sin(st + sw * k / 12)) for k in range(1, 13)]
+            elif tag == "close":
+                cur.append(cur[0])
+                cur = None
+    return [[(min(max(x, 0.0), 1.0), min(max(y, 0.0), 1.0)) for x, y in sub] for sub in subs if len(sub) >= 2]
+
+
+def _bezier(pts, t):
+    while len(pts) > 1:
+        pts = [((1 - t) * a[0] + t * b[0], (1 - t) * a[1] + t * b[1]) for a, b in zip(pts, pts[1:])]
+    return pts[0]
+
+
+def _rdp(pts, eps):
+    """Ramer-Douglas-Peucker: drop points closer than eps to the chord of their run."""
+    if len(pts) < 3:
+        return pts
+    (ax, ay), (bx, by) = pts[0], pts[-1]
+    seg = math.hypot(bx - ax, by - ay)
+    dist = [abs((bx - ax) * (ay - y) - (ax - x) * (by - ay)) / seg if seg else math.hypot(x - ax, y - ay) for x, y in pts]
+    k = max(range(1, len(pts) - 1), key=dist.__getitem__)
+    if dist[k] <= eps:
+        return [pts[0], pts[-1]]
+    return _rdp(pts[:k + 1], eps)[:-1] + _rdp(pts[k:], eps)

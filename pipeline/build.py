@@ -2,6 +2,7 @@
 import io
 import itertools
 import json
+import math
 from pathlib import Path
 
 import jsonschema
@@ -22,8 +23,11 @@ LABELS = {"title": "title", "tagline": "subtitle", "subtitle": "subtitle", "sect
 CHARTS = (("PIE", "pie"), ("DOUGHNUT", "doughnut"), ("SCATTER", "scatter"), ("BUBBLE", "bubble"), ("RADAR", "radar"),
           ("STOCK", "stock"), ("SURFACE", "surface"), ("AREA", "area"), ("LINE", "line"), ("BAR", "bar"),
           ("COLUMN", "bar"), ("CONE", "bar"), ("CYLINDER", "bar"), ("PYRAMID", "bar"))  # first match wins: BAR_OF_PIE is a pie
-ELLIPSES = {"ellipse", "flowChartConnector", "donut"}
 KEEP_TINY = {"[number]", "[icon]", "[logo]"}
+TEXT_LABELS = {"[title]", "[subtitle]", "[text]", "[bullets]", "[quote]", "[number]", "[label]", "[logo]", "[icon]"}
+NEVER_TRACED = {"logo", "icon"}  # brand marks: drawn as their bracket label only, so no outline can leak them
+SMALL_AREA, MAX_SMALL_POINTS = 0.03, 12  # a small freeform with more points than this is not traced either
+LARGE, ALIKE, TOUCH = 0.08, 0.15, 0.02  # large shape; size tolerance of a repeat; how near a line end touches a box
 STACK = {"[title]": "title", "[subtitle]": "subtitle", "[text]": "text", "[bullets]": "text", "[quote]": "quote",
          "[label]": "label"}  # labels whose stacked line boxes join into one block; text joins bullets
 MIN_AREA, BAND_AREA, SAME_BOX = 0.004, 0.15, 0.8  # fractions of the slide; SAME_BOX of the larger box
@@ -67,6 +71,8 @@ def merge(slide, labels):
     regions = []
     for r in slide["regions"]:
         r = dict(r, role=labels["regions"][str(r["i"])])
+        if r["role"] in NEVER_TRACED:
+            r.update(geom=None, path=None)  # a brand mark's outline never reaches a record
         if r["text"]:
             p = patterns.get(r["i"])
             r["text"] = dict(r["text"], pattern=p and p["pattern"], pattern_words=p and p["words"])
@@ -111,31 +117,52 @@ def _label(r):
 
 
 def _plan(dna):
-    """What the wireframe shows: light panels, thin lines and labelled boxes, minus decoration, specks and duplicates."""
+    """What the wireframe shows, decided from the record alone:
+    - text, numbers, logos and icons are plain labels with no frame; logos, icons and small complex freeforms are
+      never traced;
+    - images, charts and tables are framed (images in their own outline);
+    - other shapes are framed only when the shape matters: containers of labelled regions, insight regions (dashed,
+      callouts, highlights on highlight devices), repeats (>= 3 alike; 2 on option grids; unlabelled shapes of a kind
+      stacked more than half over each other are texture and never matter), shapes a line ends at, or large (> 8%);
+    - lines and connectors stay; big filled decoration becomes a light panel; tiny shapes only stay on a line.
+    Context: option grids keep pairs, journeys and sequences keep decorative connectors, executive summaries keep
+    their row bands."""
+    grid = dna.get("archetype") == "options" or dna.get("insight_device") == "matrix-position"
+    path_like = dna.get("archetype") in ("customer-journey", "implementation") or dna.get("argument_shape") in (
+        "sequence", "timeline") or dna.get("data_type") in ("process", "timeline")
+    rows = dna.get("archetype") == "executive-summary"
+    highlight = dna.get("insight_device") in ("highlight-contrast", "callout-annotation", "spotlight")
     bands, lines, boxes = [], [], []
     for r in dna["regions"]:
-        b, role = r["box"], r["role"]
-        x, y, w, h = box = (b["x"], b["y"], b["w"], b["h"])
-        area = w * h
+        b, role, geom, path = r["box"], r["role"], r.get("geom") or "", r.get("path")
+        x, y, w, h = (b["x"], b["y"], b["w"], b["h"])
         if r["type"] == "group" or role == "group":
             continue
-        if r["type"] == "line" or role in ("divider", "connector"):
-            if role != "decoration":  # shortcut: connector flips are not in the DNA, so diagonals may draw mirrored
-                xy = (x, y, x + w, y + h) if r["type"] == "line" else (
-                    (x, y + h / 2, x + w, y + h / 2) if w >= h else (x + w / 2, y, x + w / 2, y + h))
-                lines.append({"i": r["i"], "kind": "line", "xy": xy, "box": box, "label": None})
+        if r["type"] == "line" or role in ("divider", "connector") or geom == "line" or "Connector" in geom:
+            if role != "decoration" or path_like:
+                pts = [(x + px * w, y + py * h) for px, py in path[0]] if path else (
+                    [(x, y), (x + w, y + h)] if r["type"] == "line" else
+                    [(x, y + h / 2), (x + w, y + h / 2)] if w >= h else [(x + w / 2, y), (x + w / 2, y + h)])
+                lines.append({"i": r["i"], "kind": "line", "pts": pts, "arrow": r.get("arrow"), "dashed": r["dashed"],
+                              "box": (x, y, w, h), "label": None})
             continue
         x0, y0 = max(x, 0), max(y, 0)  # boxes hanging off the slide are drawn and labelled by their visible part
         box = (x0, y0, max(min(x + w, 1) - x0, 0), max(min(y + h, 1) - y0, 0))
         area = box[2] * box[3]
-        if role in ("decoration", "background-band"):
-            big = area > BAND_AREA or (role == "background-band" and area >= MIN_AREA)
-            if big and area < 0.9 and (r["fill"] or r["type"] == "picture"):  # >= 90% is the slide itself
+        if role in ("decoration", "background-band") and (r["fill"] or r["type"] == "picture"):
+            big = area > BAND_AREA or (area >= MIN_AREA and (role == "background-band" or (rows and box[2] >= 0.5)))
+            if big and area < 0.9:  # >= 90% is the slide itself
                 bands.append({"i": r["i"], "kind": "band", "box": box, "label": None})
-            continue
-        geom = r.get("geom") or ""
-        kind = "ellipse" if geom in ELLIPSES else "round" if "round" in geom.lower() or geom == "flowChartAlternateProcess" else "rect"
-        boxes.append({"i": r["i"], "kind": kind, "box": box, "label": _label(r)})
+            if big or role == "background-band":
+                continue
+        traced = role not in NEVER_TRACED and not (path and area < SMALL_AREA and sum(map(len, path)) > MAX_SMALL_POINTS)
+        shown = role not in NEVER_TRACED and bool(r["fill"] or r["line"] or r["type"] == "picture")
+        visible = traced and shown  # untraced shapes still count as repeats, but draw as their label only
+        boxes.append({"i": r["i"], "kind": "shape", "box": box, "label": None if role == "decoration" else _label(r),
+                      "geom": (geom or None) if traced else None, "path": path if traced else None, "dashed": r["dashed"],
+                      "visible": visible, "shown": shown, "holds": False, "frame": False,
+                      "insight": visible and (r["dashed"] or role == "callout" or (
+                          highlight and role != "decoration" and r["fill"] in ("primary", "accent")))})
     joined = True
     while joined:  # many decks put each line of text in its own box: join same-kind boxes stacked with no real gap
         joined = False
@@ -148,18 +175,141 @@ def _plan(dna):
                 boxes.remove(b)
                 joined = True
                 break
-    boxes = [c for c in boxes if c["box"][2] * c["box"][3] >= MIN_AREA or c["label"] in KEEP_TINY]
     kept = []
     for c in sorted(boxes, key=lambda c: -c["box"][2] * c["box"][3]):
         same = next((k for k in kept if _overlap(k["box"], c["box"]) > SAME_BOX * k["box"][2] * k["box"][3]), None)
         if same is None:
             kept.append(c)
-        elif same["label"] == "[shape]":
-            same["label"] = c["label"]
-    for k in kept:  # a plain container's label would collide with the labels inside it
-        if k["label"] == "[shape]" and any(o is not k and _inside(o["box"], k["box"]) for o in kept):
+        elif same["label"] in ("[shape]", None) and c["label"]:
+            same.update(label=c["label"], holds=True)
+    key = lambda c: c["geom"] if c["geom"] not in (None, "rect") or c["path"] else "rect"
+    alike = lambda a, b: key(a) == key(b) and all(abs(a["box"][k] - b["box"][k]) <= ALIKE * max(a["box"][k], b["box"][k]) for k in (2, 3))
+    out = []
+    for c in kept:
+        area = c["box"][2] * c["box"][3]
+        twins = [o for o in kept if o is not c and o["shown"] and alike(c, o)]
+        texture = c["label"] is None and any(  # unlabelled stripes or rings stacked on each other; a Venn overlaps less
+            o is not c and o["label"] is None and o["shown"] and key(o) == key(c)
+            and _overlap(c["box"], o["box"]) > 0.5 * min(area, o["box"][2] * o["box"][3]) for o in kept)
+        on_line = any(_near(p, c["box"]) for ln in lines for p in (ln["pts"][0], ln["pts"][-1])) or (
+            area < MIN_AREA and any(_through(ln["pts"], c["box"]) for ln in lines))
+        matters = on_line or (area >= MIN_AREA and not texture and (
+            c["holds"] or c["insight"] or area > LARGE
+            or any(o is not c and o["label"] and _inside(o["box"], c["box"]) and o["box"][2] * o["box"][3] < area for o in kept)
+            or (c["shown"] and len(twins) + 1 >= (2 if grid else 3))))
+        if area < MIN_AREA and c["label"] not in KEEP_TINY and not matters:
+            continue  # a tiny isolated ornament
+        if c["label"] in TEXT_LABELS:
+            c["frame"] = c["visible"] and matters  # text inside a shape that matters, e.g. a chevron in a row
+        elif c["label"] == "[image]":
+            c["frame"] = c["visible"]
+        elif c["label"] == "[table]" or (c["label"] or "").endswith("chart]"):
+            c["frame"] = True
+        elif not matters:
+            continue
+        else:
+            c["frame"] = c["visible"]
+        if c["frame"] or c["label"]:
+            out.append(c)
+    for c in out:  # a cut-out photo on its own circle or card: the shape carries the outline, the photo its label
+        if c["label"] == "[image]" and any(
+                o["frame"] and o["label"] in ("[shape]", None) and o["box"][2] * o["box"][3] < c["box"][2] * c["box"][3]
+                and _overlap(c["box"], o["box"]) >= SAME_BOX * o["box"][2] * o["box"][3] for o in out):
+            c["frame"] = False
+    for k in out:  # a plain container's label would collide with the labels inside it
+        if k["label"] == "[shape]" and any(o is not k and _inside(o["box"], k["box"]) for o in out):
             k["label"] = None
-    return bands + lines + sorted(kept, key=lambda c: c["i"])
+    return bands + lines + sorted((c for c in out if c["frame"] or c["label"]), key=lambda c: c["i"])
+
+
+def _through(pts, box):
+    """A polyline passes within half the box size of the box centre."""
+    cx, cy, reach = box[0] + box[2] / 2, box[1] + box[3] / 2, max(box[2], box[3]) / 2
+    for (ax, ay), (bx, by) in zip(pts, pts[1:]):
+        dx, dy = bx - ax, by - ay
+        t = max(0, min(1, ((cx - ax) * dx + (cy - ay) * dy) / (dx * dx + dy * dy))) if dx or dy else 0
+        if math.hypot(ax + t * dx - cx, ay + t * dy - cy) <= reach:
+            return True
+    return False
+
+
+def _near(p, box):
+    return box[0] - TOUCH <= p[0] <= box[0] + box[2] + TOUCH and box[1] - TOUCH <= p[1] <= box[1] + box[3] + TOUCH
+
+
+def _ring(cx, cy, rx, ry, a0=0, a1=360, n=48):
+    pts = [(cx + rx * math.cos(math.radians(a0 + (a1 - a0) * k / n)), cy + ry * math.sin(math.radians(a0 + (a1 - a0) * k / n)))
+           for k in range(n + 1)]
+    return pts[:-1] + [pts[0]] if a1 - a0 == 360 else pts
+
+
+def _rounded(w, h, r, n=6):
+    pts = []
+    for cx, cy, a in ((w - r, r, 270), (w - r, h - r, 0), (r, h - r, 90), (r, r, 180)):
+        pts += _ring(cx, cy, r, r, a, a + 90, n)
+    return pts + [pts[0]]
+
+
+def _poly(*pts):
+    return [list(pts) + [pts[0]]]
+
+
+def _preset(geom, w, h):
+    """Outline of an OOXML preset at its default adjustments, as closed/open polylines in local (0..w, 0..h) pixels."""
+    ss = min(w, h)
+    a = ss / 2
+    shapes = {
+        "triangle": lambda: _poly((w / 2, 0), (w, h), (0, h)),
+        "flowChartExtract": lambda: _poly((w / 2, 0), (w, h), (0, h)),
+        "flowChartMerge": lambda: _poly((0, 0), (w, 0), (w / 2, h)),
+        "rtTriangle": lambda: _poly((0, 0), (w, h), (0, h)),
+        "diamond": lambda: _poly((w / 2, 0), (w, h / 2), (w / 2, h), (0, h / 2)),
+        "pentagon": lambda: _poly((w / 2, 0), (w, 0.38 * h), (0.81 * w, h), (0.19 * w, h), (0, 0.38 * h)),
+        "homePlate": lambda: _poly((0, 0), (w - a, 0), (w, h / 2), (w - a, h), (0, h)),
+        "chevron": lambda: _poly((0, 0), (w - a, 0), (w, h / 2), (w - a, h), (0, h), (a, h / 2)),
+        "hexagon": lambda: _poly((ss / 4, 0), (w - ss / 4, 0), (w, h / 2), (w - ss / 4, h), (ss / 4, h), (0, h / 2)),
+        "octagon": lambda: (lambda c: _poly((c, 0), (w - c, 0), (w, c), (w, h - c), (w - c, h), (c, h), (0, h - c), (0, c)))(0.29289 * ss),
+        "parallelogram": lambda: _poly((ss / 4, 0), (w, 0), (w - ss / 4, h), (0, h)),
+        "flowChartInputOutput": lambda: _poly((w / 5, 0), (w, 0), (w - w / 5, h), (0, h)),
+        "trapezoid": lambda: _poly((0, h), (ss / 4, 0), (w - ss / 4, 0), (w, h)),
+        "flowChartManualOperation": lambda: _poly((0, 0), (w, 0), (w - w / 5, h), (w / 5, h)),
+        "flowChartManualInput": lambda: _poly((0, h / 5), (w, 0), (w, h), (0, h)),
+        "flowChartOffpageConnector": lambda: _poly((0, 0), (w, 0), (w, 0.8 * h), (w / 2, h), (0, 0.8 * h)),
+        "rightArrow": lambda: _poly((0, h / 4), (w - a, h / 4), (w - a, 0), (w, h / 2), (w - a, h), (w - a, 3 * h / 4), (0, 3 * h / 4)),
+        "notchedRightArrow": lambda: _poly((0, h / 4), (w - a, h / 4), (w - a, 0), (w, h / 2), (w - a, h), (w - a, 3 * h / 4),
+                                           (0, 3 * h / 4), (ss / 4, h / 2)),
+        "upArrow": lambda: _poly((w / 4, h), (w / 4, a), (0, a), (w / 2, 0), (w, a), (3 * w / 4, a), (3 * w / 4, h)),
+        "ellipse": lambda: [_ring(w / 2, h / 2, w / 2, h / 2)],
+        "donut": lambda: [_ring(w / 2, h / 2, w / 2, h / 2), _ring(w / 2, h / 2, w / 2 - ss / 4, h / 2 - ss / 4)],
+        "arc": lambda: [_ring(w / 2, h / 2, w / 2, h / 2, 270, 360, 12)],
+        "blockArc": lambda: [(lambda o: o + [o[0]])(_ring(w / 2, h / 2, w / 2, h / 2, 180, 360, 24)
+                                                   + _ring(w / 2, h / 2, w / 2 - ss / 4, h / 2 - ss / 4, 360, 180, 24))],
+        "roundRect": lambda: [_rounded(w, h, ss / 6)],
+        "flowChartTerminator": lambda: [_rounded(w, h, ss / 2)],
+    }
+    mirror = {"leftArrow": ("rightArrow", True), "downArrow": ("upArrow", False)}
+    alias = {"flowChartConnector": "ellipse", "flowChartDecision": "diamond", "flowChartAlternateProcess": "roundRect",
+             "flowChartPreparation": "hexagon", "flowChartPunchedCard": "rect"}
+    geom = alias.get(geom, geom)
+    if geom in mirror:
+        base, horizontal = mirror[geom]
+        return [[(w - x, y) if horizontal else (x, h - y) for x, y in pl] for pl in shapes[base]()]
+    if geom in shapes:
+        return shapes[geom]()
+    if (geom or "").endswith("Callout"):  # callouts: the body plus a pointer below it
+        body = _preset("ellipse" if "Ellipse" in geom else "roundRect" if "Round" in geom else "rect", w, h)
+        return body + [[(0.2 * w, h), (0.29 * w, 1.125 * h), (0.35 * w, h)]]
+    if "round" in (geom or "").lower():
+        return [_rounded(w, h, ss / 6)]
+    return _poly((0, 0), (w, 0), (w, h), (0, h))  # rect and every unknown preset: its box
+
+
+def _outline(geom, path, box):
+    """Outline polylines of a shape in pixel box (x0, y0, x1, y1); a freeform path wins over the preset."""
+    x0, y0, x1, y1 = box
+    w, h = x1 - x0, y1 - y0
+    local = [[(px * w, py * h) for px, py in sub] for sub in path] if path else _preset(geom, w, h)
+    return [[(x0 + x, y0 + y) for x, y in pl] for pl in local]
 
 
 def _overlap(a, b):
@@ -179,42 +329,78 @@ def _inside(a, b):
     return b[0] <= cx <= b[0] + b[2] and b[1] <= cy <= b[1] + b[3]
 
 
+def _stroke(d, pts, width, dashed, s):
+    if not dashed:
+        d.line(pts, fill=INK, width=width, joint="curve")
+        return
+    on, period, run = 7 * s, 12 * s, 0.0  # run: length walked so far, so the dash pattern flows round corners
+    for (ax, ay), (bx, by) in zip(pts, pts[1:]):
+        seg = math.hypot(bx - ax, by - ay)
+        t = -(run % period)
+        while t < seg:
+            t0, t1 = max(t, 0), min(t + on, seg)
+            if t1 > t0:
+                d.line(((ax + (bx - ax) * t0 / seg, ay + (by - ay) * t0 / seg),
+                        (ax + (bx - ax) * t1 / seg, ay + (by - ay) * t1 / seg)), fill=INK, width=width)
+            t += period
+        run += seg
+
+
 def _draw(dna, W, H):
     s = W / 960
     img = Image.new("L", (W, H), 255)
     d = ImageDraw.Draw(img)
     stroke = max(1, round(2 * s))
     plan = _plan(dna)
+    px = lambda p: (p["box"][0] * W, p["box"][1] * H, p["box"][0] * W + max(p["box"][2] * W, 1), p["box"][1] * H + max(p["box"][3] * H, 1))
     for p in plan:
-        x, y, w, h = p["box"]
-        box = (x * W, y * H, x * W + max(w * W, 1), y * H + max(h * H, 1))
         if p["kind"] == "band":
-            d.rectangle(box, fill=BAND)
+            d.rectangle(px(p), fill=BAND)
         elif p["kind"] == "line":
-            x0, y0, x1, y1 = p["xy"]
-            d.line((x0 * W, y0 * H, x1 * W, y1 * H), fill=INK, width=stroke)
-        elif p["kind"] == "ellipse":
-            d.ellipse(box, outline=INK, width=stroke)
-        elif p["kind"] == "round":
-            d.rounded_rectangle(box, radius=min(10 * s, (box[2] - box[0]) / 2, (box[3] - box[1]) / 2), outline=INK, width=stroke)
-        else:
-            d.rectangle(box, outline=INK, width=stroke)
+            pts = [(x * W, y * H) for x, y in p["pts"]]
+            _stroke(d, pts, stroke, p["dashed"], s)
+            for end, prev, on in ((pts[-1], pts[-2], p["arrow"] in ("end", "both")), (pts[0], pts[1], p["arrow"] in ("start", "both"))):
+                if on and end != prev:
+                    a = math.atan2(end[1] - prev[1], end[0] - prev[0])
+                    for da in (2.6, -2.6):  # two short barbs at about 150 degrees from the line
+                        d.line((end, (end[0] + 9 * s * math.cos(a + da), end[1] + 9 * s * math.sin(a + da))), fill=INK, width=stroke)
+        elif p["frame"]:
+            for pl in _outline(p["geom"], p["path"], px(p)):
+                _stroke(d, pl, stroke, p["dashed"], s)
     placed = []  # (label spot, its box) as pixel x, y, w, h
     for p in sorted((p for p in plan if p["label"]), key=lambda p: p["box"][2] * p["box"][3]):  # innermost first
         x, y, w, h = p["box"]
-        inset = 0.7 if p["kind"] == "ellipse" else 1.0  # widest text that fits inside the ellipse
-        room_w, room_h = w * W * inset - 2 * stroke - 8 * s, h * H * inset - 2 * stroke - 4 * s
-        for size in range(min(18, int(room_h / 1.3 / s)), 7, -1):  # shrink to fit, give up below 8px
+        framed = p["frame"]
+        inset = 0.7 if framed and p["geom"] in ("ellipse", "flowChartConnector", "donut") else 1.0  # widest text inside an ellipse
+        pad = 2 * stroke + 8 * s if framed else 4 * s
+        room_w, room_h = w * W * inset - pad, h * H * inset - (2 * stroke + 4 * s if framed else 0)
+        top = 40 if p["label"] == "[number]" else 22 if p["label"] == "[title]" else 18  # hero numbers draw larger
+        align = "center" if framed else (_align(dna, p) or "left")
+        for size in range(min(top, int(room_h / 1.3 / s)), 7, -1):  # shrink to fit, give up below 8px
             font = ImageFont.load_default(size=round(size * s))
             tw = d.textlength(p["label"], font=font)
             if tw <= room_w:
-                cx, cy, half = (x + w / 2) * W, (y + h / 2) * H, font.size * 0.7
-                spot, mine = (cx - tw / 2, cy - half, tw, 2 * half), (x * W, y * H, w * W, h * H)
-                # never print over another label, nor over a labelled box inside this one
-                if not any(_overlap(spot, o) or (_inside(ob, mine) and _overlap(spot, ob)) for o, ob in placed):
-                    d.text((cx, cy), p["label"], fill=INK, font=font, anchor="mm")
-                    placed.append((spot, mine))
+                cy, half = (y + h / 2) * H, font.size * 0.7
+                for where in dict.fromkeys((align, "center")):  # blocked at its aligned spot: try the centre
+                    if where in ("left", "justify"):
+                        at, anchor, left = (x * W + pad / 2, cy), "lm", x * W + pad / 2
+                    elif where == "right":
+                        at, anchor, left = ((x + w) * W - pad / 2, cy), "rm", (x + w) * W - pad / 2 - tw
+                    else:
+                        at, anchor, left = ((x + w / 2) * W, cy), "mm", (x + w / 2) * W - tw / 2
+                    spot, mine = (left, cy - half, tw, 2 * half), (x * W, y * H, w * W, h * H)
+                    # never print over another label, nor over a labelled box inside this one
+                    if not any(_overlap(spot, o) or (_inside(ob, mine) and _overlap(spot, ob)) for o, ob in placed):
+                        d.text(at, p["label"], fill=INK, font=font, anchor=anchor)
+                        placed.append((spot, mine))
+                        break
                 break
     out = io.BytesIO()
     img.save(out, "PNG", optimize=True)
     return out.getvalue()
+
+
+def _align(dna, p):
+    """Alignment of the region a label came from (left/centre/right), from the record."""
+    r = next((r for r in dna["regions"] if r["i"] == p["i"]), None)
+    return r and r["text"] and r["text"]["align"]
