@@ -4,6 +4,11 @@ are promoted to library/records/ + library/wireframes/; anything else is withhel
 Free-text fields (purpose, why_it_works, description, text patterns) must not contain digits, share a 3-word
 sequence with the slide's original text, or contain names (spaCy NER, plus any name found in the slide text).
 Numeric and enum DNA fields are exempt. The wireframe draws only from the DNA, so it inherits this check.
+
+NER and title-case slides mistake ordinary words for names, so a word only counts as a name when it is rare
+(wordfreq zipf < COMMON_ZIPF and not in DESIGN_TERMS) or our text writes it like one (capitalised mid-sentence,
+or all caps), so a common-word name opening a sentence is left to the judge. Standard framework names
+(FRAMEWORKS, exact phrases) are exempt from the shared-words rule.
 """
 import json
 import re
@@ -13,11 +18,30 @@ from functools import cache
 from pathlib import Path
 
 import spacy
+from wordfreq import zipf_frequency
 
 from pipeline import build
 
 NAME_LABELS = {"PERSON", "ORG", "GPE", "LOC", "NORP", "FAC", "PRODUCT", "EVENT", "WORK_OF_ART", "LAW"}
-DESIGN_TERMS = {"kpi", "kpis", "swot", "gantt", "harvey", "roi", "cagr", "mece"}  # design vocabulary NER mislabels
+# design and labelling vocabulary that NER mislabels and the frequency list rates rare
+DESIGN_TERMS = {"kpi", "kpis", "swot", "gantt", "harvey", "roi", "cagr", "mece", "chevron", "chevrons", "mosaic",
+                "screenshot", "screenshots", "label", "labels", "callout", "callouts", "icon", "icons", "tile", "tiles",
+                "card", "cards", "banner", "banners", "timeline", "timelines", "funnel", "funnels", "matrix",
+                "waterfall", "swimlane", "swimlanes", "donut", "doughnut", "italic", "breakeven", "infographic",
+                "summarise", "summarises", "summarize", "summarizes"}
+COMMON_ZIPF = 3.5  # wordfreq zipf: 3.5 is about once per 300k words; below it a word may be a name
+FRAMEWORKS = sorted((p.split() for p in (  # standard framework names, as _words() sees them; exact phrases only
+    "strengths weaknesses opportunities threats", "strengths weaknesses opportunities and threats",
+    "porter s five forces", "porters five forces", "threat of new entrants", "threat of substitutes",
+    "bargaining power of suppliers", "bargaining power of buyers", "bargaining power of customers",
+    "value chain analysis", "product price place promotion", "product price place and promotion",
+    "tam sam som", "total addressable market", "serviceable addressable market", "serviceable available market",
+    "serviceable obtainable market", "stars cash cows question marks dogs", "stars cash cows dogs",
+    "growth share matrix", "market penetration market development product development diversification",
+    "market penetration market development product development and diversification",
+    "political economic social technological legal environmental",
+    "political economic social technological environmental legal",
+    "political economic social technological")), key=len, reverse=True)
 TEMPLATE = (Path(__file__).parent / "templates" / "judge.txt").read_text()
 
 
@@ -29,6 +53,26 @@ def _nlp():
 def _words(text):
     text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().lower()
     return re.findall(r"[a-z0-9]+", text)
+
+
+def _common(word):
+    return word in DESIGN_TERMS or zipf_frequency(word, "en") >= COMMON_ZIPF
+
+
+def _name_like(t):
+    """Written like a name: all caps, or capitalised where no sentence or line starts."""
+    prev = t.doc[t.i - 1] if t.i else None
+    start = prev is None or prev.is_space or prev.text in ".!?:;"
+    return t.is_alpha and ((t.is_upper and len(t) > 1) or (t.text[0].isupper() and not start))
+
+
+def _mask_frameworks(words):
+    words = list(words)
+    for p in FRAMEWORKS:
+        for i in range(len(words) - len(p) + 1):
+            if words[i:i + len(p)] == p:
+                words[i:i + len(p)] = [None] * len(p)  # None breaks every 3-gram that touches the phrase
+    return words
 
 
 def source_names(source):
@@ -43,13 +87,17 @@ def problems_in(text, source, names):
         found.append("digit")
     src, words = _words(source), _words(text)
     grams = {tuple(src[i:i + 3]) for i in range(len(src) - 2)}
-    shared = [" ".join(words[i:i + 3]) for i in range(len(words) - 2) if tuple(words[i:i + 3]) in grams]
+    masked = _mask_frameworks(words)
+    shared = [" ".join(masked[i:i + 3]) for i in range(len(masked) - 2) if tuple(masked[i:i + 3]) in grams]
     if shared:
         found.append(f"shared words with slide text: {shared[0]!r}")
-    for e in _nlp()(text).ents:
-        if e.label_ in NAME_LABELS and not {t.lower_ for t in e if t.is_alpha} <= DESIGN_TERMS:
+    doc = _nlp()(text)
+    for e in doc.ents:
+        if e.label_ in NAME_LABELS and not all(t.lower_ in DESIGN_TERMS or (_common(t.lower_) and not _name_like(t))
+                                               for t in e if t.is_alpha):
             found.append(f"name ({e.label_}): {e.text!r}")
-    hits = sorted(names & set(words))
+    written_as_name = {w for t in doc if _name_like(t) for w in _words(t.text)}
+    hits = sorted(w for w in names & set(words) if w not in DESIGN_TERMS and (w in written_as_name or not _common(w)))
     if hits:
         found.append(f"name from slide text: {hits[0]!r}")
     return found

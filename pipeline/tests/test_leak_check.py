@@ -106,3 +106,51 @@ def test_malformed_verdict_counts_as_fail(deck, lib):
     v.mkdir(exist_ok=True)
     (v / f"{ids[0]}.json").write_text('{"identified": "no"}')
     assert leak_check.run(deck_id, lib)[ids[0]]["judge"] == "fail"
+
+
+@pytest.mark.parametrize("text", [
+    "Summarises financial outcomes with a revenue bar chart and a highlighted growth callout on the left, two "
+    "ring-framed headline metrics below, and an assumptions list on the right.",
+    "Screenshots are annotated with a red circle and leader line to the key figure.",
+    "A chevron strip with boxed percentages under each stage gives the data story at a glance.",
+    "Appendix mosaic of competitor creatives illustrating a shared tactic.",
+    "Coloured vertical stage tabs and coloured column headers form a clear matrix.",
+    "Why it works: Labels with leader lines point to small objects threaded along one large curved band.",
+    "Shows a contribution waterfall, space allocation, breakeven figures and returns.",
+    "italic persona descriptor with age range",
+])
+def test_ordinary_words_ner_mislabels_are_not_names(text):
+    assert leak_check.problems_in(text, "", set()) == []
+
+
+def test_common_words_from_slide_entities_are_not_names():
+    names = {"channels", "business", "vision", "metrics", "research", "purchase", "data", "customer", "company",
+             "challenges", "breakeven", "short", "question", "plan", "overview"}
+    text = ("a short overview of the business plan: channels, vision, metrics, research and purchase data per "
+            "customer, then company challenges, breakeven and the question")
+    assert leak_check.problems_in(text, "", names) == []
+
+
+@pytest.mark.parametrize("text, source", [
+    ("a four-column strengths, weaknesses, opportunities and threats band", "STRENGTHS\nWEAKNESSES\nOPPORTUNITIES\nTHREATS"),
+    ("a political, economic, social, technological, legal, environmental grid", "Political Economic Social Technological Legal Environmental"),
+    ("nested total addressable market rings", "Total addressable market"),
+])
+def test_standard_framework_phrases_are_not_copied_text(text, source):
+    assert leak_check.problems_in(text, source, set()) == []
+
+
+@pytest.mark.parametrize("text, source, problem", [
+    ("Echoes the Quillmoor Analytics house style with a dark band", "", "name"),
+    ("Styled after the London Underground map with coloured lines", "", "name"),
+    ("A layout that Priya Raman sketched on a whiteboard", "", "name"),
+    ("A quillmoor style promise band", "Quillmoor Analytics grew loyalty in Ontario", "name"),
+    ("A loyalty band in the Ontario style", "Quillmoor Analytics grew loyalty in Ontario", "name"),
+    ("A LOYALTY band", "Quillmoor Analytics grew LOYALTY in Ontario", "name"),
+    ("A band in 2 tones", "", "digit"),
+    ("bands for secondary research, primary research and objective", "Secondary research and objective", "shared words"),
+    ("headline urging a focus on untapped segments", "Focus on untapped segments", "shared words"),
+])
+def test_real_names_numbers_and_copies_still_fail(text, source, problem):
+    found = leak_check.problems_in(text, source, leak_check.source_names(source))
+    assert any(problem in p for p in found), found

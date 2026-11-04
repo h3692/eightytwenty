@@ -175,7 +175,7 @@ def _text(d, box, r, under, rng, s):
             m = thick * 0.9
             yy = y0 + pad + k * step + thick / 2
             d.rectangle((x0 + pad + indent - 2.5 * m, yy - m / 2, x0 + pad + indent - 1.5 * m, yy + m / 2), fill=ink)
-        full = x1 - x0 - 2 * pad - indent
+        full = max(thick, x1 - x0 - 2 * pad - indent)  # a box narrower than its padding still gets a dot
         length = full * (0.6 if k == lines - 1 and lines > 1 else rng.uniform(0.85, 1.0))
         lx = {"center": x0 + indent + (x1 - x0 - indent - length) / 2, "right": x1 - pad - length}.get(t["align"], x0 + pad + indent)
         ly = y0 + pad + k * step

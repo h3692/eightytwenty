@@ -145,3 +145,12 @@ def test_dense_slide_stays_under_size_cap(built):
             r["i"], r["box"] = len(regions), {"x": (k % 3) / 3, "y": (k // 3) / 2, "w": 0.32, "h": 0.48}
             regions.append(r)
     assert len(build.wireframe(dict(dna, regions=regions))) <= 30 * 1024
+
+
+def test_tiny_text_box_draws_without_error(built):
+    out, ids = built
+    dna = _dna(out, ids[1])
+    r = next(r for r in dna["regions"] if r["text"] and not r["text"]["number"] and r["role"] != "big-number"
+             and not r["chart"] and not r["table"])
+    r["box"] = {"x": 0.5, "y": 0.5, "w": 0.005, "h": 0.05}
+    assert Image.open(io.BytesIO(build.wireframe(dna))).mode == "L"
