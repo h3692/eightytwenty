@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "layout.v2.json",
+  "title": "Slide layout list v2 (drawn by an agent from the slide PNG; no free text, labels come from kind and chart_type)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "elements"],
+  "properties": {
+    "version": {"const": 2},
+    "elements": {"type": "array", "minItems": 1, "maxItems": 25, "items": {"$ref": "#/$defs/element"}}
+  },
+  "$defs": {
+    "unit": {"type": "number", "minimum": 0, "maximum": 1},
+    "point": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/unit"}},
+    "element": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "shape", "box"],
+      "properties": {
+        "kind": {"enum": ["title", "subtitle", "text", "bullets", "quote", "number", "label", "logo", "takeaway", "icon",
+                          "image", "chart", "table", "callout", "step", "card", "panel", "band", "strip", "divider",
+                          "arrow", "connector"]},
+        "shape": {"enum": ["none", "rect", "round_rect", "ellipse", "chevron", "arrow_right", "arrow_left", "arrow_up",
+                           "arrow_down", "triangle", "diamond", "line", "polygon"]},
+        "box": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"$ref": "#/$defs/unit"}},
+        "points": {"type": "array", "minItems": 2, "maxItems": 12, "items": {"$ref": "#/$defs/point"}},
+        "dashed": {"type": "boolean"},
+        "emphasis": {"enum": ["normal", "strong", "hero"]},
+        "from": {"type": "integer", "minimum": 0},
+        "to": {"type": "integer", "minimum": 0},
+        "region_ids": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 0}},
+        "parent": {"type": "integer", "minimum": 0},
+        "framed": {"type": "boolean"},
+        "fill": {"enum": ["none", "light", "mid", "dark"]},
+        "chart_type": {"enum": ["bar", "column", "stacked_bar", "line", "pie", "donut", "scatter", "waterfall", "area"]},
+        "series": {"type": "integer", "minimum": 1, "maximum": 6},
+        "categories": {"type": "integer", "minimum": 1, "maximum": 12},
+        "rows": {"type": "integer", "minimum": 1, "maximum": 20},
+        "cols": {"type": "integer", "minimum": 1, "maximum": 20},
+        "header_row": {"type": "boolean"},
+        "arrow_style": {"enum": ["line", "block", "chevron"]},
+        "head": {"enum": ["none", "end", "both"]}
+      },
+      "allOf": [
+        {"$ref": "#/$defs/only", "$comment": "each kind-specific field belongs to its kinds only"},
+        {"if": {"properties": {"kind": {"const": "chart"}}}, "then": {"required": ["chart_type"]}},
+        {"if": {"properties": {"kind": {"const": "table"}}}, "then": {"required": ["rows", "cols"]}},
+        {"if": {"properties": {"kind": {"enum": ["logo", "icon"]}}}, "then": {"not": {"required": ["points"]}},
+         "$comment": "brand marks are never traced"}
+      ]
+    },
+    "only": {
+      "allOf": [
+        {"if": {"anyOf": [{"required": ["chart_type"]}, {"required": ["series"]}, {"required": ["categories"]}]},
+         "then": {"properties": {"kind": {"const": "chart"}}}},
+        {"if": {"anyOf": [{"required": ["rows"]}, {"required": ["cols"]}, {"required": ["header_row"]}]},
+         "then": {"properties": {"kind": {"const": "table"}}}},
+        {"if": {"required": ["arrow_style"]}, "then": {"properties": {"kind": {"const": "arrow"}}}},
+        {"if": {"required": ["head"]}, "then": {"properties": {"kind": {"enum": ["arrow", "connector"]}}}},
+        {"if": {"anyOf": [{"required": ["from"]}, {"required": ["to"]}]},
+         "then": {"properties": {"kind": {"const": "connector"}}}},
+        {"if": {"required": ["fill"]}, "then": {"properties": {"kind": {"enum": ["card", "panel", "band", "strip"]}}}},
+        {"if": {"required": ["framed"]},
+         "then": {"properties": {"kind": {"enum": ["title", "subtitle", "text", "bullets", "quote", "number", "label",
+                                                   "logo", "takeaway"]}}}}
+      ]
+    }
+  }
+}
