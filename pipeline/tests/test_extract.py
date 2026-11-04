@@ -4,6 +4,7 @@ import re
 import shutil
 
 import pytest
+from PIL import Image
 
 from pipeline import extract
 from pipeline.tests.conftest import CLIENT, EXCLUDED
@@ -108,8 +109,24 @@ def test_extractor_never_touches_excluded_channels():
         assert forbidden not in src, forbidden
 
 
-@pytest.mark.skipif(not (shutil.which("soffice") or extract.SOFFICE_APP.exists()) or not shutil.which("pdftoppm"),
-                    reason="LibreOffice and poppler (pdftoppm) not installed")
+def test_pdf_pages_become_pngs_scaled_to_1280(tmp_path):
+    pdf = tmp_path / "deck.pdf"
+    pages = [Image.new("RGB", (160, 90), c) for c in ("navy", "orange")]
+    pages[0].save(pdf, save_all=True, append_images=pages[1:])
+    extract._pdf_to_png(pdf, tmp_path, 2)
+    pngs = sorted(tmp_path.glob("slide-*.png"))
+    assert [p.name for p in pngs] == ["slide-01.png", "slide-02.png"]
+    assert all(Image.open(p).size == (1280, 720) for p in pngs)
+
+
+def test_render_without_libreoffice_says_so(deck, tmp_path, monkeypatch):
+    monkeypatch.setattr(extract.shutil, "which", lambda _: None)
+    monkeypatch.setattr(extract, "SOFFICE_APP", tmp_path / "missing" / "soffice")
+    with pytest.raises(SystemExit, match="LibreOffice"):
+        extract._render(deck, tmp_path, 2)
+
+
+@pytest.mark.skipif(not (shutil.which("soffice") or extract.SOFFICE_APP.exists()), reason="LibreOffice not installed")
 def test_render_writes_one_png_per_visible_slide(deck, lib):
     deck_id = extract.run(deck, lib)
     assert sorted(p.name for p in (lib / "work" / deck_id).glob("slide-*.png")) == ["slide-01.png", "slide-02.png"]

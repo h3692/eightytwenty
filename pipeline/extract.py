@@ -14,6 +14,7 @@ import tempfile
 from collections import Counter
 from pathlib import Path
 
+import pypdfium2 as pdfium
 from pptx import Presentation
 from pptx.enum.dml import MSO_COLOR_TYPE, MSO_FILL, MSO_LINE
 from pptx.enum.shapes import MSO_SHAPE_TYPE, PP_PLACEHOLDER
@@ -48,16 +49,25 @@ def run(pptx_path, library, render=True):
 
 def _render(pptx_path, work, count):
     soffice = shutil.which("soffice") or (str(SOFFICE_APP) if SOFFICE_APP.exists() else None)
-    if not soffice or not shutil.which("pdftoppm"):
-        raise SystemExit("Rendering needs LibreOffice (soffice) and poppler (pdftoppm); install them or pass --skip-render.")
+    if not soffice:
+        raise SystemExit(f"Rendering needs LibreOffice: no soffice on PATH or at {SOFFICE_APP}; "
+                         "install it or pass --skip-render.")
     with tempfile.TemporaryDirectory() as tmp:
         src = Path(tmp) / "deck.pptx"  # neutral name: the original file name never reaches a render
         shutil.copyfile(pptx_path, src)
         subprocess.run([soffice, "--headless", "--convert-to", "pdf", "--outdir", tmp, str(src)], check=True, capture_output=True)
-        # LibreOffice's PDF export leaves hidden slides out, so page n is the n-th visible slide.
+        _pdf_to_png(Path(tmp) / "deck.pdf", work, count)
+
+
+def _pdf_to_png(pdf_path, work, count):
+    # LibreOffice's PDF export leaves hidden slides out, so page n is the n-th visible slide.
+    pdf = pdfium.PdfDocument(pdf_path)
+    try:
         for n in range(1, count + 1):
-            subprocess.run(["pdftoppm", "-png", "-scale-to", "1280", "-f", str(n), "-l", str(n), "-singlefile",
-                            str(Path(tmp) / "deck.pdf"), str(work / f"slide-{n:02d}")], check=True)
+            page = pdf[n - 1]
+            page.render(scale=1280 / max(page.get_size())).to_pil().save(work / f"slide-{n:02d}.png")
+    finally:
+        pdf.close()
 
 
 def _slide(slide, width, height):
