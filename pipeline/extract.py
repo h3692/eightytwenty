@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pypdfium2 as pdfium
 from pptx import Presentation
-from pptx.enum.dml import MSO_COLOR_TYPE, MSO_FILL, MSO_LINE
+from pptx.enum.dml import MSO_COLOR_TYPE, MSO_FILL
 from pptx.enum.shapes import MSO_SHAPE_TYPE, PP_PLACEHOLDER
 from pptx.enum.text import PP_ALIGN
 
@@ -197,10 +197,8 @@ def _line(shape):
 
 
 def _dashed(shape):
-    try:
-        return shape.line.dash_style not in (None, MSO_LINE.SOLID)
-    except (AttributeError, TypeError):
-        return False
+    # Raw XML, not line.dash_style: python-pptx's enum has no mapping for presets like "dot" and raises.
+    return any(v != "solid" for v in shape._element.xpath("./p:spPr/a:ln/a:prstDash/@val"))
 
 
 def _chromatic(hexrgb):

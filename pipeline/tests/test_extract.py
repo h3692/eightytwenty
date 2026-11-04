@@ -130,3 +130,19 @@ def test_render_without_libreoffice_says_so(deck, tmp_path, monkeypatch):
 def test_render_writes_one_png_per_visible_slide(deck, lib):
     deck_id = extract.run(deck, lib)
     assert sorted(p.name for p in (lib / "work" / deck_id).glob("slide-*.png")) == ["slide-01.png", "slide-02.png"]
+
+
+def test_dash_presets_python_pptx_cannot_map_still_extract_as_dashed(tmp_path, lib):
+    from pptx import Presentation
+    from pptx.enum.shapes import MSO_SHAPE
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    for val in ("dot", "sysDashDot", "solid"):
+        s = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, 100, 100)
+        s.line.width = 12700
+        s.line._ln.get_or_add_prstDash().set("val", val)
+    path = tmp_path / "dots.pptx"
+    prs.save(path)
+    deck_id = extract.run(path, lib, render=False)
+    regions = json.loads((lib / "work" / deck_id / "slide-01.json").read_text())["regions"]
+    assert [r["dashed"] for r in regions] == [True, True, False]
