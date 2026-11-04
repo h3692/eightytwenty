@@ -2,7 +2,7 @@
 import argparse
 import sys
 
-from pipeline import build, embed, extract, label_prep, leak_check, package
+from pipeline import build, embed, extract, label_prep, layout, leak_check, package
 
 
 def main(argv=None):
@@ -20,6 +20,13 @@ def main(argv=None):
     p = sub.add_parser("embed", help="embed published descriptions via the local Worker")
     p.add_argument("--url", default=f"http://127.0.0.1:{embed.PORT}")
     sub.add_parser("package", help="write records.sql and copy wireframes for deploy")
+    p = sub.add_parser("layout-prep", help="write layout worksheets for agent-drawn wireframes")
+    p.add_argument("deck_id")
+    p.add_argument("--slides", help="comma-separated slide numbers, e.g. 05,08 (default: all)")
+    p.add_argument("--variant", choices=["A", "B"], default="A", help="A: PNG only, B: PNG + extracted regions")
+    p = sub.add_parser("layout-render", help="validate layout JSONs and draw their wireframes")
+    p.add_argument("deck_id")
+    p.add_argument("--variant", choices=["A", "B"], default="A")
     for p in sub.choices.values():
         p.add_argument("--library", default="library")
     a = ap.parse_args(argv)
@@ -44,6 +51,12 @@ def main(argv=None):
         embed.run(a.library, a.url)
     elif a.stage == "package":
         package.run(a.library)
+    elif a.stage == "layout-prep":
+        slides = a.slides and {n.strip().zfill(2) for n in a.slides.split(",")}
+        out = layout.prep(a.deck_id, a.library, slides, a.variant)
+        print(f"Draw each layout: in Claude Code, ask it to follow every {out}/slide-NN.{a.variant}.prompt.txt")
+    elif a.stage == "layout-render":
+        print("\n".join(map(str, layout.render(a.deck_id, a.library, a.variant))))
 
 
 if __name__ == "__main__":

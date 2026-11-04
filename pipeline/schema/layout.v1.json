@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "layout.v1.json",
+  "title": "Slide layout list v1 (drawn by an agent from the slide PNG; no free text, labels come from kind)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["elements"],
+  "properties": {
+    "elements": {"type": "array", "minItems": 1, "maxItems": 25, "items": {"$ref": "#/$defs/element"}}
+  },
+  "$defs": {
+    "unit": {"type": "number", "minimum": 0, "maximum": 1},
+    "point": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"$ref": "#/$defs/unit"}},
+    "element": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "shape", "box"],
+      "properties": {
+        "kind": {"enum": ["title", "subtitle", "text", "bullets", "quote", "number", "label", "logo", "icon", "image",
+                          "bar_chart", "line_chart", "pie_chart", "chart", "table", "callout", "card", "panel", "band",
+                          "divider", "arrow", "connector", "step"]},
+        "shape": {"enum": ["none", "rect", "round_rect", "ellipse", "chevron", "arrow_right", "arrow_left", "arrow_up",
+                           "arrow_down", "triangle", "diamond", "line", "polygon"]},
+        "box": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"$ref": "#/$defs/unit"}},
+        "points": {"type": "array", "minItems": 2, "maxItems": 12, "items": {"$ref": "#/$defs/point"}},
+        "dashed": {"type": "boolean"},
+        "emphasis": {"enum": ["normal", "strong", "hero"]},
+        "from": {"type": "integer", "minimum": 0},
+        "to": {"type": "integer", "minimum": 0},
+        "region_ids": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 0}}
+      }
+    }
+  }
+}

@@ -1,0 +1,33 @@
+Draw the layout of one slide as a short element list; a renderer turns it into a clean wireframe.
+
+Look at the rendered slide: {png}
+{source}
+Write ONE JSON object to {out}
+It must validate against {schema}:
+  {{"elements": [ {{...}}, {{...}} ]}}   5-20 elements, never more than 25
+
+Each element has only these fields:
+  kind        one of: {kinds}
+  shape       one of: {shapes}
+  box         [x, y, w, h] as floats 0-1 of the 16:9 slide: top-left corner, width, height (x + w <= 1, y + h <= 1)
+  points      optional, for polygon / line / connector only: up to 12 [x, y] points, floats 0-1 of the slide
+  dashed      optional, true when the outline or line is dashed
+  emphasis    optional, one of: {emphases} ("hero" is the one element the eye lands on first, e.g. a big number)
+  from, to    optional, connectors only: indices (from 0) of the two elements the connector joins
+{region_field}
+Identify the 5-20 elements that carry the slide's structure:
+  - Merge stacked text lines of one block into ONE element (title, subtitle, text, bullets, quote or label).
+  - Ignore tiny decoration, background texture and page furniture (page numbers, footers, small logos in a corner).
+  - Keep repeated shapes (cards, steps, icons in a row): one element each, so the repetition shows.
+  - Keep the connectors and arrows that form the composition; give connectors "from" and "to" when they join two elements.
+  - Keep the insight device (the big number, highlighted bar, callout or contrast the slide is built around) and mark
+    it emphasis "hero" or "strong".
+  - Containers group content: band (full-width strip), panel (large background area), card (a box holding content).
+    List containers before the elements inside them.
+  - Charts: bar_chart, line_chart, pie_chart, or chart for any other kind; table for a grid of cells.
+  - shape is the outline you see: none for unframed text, rect, round_rect, ellipse, chevron, arrow_*, triangle,
+    diamond, line, or polygon (with points).
+
+Hard rules:
+  - No words from the slide and no fields other than the ones above: the wireframe's labels come only from "kind".
+  - Write only the JSON file, nothing else.
