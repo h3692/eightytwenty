@@ -109,7 +109,7 @@ describe("search", () => {
 		expect(out.library_version).toBe(manifest.library_version);
 		expect(out.results.length).toBe(3);
 		expect(ai.calls[0]).toEqual({ model: "@cf/baai/bge-m3", input: { text: ["market share"] } });
-		expect(Object.keys(out.results[0]).sort()).toEqual(["id", "score", "slide_type", "why_it_works"]);
+		expect(Object.keys(out.results[0]).sort()).toEqual(["id", "purpose", "score", "slide_type", "why_it_works"]);
 	});
 
 	it("rejects bad input", async () => {

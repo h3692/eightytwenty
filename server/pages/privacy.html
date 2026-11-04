@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy: eightytwenty</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<style>
+:root { color-scheme: light dark; --ink: #1f2a37; --muted: #5b6573; --line: #d9d4ca; --bg: #fbfaf7; }
+@media (prefers-color-scheme: dark) { :root { --ink: #ece8e1; --muted: #a9a39a; --line: #3a3833; --bg: #191816; } }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 44rem; margin: 0 auto; padding: 3rem 1.25rem 4rem; }
+h1 { font-size: 1.6rem; line-height: 1.2; margin: 0 0 1rem; }
+h2 { font-size: 1.15rem; margin: 2rem 0 .5rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+p, li { max-width: 65ch; }
+a { color: inherit; text-underline-offset: .2em; }
+code { font: .9em/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+footer { margin-top: 3rem; color: var(--muted); font-size: .9rem; }
+</style>
+</head>
+<body>
+<main>
+<h1>Privacy</h1>
+<p>eightytwenty is a read-only connector with no accounts. This page says what it receives and what it keeps.</p>
+
+<h2>What a request sends</h2>
+<p>The tool arguments your assistant passes: the search text and filters for <code>find_references</code>, a stage name for <code>get_playbook</code>, or an id for <code>get_reference</code>. Nothing else from your chat or your files is sent.</p>
+
+<h2>What is kept</h2>
+<ul>
+<li><strong>Your IP address</strong> is used only for rate limits. It sits in a request counter that is deleted 24 hours after your last request. Requests that come from claude.ai arrive from Anthropic's servers and share one counter, so your own address is not seen.</li>
+<li><strong>Search text is not logged.</strong> To return identical results for identical searches, results are cached under a one-way hash of the normalised search text and filters, never the text itself. Cached results are dropped when the library is rebuilt.</li>
+<li><strong>No request logs.</strong> The server's request logging is switched off.</li>
+</ul>
+
+<h2>What is not used</h2>
+<p>No accounts, no cookies, no analytics or tracking, and no third-party scripts, fonts or images on these pages.</p>
+
+<h2>Infrastructure</h2>
+<p>The connector runs on Cloudflare Workers. Cloudflare processes each request to deliver it and may keep its own operational data under its privacy policy.</p>
+
+<footer><a href="/docs">Docs</a></footer>
+</main>
+</body>
+</html>

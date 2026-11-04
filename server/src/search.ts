@@ -11,8 +11,8 @@ export type Library = { manifest: Manifest; vecs: Int8Array; norms: Float32Array
 export type Query = { purpose: string; slide_type?: string; industry?: string; data_type?: string; k?: number };
 // Stage switches for the S6 ablation: dense only -> +fts (RRF) -> +rerank -> +mmr.
 export type Flags = { fts: boolean; rerank: boolean; mmr: boolean; cache: boolean; lambda: number };
-export type Result = { id: string; slide_type: string; why_it_works: string; score: number };
-type Row = { n: number; id: string; deck_id: string; archetype: string; why_it_works: string; description: string };
+export type Result = { id: string; slide_type: string; purpose: string; why_it_works: string; score: number };
+type Row = { n: number; id: string; deck_id: string; archetype: string; purpose: string; why_it_works: string; description: string };
 
 export const DEFAULT_FLAGS: Flags = { fts: true, rerank: true, mmr: true, cache: true, lambda: 0.7 };
 
@@ -82,7 +82,7 @@ export function mmr<C extends { n: number; id: string; deck_id: string; score: n
 	return picked;
 }
 
-export async function search(env: Env, lib: Library, query: Query, flags: Flags = DEFAULT_FLAGS): Promise<{ results: Result[]; library_version: string }> {
+export async function search(env: Pick<Env, "DB" | "AI">, lib: Library, query: Query, flags: Flags = DEFAULT_FLAGS): Promise<{ results: Result[]; library_version: string }> {
 	const { library_version, ids } = lib.manifest;
 	const purpose = (query.purpose ?? "").normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
 	const k = query.k ?? MAX_K;
@@ -124,7 +124,7 @@ export async function search(env: Env, lib: Library, query: Query, flags: Flags 
 
 	let results: Result[] = [];
 	if (pool.length) {
-		const { results: found } = await env.DB.prepare(`SELECT n, id, deck_id, archetype, why_it_works, description FROM slides WHERE n IN (${pool.map(() => "?").join(", ")})`)
+		const { results: found } = await env.DB.prepare(`SELECT n, id, deck_id, archetype, purpose, why_it_works, description FROM slides WHERE n IN (${pool.map(() => "?").join(", ")})`)
 			.bind(...pool.map(([n]) => n)).all<Row>();
 		const byN = new Map(found.map((r) => [r.n, r]));
 		const cands = pool.map(([n, score]) => ({ ...byN.get(n)!, score }));
@@ -135,11 +135,11 @@ export async function search(env: Env, lib: Library, query: Query, flags: Flags 
 			cands.sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 		}
 		const picked = flags.mmr ? mmr(cands, lib, k, flags.lambda) : cands.slice(0, k);
-		results = picked.map((c) => ({ id: c.id, slide_type: c.archetype, why_it_works: c.why_it_works, score: c.score }));
+		results = picked.map((c) => ({ id: c.id, slide_type: c.archetype, purpose: c.purpose, why_it_works: c.why_it_works, score: c.score }));
 	}
 
 	if (key) {
-		const { meta } = await env.DB.prepare("INSERT OR IGNORE INTO search_cache (key, results) VALUES (?, ?)").bind(key, JSON.stringify(results)).run();
+		const { meta } = await env.DB.prepare("INSERT OR IGNORE INTO search_cache (key, results, library_version) VALUES (?, ?, ?)").bind(key, JSON.stringify(results), library_version).run();
 		if (!meta.changes) {
 			// an identical query stored its result first: serve that one, so both callers see the same output
 			const stored = await env.DB.prepare("SELECT results FROM search_cache WHERE key = ?").bind(key).first<string>("results");

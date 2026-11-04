@@ -2,8 +2,25 @@
   "name": "eightytwenty",
   "main": "src/index.ts",
   "compatibility_date": "2026-11-01",
-  "workers_dev": false,
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
   "observability": { "enabled": false },
-  "d1_databases": [{ "binding": "DB", "database_name": "eightytwenty", "migrations_dir": "migrations" }],
-  "ai": { "binding": "AI", "remote": true }
+  "rules": [{ "type": "Text", "globs": ["**/*.md", "**/*.svg"], "fallthrough": true }],
+  // Wireframes are read only through the ASSETS binding: run_worker_first sends every request to the Worker,
+  // which never forwards to ASSETS, so no public URL serves them.
+  "assets": { "directory": "../library/assets", "binding": "ASSETS", "run_worker_first": true },
+  "d1_databases": [{ "binding": "DB", "database_name": "eightytwenty-db", "database_id": "0dfdc973-0aec-43de-b125-aa2501aa86e9", "migrations_dir": "migrations" }],
+  "ai": { "binding": "AI", "remote": true },
+  "durable_objects": { "bindings": [{ "name": "LIMITER", "class_name": "Limiter" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Limiter"] }],
+  // Daily: drop cached search results of older library builds.
+  "triggers": { "crons": ["17 3 * * *"] },
+  "vars": {
+    // Tool calls per minute per client IP (IPv6: per /64). Over it: 429 and a cooldown of 1, 2, 4 ... 60 minutes.
+    "LIMIT_PER_MINUTE": 20,
+    // Tool calls per minute for the bucket all of Anthropic's egress IPs share (claude.ai users).
+    "LIMIT_PER_MINUTE_SHARED": 300,
+    // find_references calls per UTC day across all clients (protects the Workers AI and D1 free quotas).
+    "DAILY_SEARCH_BUDGET": 5000
+  }
 }
