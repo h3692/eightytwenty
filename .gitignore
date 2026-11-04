@@ -14,5 +14,6 @@ eval/golden/
 .wrangler/
 node_modules/
 __pycache__/
+*.egg-info/
 .venv/
 .DS_Store

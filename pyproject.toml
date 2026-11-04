@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eightytwenty-pipeline"
+version = "0.1.0"
+description = "Local ingestion pipeline: slide decks to design-DNA records, wireframes and embeddings."
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = [
+    "python-pptx==1.0.2",
+    "Pillow==13.0.0",
+    "jsonschema==4.26.0",
+    "spacy==3.8.18",
+    "en_core_web_sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==9.2.0"]
+
+[tool.setuptools]
+packages = ["pipeline"]
+
+[tool.setuptools.package-data]
+pipeline = ["schema/*.json", "templates/*.txt", "embed_worker/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["pipeline/tests"]

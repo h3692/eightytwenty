@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "design-dna.v1.json",
+  "title": "Design-DNA record v1: abstract layout of one slide. Holds no words, values, names or source details.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "deck_id", "slide", "archetype", "purpose", "argument_shape", "insight_device", "data_type", "industry", "why_it_works", "description", "background", "regions"],
+  "properties": {
+    "schema_version": {"const": "design-dna/v1"},
+    "id": {"type": "string", "pattern": "^[0-9a-f]{16}-[0-9]{2}$"},
+    "deck_id": {"type": "string", "pattern": "^[0-9a-f]{16}$"},
+    "slide": {"type": "integer", "minimum": 1},
+    "archetype": {"$ref": "labels.v1.json#/properties/archetype"},
+    "purpose": {"$ref": "labels.v1.json#/properties/purpose"},
+    "argument_shape": {"$ref": "labels.v1.json#/properties/argument_shape"},
+    "insight_device": {"$ref": "labels.v1.json#/properties/insight_device"},
+    "data_type": {"$ref": "labels.v1.json#/properties/data_type"},
+    "industry": {"$ref": "labels.v1.json#/properties/industry"},
+    "why_it_works": {"$ref": "labels.v1.json#/properties/why_it_works"},
+    "description": {"type": "string", "maxLength": 2000},
+    "background": {"$ref": "#/$defs/colour"},
+    "regions": {"type": "array", "items": {"$ref": "#/$defs/region"}}
+  },
+  "$defs": {
+    "colour": {"enum": ["primary", "accent", "neutral-dark", "neutral-light", "white", null]},
+    "count": {"type": "integer", "minimum": 0},
+    "unit": {"type": "number", "minimum": -1, "maximum": 2},
+    "region": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["i", "parent", "type", "role", "box", "fill", "line", "dashed", "text", "chart", "table"],
+      "properties": {
+        "i": {"$ref": "#/$defs/count"},
+        "parent": {"oneOf": [{"$ref": "#/$defs/count"}, {"type": "null"}]},
+        "type": {"enum": ["text", "picture", "chart", "table", "group", "line", "shape"]},
+        "role": {"$ref": "labels.v1.json#/$defs/role"},
+        "box": {
+          "type": "object", "additionalProperties": false, "required": ["x", "y", "w", "h"],
+          "properties": {"x": {"$ref": "#/$defs/unit"}, "y": {"$ref": "#/$defs/unit"}, "w": {"$ref": "#/$defs/unit"}, "h": {"$ref": "#/$defs/unit"}}
+        },
+        "fill": {"$ref": "#/$defs/colour"},
+        "line": {"$ref": "#/$defs/colour"},
+        "dashed": {"type": "boolean"},
+        "text": {
+          "oneOf": [{"type": "null"}, {
+            "type": "object", "additionalProperties": false,
+            "required": ["words", "paragraphs", "lines", "bullets", "align", "size", "weight", "color", "number", "pattern", "pattern_words"],
+            "properties": {
+              "words": {"$ref": "#/$defs/count"},
+              "paragraphs": {"$ref": "#/$defs/count"},
+              "lines": {"$ref": "#/$defs/count"},
+              "bullets": {"$ref": "#/$defs/count"},
+              "align": {"enum": ["left", "center", "right", "justify"]},
+              "size": {"enum": ["display", "heading", "body", "caption"]},
+              "weight": {"enum": ["bold", "regular"]},
+              "color": {"$ref": "#/$defs/colour"},
+              "number": {"enum": ["percent", "currency", "multiple", "plain", null]},
+              "pattern": {"oneOf": [{"type": "null"}, {"$ref": "labels.v1.json#/properties/text_patterns/items/properties/pattern"}]},
+              "pattern_words": {"oneOf": [{"type": "null"}, {"$ref": "#/$defs/count"}]}
+            }
+          }]
+        },
+        "chart": {
+          "oneOf": [{"type": "null"}, {
+            "type": "object", "additionalProperties": false, "required": ["kind", "series", "categories"],
+            "properties": {"kind": {"type": "string", "pattern": "^[A-Z0-9_]+$"}, "series": {"$ref": "#/$defs/count"}, "categories": {"$ref": "#/$defs/count"}}
+          }]
+        },
+        "table": {
+          "oneOf": [{"type": "null"}, {
+            "type": "object", "additionalProperties": false, "required": ["rows", "cols"],
+            "properties": {"rows": {"$ref": "#/$defs/count"}, "cols": {"$ref": "#/$defs/count"}}
+          }]
+        }
+      }
+    }
+  }
+}

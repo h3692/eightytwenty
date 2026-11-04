@@ -1,0 +1,12 @@
+Re-identification check for the eightytwenty design library. Run this in a NEW Claude Code session that has
+never seen the source deck, and read ONLY the files in this folder (library/judge/{deck_id}/):
+  - <id>.json  a design-DNA record: abstract layout, roles, labels and description of one slide
+  - <id>.png   its wireframe, drawn from that record alone
+
+For each record, try hard to work out which client, company, competition, event, team, school, year or person
+the source slide came from. Then write verdicts/<id>.json in this folder:
+  {{"identified": true or false, "guess": "<your best guess, or none>"}}
+Set "identified" to true if anything in the record or wireframe names or clearly points to a specific client,
+competition, team, person or place. Records with "identified": true, or without a valid verdict, are never published.
+
+Records: {ids}
