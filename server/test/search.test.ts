@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
-import { DEFAULT_FLAGS, dense, mmr, round, rrf, search } from "../src/search";
+import dot from "../src/dot.wasm";
+import { DEFAULT_FLAGS, dense, loadLibrary, mmr, round, rrf, search } from "../src/search";
 import { buffers, fakeAI, floats, library, manifest, near, quantise, rows, seed } from "./fixture";
 
 const lib = library();
@@ -58,6 +59,27 @@ describe("mmr", () => {
 		expect(mmr(cands, twin, 2, 1).map((c) => c.n)).toEqual([0, 2]);
 		expect(mmr(cands, twin, 2, 0.5).map((c) => c.n)).toEqual([0, 4]);
 	});
+
+	it("picks exactly what the MMR definition picks over a larger pool", () => {
+		// the definition: each round, the best lambda * rel - (1 - lambda) * (max cosine to any picked slide), ties by id
+		const sim = (a: number, b: number) => {
+			let dot = 0;
+			for (let d = 0; d < 1024; d++) dot += lib.vecs[a * 1024 + d] * lib.vecs[b * 1024 + d];
+			return dot / (lib.norms[a] * lib.norms[b]);
+		};
+		const cands = rows.map((r) => ({ n: r.n, id: r.id, deck_id: `deck${r.n % 7}`, score: round(((r.n * 37) % 11) / 10) }));
+		for (const [k, lambda] of [[5, 0.7], [7, 0.5], [3, 0.2]]) {
+			const lo = Math.min(...cands.map((c) => c.score)), hi = Math.max(...cands.map((c) => c.score));
+			const picked: typeof cands = [];
+			while (picked.length < k) {
+				const left = cands.filter((c) => !picked.some((p) => p.deck_id === c.deck_id));
+				if (!left.length) break;
+				const value = (c: (typeof cands)[0]) => round(lambda * ((c.score - lo) / (hi - lo)) - (1 - lambda) * (picked.length ? Math.max(...picked.map((p) => sim(c.n, p.n))) : 0));
+				picked.push(left.reduce((best, c) => (value(c) > value(best) || (value(c) === value(best) && c.id < best.id) ? c : best)));
+			}
+			expect(mmr(cands, lib, k, lambda).map((c) => c.id)).toEqual(picked.map((c) => c.id));
+		}
+	});
 });
 
 describe("dense", () => {
@@ -75,6 +97,34 @@ describe("dense", () => {
 			.sort((a, b) => b[1] - a[1] || (ids[a[0]] < ids[b[0]] ? -1 : 1));
 		expect(dense(lib, q, null)).toEqual(expected);
 		expect(expected[0][0]).toBe(3);
+	});
+
+	it("returns exactly the top 50 of a larger library, ties at the cut broken by id", () => {
+		// 130 rows cycling the 12 fixture vectors, so many rows tie exactly; ids are shuffled so the tie-break matters
+		const count = 130, src = buffers();
+		const vecs = new Int8Array(count * 1024), norms = new Float32Array(count);
+		for (let n = 0; n < count; n++) {
+			vecs.set(new Int8Array(src.vecs, (n % 12) * 1024, 1024), n * 1024);
+			norms[n] = new Float32Array(src.norms)[n % 12];
+		}
+		const big = loadLibrary(dot, vecs.buffer, norms.buffer, { ...manifest, count, ids: Array.from({ length: count }, (_, n) => `r${(n * 53) % count}`) });
+		const q = near(3);
+		const all = (allowed: Set<number> | null) => {
+			const q8 = quantise(q), qn = Math.hypot(...q8);
+			const out: [number, number][] = [];
+			for (let n = 0; n < count; n++) {
+				if (allowed && !allowed.has(n)) continue;
+				let dot = 0;
+				for (let d = 0; d < 1024; d++) dot += vecs[n * 1024 + d] * q8[d];
+				out.push([n, round(dot / (norms[n] * qn))]);
+			}
+			const ids = big.manifest.ids;
+			return out.sort((a, b) => b[1] - a[1] || (ids[a[0]] < ids[b[0]] ? -1 : 1)).slice(0, 50);
+		};
+		expect(dense(big, q, null)).toEqual(all(null));
+		const allowed = new Set(Array.from({ length: 90 }, (_, i) => (i * 7) % count));
+		expect(dense(big, q, allowed)).toEqual(all(allowed));
+		expect(dense(big, q, new Set([5, 17]))).toEqual(all(new Set([5, 17])));
 	});
 
 	it("only scores allowed rows", () => {

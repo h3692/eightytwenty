@@ -48,8 +48,12 @@ export function dense(lib: Library, embedding: number[], allowed: Set<number> | 
 	const q8 = Int8Array.from(embedding, (x) => Math.round((x * 127) / m));
 	const qn = Math.hypot(...q8) || 1;
 	const dots = lib.scan(q8);
+	const score = new Float64Array(dots.length).fill(-Infinity);
+	for (let n = 0; n < dots.length; n++) if (!allowed || allowed.has(n)) score[n] = round(dots[n] / ((lib.norms[n] || 1) * qn));
+	// Sort only the rows scoring at least the POOL-th best (ties included): same top POOL as a full sort, far less work.
+	const cut = Math.max(score.slice().sort()[dots.length - POOL] ?? -Infinity, -Number.MAX_VALUE);
 	const hits: [number, number][] = [];
-	for (let n = 0; n < dots.length; n++) if (!allowed || allowed.has(n)) hits.push([n, round(dots[n] / ((lib.norms[n] || 1) * qn))]);
+	for (let n = 0; n < dots.length; n++) if (score[n] >= cut) hits.push([n, score[n]]);
 	return hits.sort(byScore(lib.manifest.ids)).slice(0, POOL);
 }
 
@@ -70,14 +74,16 @@ export function mmr<C extends { n: number; id: string; deck_id: string; score: n
 		return dot / ((lib.norms[a] || 1) * (lib.norms[b] || 1));
 	};
 	const picked: C[] = [];
+	const maxSim = new Map<C, number>(); // max cosine to the picked slides, updated once per pick instead of recomputed
 	let left = cands;
 	while (picked.length < k && (left = left.filter((c) => !picked.some((p) => p.deck_id === c.deck_id))).length) {
 		let best = left[0], bestScore = -Infinity;
 		for (const c of left) {
-			const v = round(lambda * rel(c) - (1 - lambda) * (picked.length ? Math.max(...picked.map((p) => sim(c.n, p.n))) : 0));
+			const v = round(lambda * rel(c) - (1 - lambda) * (maxSim.get(c) ?? 0));
 			if (v > bestScore || (v === bestScore && c.id < best.id)) [best, bestScore] = [c, v];
 		}
 		picked.push(best);
+		for (const c of left) if (c.deck_id !== best.deck_id) maxSim.set(c, Math.max(maxSim.get(c) ?? -Infinity, sim(c.n, best.n)));
 	}
 	return picked;
 }

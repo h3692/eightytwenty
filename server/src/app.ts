@@ -31,9 +31,23 @@ const PLAYBOOK: Record<string, string> = {
 };
 export const STAGES = Object.keys(PLAYBOOK);
 const MAX_IMAGE = 30 * 1024;
+const MAX_BODY = 4 * 1024 * 1024; // the MCP SDK's default maxRequestBodySize
 const enumOf = (values: string[]) => z.enum(values as [string, ...string[]]);
 const readOnly = { readOnlyHint: true, destructiveHint: false };
 const text = (t: string) => ({ type: "text" as const, text: t });
+
+// Built once per isolate rather than per request (zod schemas are immutable). The McpServer stays per request: the SDK
+// refuses to reuse an instance that is serving another request.
+const PLAYBOOK_INPUT = z.object({ stage: enumOf(STAGES).optional().describe("Chapter to return; omit for the index and the workflow.") });
+const FIND_INPUT = z.object({
+	purpose: z.string().min(1).max(1000).describe("What the slide must achieve, in plain words."),
+	slide_type: enumOf(labels.properties.archetype.enum).optional().describe("Archetype id (see the archetypes stage of get_playbook)."),
+	industry: enumOf(labels.properties.industry.enum).optional(),
+	data_type: enumOf(labels.properties.data_type.enum).optional(),
+	k: z.number().int().min(1).max(5).optional().describe("How many results, 1 to 5 (default 5)."),
+});
+const REFERENCE_INPUT = z.object({ id: z.string().regex(/^[A-Za-z0-9-]{1,64}$/, "Use an id exactly as find_references returned it.") });
+const PLAYBOOK_INDEX = `Playbook stages (call get_playbook with one of these as \`stage\`):\n${STAGES.map((s) => `- \`${s}\`: ${PLAYBOOK[s].match(/^# (.+)$/m)?.[1] ?? s}`).join("\n")}\n\n${workflow}`;
 
 function createServer(env: Env, lib: Library) {
 	const server = new McpServer({ name: "eightytwenty", version: "1.0.0" });
@@ -44,13 +58,11 @@ function createServer(env: Env, lib: Library) {
 			title: "Get the slide-design playbook",
 			description: "The 80-20 slide-design methodology for case competition decks. Call it before planning a deck. " +
 				"With no stage it returns the index of stages and the workflow; pass a stage for one chapter.",
-			inputSchema: z.object({ stage: enumOf(STAGES).optional().describe("Chapter to return; omit for the index and the workflow.") }),
+			inputSchema: PLAYBOOK_INPUT,
 			annotations: readOnly,
 		},
 		async ({ stage }) => {
-			if (stage) return { content: [text(PLAYBOOK[stage])] };
-			const index = STAGES.map((s) => `- \`${s}\`: ${PLAYBOOK[s].match(/^# (.+)$/m)?.[1] ?? s}`).join("\n");
-			return { content: [text(`Playbook stages (call get_playbook with one of these as \`stage\`):\n${index}\n\n${workflow}`)] };
+			return { content: [text(stage ? PLAYBOOK[stage] : PLAYBOOK_INDEX)] };
 		},
 	);
 
@@ -60,13 +72,7 @@ function createServer(env: Env, lib: Library) {
 			title: "Find reference slides",
 			description: "Search the curated library of slide design DNA by what a slide must do. Returns up to k short summaries " +
 				"(id, slide type, purpose, why it works, score). Call get_reference with an id for the full layout. Reference, never copy.",
-			inputSchema: z.object({
-				purpose: z.string().min(1).max(1000).describe("What the slide must achieve, in plain words."),
-				slide_type: enumOf(labels.properties.archetype.enum).optional().describe("Archetype id (see the archetypes stage of get_playbook)."),
-				industry: enumOf(labels.properties.industry.enum).optional(),
-				data_type: enumOf(labels.properties.data_type.enum).optional(),
-				k: z.number().int().min(1).max(5).optional().describe("How many results, 1 to 5 (default 5)."),
-			}),
+			inputSchema: FIND_INPUT,
 			annotations: readOnly,
 		},
 		async (args) => {
@@ -84,7 +90,7 @@ function createServer(env: Env, lib: Library) {
 			title: "Get a reference slide",
 			description: "The full design-DNA record of one library slide (every region box, colour and type role, text structure) " +
 				"plus its wireframe image. Use an id from find_references. Build your own slide from it; never copy it.",
-			inputSchema: z.object({ id: z.string().regex(/^[A-Za-z0-9-]{1,64}$/, "Use an id exactly as find_references returned it.") }),
+			inputSchema: REFERENCE_INPUT,
 			annotations: readOnly,
 		},
 		async ({ id }) => {
@@ -120,8 +126,7 @@ const rpcError = (status: number, id: unknown, message: string, headers: Record<
 	Response.json({ jsonrpc: "2.0", id: id ?? null, error: { code: -32000, message } }, { status, headers: { "access-control-allow-origin": "*", ...headers } });
 
 // Every tools/call counts toward the caller's per-minute limit; find_references also spends the daily budget.
-async function limit(request: Request, env: Env): Promise<Response | null> {
-	const body: any = await request.clone().json().catch(() => null);
+async function limit(request: Request, env: Env, body: any): Promise<Response | null> {
 	const calls = [body].flat().filter((m) => m?.method === "tools/call");
 	if (!calls.length) return null;
 	if (Array.isArray(body)) return rpcError(400, null, "Send one tools/call per request (JSON-RPC batches are not supported).");
@@ -148,11 +153,16 @@ const PAGES: Record<string, [string, string]> = {
 };
 
 export const app = (lib: Library): ExportedHandler<Env> => ({
-	async fetch(request, env, ctx) {
+	async fetch(request, env) {
 		const { pathname } = new URL(request.url);
 		if (pathname === "/mcp") {
-			const denied = request.method === "POST" ? await limit(request, env) : null;
-			return denied ?? createMcpHandler(() => createServer(env, lib))(request, env, ctx);
+			const body: any = request.method === "POST" ? await request.clone().json().catch(() => null) : null;
+			const denied = body ? await limit(request, env, body) : null;
+			if (denied) return denied;
+			// Hand the parsed body to the SDK (its parsedBody option); otherwise it clones and parses the body twice more.
+			// Bodies without a size or over the SDK's 4 MiB cap are left to the SDK, so it still answers 413.
+			const parsed = body && Number(request.headers.get("content-length") ?? Infinity) <= MAX_BODY;
+			return createMcpHandler(() => createServer(env, lib)).fetch(request, parsed ? { parsedBody: body } : undefined);
 		}
 		const page = PAGES[pathname];
 		if (page && request.method === "GET") return new Response(page[0], { headers: { "content-type": page[1], ...PAGE_HEADERS } });

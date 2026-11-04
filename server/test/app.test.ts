@@ -78,6 +78,25 @@ describe("MCP endpoint", () => {
 		}
 	});
 
+	it("answers concurrent tool calls independently (schemas are shared per isolate, servers are not)", async () => {
+		const one = async (stage: string) => (await tool("get_playbook", { stage })).body.result;
+		const expected = [];
+		for (const stage of STAGES) expected.push(await one(stage));
+		const [bad, ...concurrent] = await Promise.all([one("nope"), ...STAGES.map(one)]);
+		expect(bad.isError).toBe(true);
+		expect(concurrent).toEqual(expected);
+		expect(new Set(concurrent.map((r) => r.content[0].text)).size).toBe(STAGES.length);
+	});
+
+	it("leaves malformed and oversized bodies to the SDK (parse error, 413)", async () => {
+		const headers = { "content-type": "application/json", accept: "application/json, text/event-stream", "mcp-protocol-version": "2025-06-18" };
+		const bad = await call("/mcp", { method: "POST", headers, body: "{not json" });
+		expect(bad.status).toBe(400);
+		expect((await bad.json<any>()).error.code).toBe(-32700);
+		const big = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "get_playbook", arguments: { pad: "x".repeat(4 * 1024 * 1024) } } });
+		expect((await call("/mcp", { method: "POST", headers: { ...headers, "cf-connecting-ip": nextIp() }, body: big })).status).toBe(413);
+	});
+
 	it("rejects a foreign browser Origin with 403 and accepts requests without an Origin", async () => {
 		expect((await rpc("tools/list", {}, { headers: { origin: "https://evil.example" } })).res.status).toBe(403);
 		expect((await rpc("tools/list")).res.status).toBe(200);
