@@ -9,7 +9,7 @@ export default defineConfig({
 		// wrangler imports these as Text modules (wrangler.jsonc rules); vite needs the same
 		{ name: "text-modules", enforce: "pre", transform: (code, id) => (/\.(md|html|svg)$/.test(id) ? `export default ${JSON.stringify(code)};` : undefined) },
 		cloudflareTest({
-			main: "./src/app.ts", // not src/index.ts: that bundles the gitignored library/ files
+			main: "./test/worker.ts", // not src/index.ts: that bundles the gitignored library/ files
 			remoteBindings: live,
 			wrangler: { configPath: "./wrangler.jsonc" },
 			miniflare: { bindings: { TEST_MIGRATIONS: await readD1Migrations("./migrations"), LIVE_AI: live ? "1" : "", PLAYBOOK_FILES: readdirSync("../playbook") } },

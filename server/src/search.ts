@@ -88,13 +88,16 @@ export function mmr<C extends { n: number; id: string; deck_id: string; score: n
 	return picked;
 }
 
-export async function search(env: Pick<Env, "DB" | "AI">, lib: Library, query: Query, flags: Flags = DEFAULT_FLAGS): Promise<{ results: Result[]; library_version: string }> {
-	const { library_version, ids } = lib.manifest;
+type Found = { results: Result[]; library_version: string };
+
+// `miss` runs everything after the cache read; the Worker hands it to the Searcher Durable Object (app.ts).
+export async function search(env: Pick<Env, "DB" | "AI">, lib: Library, query: Query, flags: Flags = DEFAULT_FLAGS,
+	miss = (q: Query, key: string) => uncached(env, lib, q, flags, key)): Promise<Found> {
+	const { library_version } = lib.manifest;
 	const purpose = (query.purpose ?? "").normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
 	const k = query.k ?? MAX_K;
 	if (!purpose || purpose.length > MAX_PURPOSE) throw new RangeError(`purpose must be 1 to ${MAX_PURPOSE} characters.`);
 	if (!Number.isInteger(k) || k < 1 || k > MAX_K) throw new RangeError(`k must be a whole number from 1 to ${MAX_K}.`);
-	const filters = ([["archetype", query.slide_type], ["industry", query.industry], ["data_type", query.data_type]] as const).filter(([, v]) => v != null);
 
 	let key = "";
 	if (flags.cache) {
@@ -105,6 +108,14 @@ export async function search(env: Pick<Env, "DB" | "AI">, lib: Library, query: Q
 		const hit = await env.DB.prepare("SELECT results FROM search_cache WHERE key = ?").bind(key).first<string>("results");
 		if (hit) return { results: JSON.parse(hit), library_version };
 	}
+	return miss({ ...query, purpose, k }, key);
+}
+
+// The uncached search for a validated query (purpose normalised, k set); writes the result under `key` unless it is "".
+export async function uncached(env: Pick<Env, "DB" | "AI">, lib: Library, query: Query, flags: Flags, key: string): Promise<Found> {
+	const { library_version, ids } = lib.manifest;
+	const { purpose, k = MAX_K } = query;
+	const filters = ([["archetype", query.slide_type], ["industry", query.industry], ["data_type", query.data_type]] as const).filter(([, v]) => v != null);
 
 	// One D1 round trip, in parallel with the embedding: build check, filter set for the vector branch, FTS branch.
 	const where = filters.map(([col]) => ` AND s.${col} = ?`).join(""), args = filters.map(([, v]) => v);

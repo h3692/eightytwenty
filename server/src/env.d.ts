@@ -9,6 +9,7 @@ interface Env {
 	AI: Ai;
 	ASSETS: Fetcher;
 	LIMITER: DurableObjectNamespace<import("./limiter").Limiter>;
+	SEARCHER: DurableObjectNamespace<import("./app").Searcher>;
 	LIMIT_PER_MINUTE: number;
 	LIMIT_PER_MINUTE_SHARED: number;
 	DAILY_SEARCH_BUDGET: number;
@@ -20,6 +21,7 @@ declare namespace Cloudflare {
 		AI: Ai;
 		ASSETS: Fetcher;
 		LIMITER: DurableObjectNamespace<import("./limiter").Limiter>;
+		SEARCHER: DurableObjectNamespace<import("./app").Searcher>;
 		LIMIT_PER_MINUTE: number;
 		LIMIT_PER_MINUTE_SHARED: number;
 		DAILY_SEARCH_BUDGET: number;

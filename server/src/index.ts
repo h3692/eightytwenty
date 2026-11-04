@@ -4,8 +4,10 @@ import dot from "./dot.wasm";
 import vecs from "../../library/vecs.bin";
 import norms from "../../library/norms.bin";
 import manifest from "../../library/manifest.json";
-import { app } from "./app";
+import { app, searcher } from "./app";
 import { loadLibrary } from "./search";
 
+const lib = loadLibrary(dot, vecs, norms, manifest);
 export { Limiter } from "./app";
-export default app(loadLibrary(dot, vecs, norms, manifest));
+export const Searcher = searcher(lib);
+export default app(lib);

@@ -5,6 +5,7 @@ import labels from "../../pipeline/schema/labels.v1.json";
 import archetypesMd from "../../playbook/archetypes.md";
 import { app, clientKey, prune, STAGES } from "../src/app";
 import type { Limiter } from "../src/limiter";
+import { DEFAULT_FLAGS, EMBED_MODEL, RERANK_MODEL, search } from "../src/search";
 import { fakeAI, floats, library, manifest, rows, seed } from "./fixture";
 
 const lib = library();
@@ -41,7 +42,14 @@ async function rpc(method: string, params: unknown = {}, { headers = {}, e = tes
 }
 const tool = (name: string, args: Record<string, unknown> = {}, opts?: Parameters<typeof rpc>[2]) => rpc("tools/call", { name, arguments: args }, opts);
 
-beforeEach(() => seed(env.DB));
+// The Searcher Durable Object runs uncached searches with its own env: give it the same stand-in AI as testEnv().
+const searcher = () => env.SEARCHER.get(env.SEARCHER.idFromName("global"));
+const searcherAI = (ai: ReturnType<typeof fakeAI>) => runInDurableObject<Rpc.DurableObjectBranded, void>(searcher(), (s: any) => { s.env = { ...s.env, AI: ai }; });
+
+beforeEach(async () => {
+	await seed(env.DB);
+	await searcherAI(fakeAI(() => floats[0]));
+});
 
 describe("MCP endpoint", () => {
 	it("initializes statelessly", async () => {
@@ -156,6 +164,46 @@ describe("find_references", () => {
 	it("says what to change when nothing matches", async () => {
 		const { body } = await tool("find_references", { purpose: "anything", slide_type: "hook" });
 		expect(body.result.content[0].text).toMatch(/No references match/);
+	});
+});
+
+describe("Searcher Durable Object", () => {
+	const q = { purpose: "Market share of competitors  over time", k: 3 };
+
+	it("returns exactly what the in-Worker search returns", async () => {
+		const direct = await search(testEnv(), lib, q, { ...DEFAULT_FLAGS, cache: false });
+		expect(direct.results).toHaveLength(3);
+		expect(await searcher().search({ ...q, purpose: "market share of competitors over time" }, "")).toEqual(direct);
+	});
+
+	it("runs the uncached search for find_references, so the Worker never calls Workers AI, and caches it", async () => {
+		const ai = fakeAI(() => floats[0]);
+		await searcherAI(ai);
+		const noAI = { run: () => { throw new Error("the Worker must not call Workers AI"); } };
+		const { body } = await tool("find_references", q, { e: testEnv({ AI: noAI }) });
+		expect(body.result.isError).toBeFalsy();
+		expect(ai.calls.map((c) => c.model)).toEqual([EMBED_MODEL, RERANK_MODEL]);
+		const { results } = await search(testEnv(), lib, q, { ...DEFAULT_FLAGS, cache: false });
+		const lines = results.map((r, i) => `${i + 1}. ${r.id} | ${r.slide_type} | score ${r.score}`);
+		expect(body.result.content[0].text.split("\n").filter((l: string) => /^\d\. /.test(l))).toEqual(lines);
+		const cached = await env.DB.prepare("SELECT results, library_version FROM search_cache").all<{ results: string; library_version: string }>();
+		expect(cached.results.map((r) => [JSON.parse(r.results), r.library_version])).toEqual([[results, manifest.library_version]]);
+	});
+
+	it("is not called on a cache hit: the Worker serves it from D1", async () => {
+		const first = await tool("find_references", q);
+		const noDO = { idFromName: () => { throw new Error("Searcher called on a cache hit"); } };
+		const again = await tool("find_references", q, { e: testEnv({ SEARCHER: noDO }) });
+		expect(again.body.result).toEqual(first.body.result);
+	});
+
+	it("returns its errors as the same tool error as the in-Worker search", async () => {
+		await seed(env.DB, "bge-m3/desc-v1/other");
+		const expected = await search(testEnv(), lib, q).then(() => "no error", (e: Error) => e.message);
+		expect(expected).toMatch(/D1 holds library_version bge-m3\/desc-v1\/other/);
+		const { body } = await tool("find_references", q);
+		expect(body.result.isError).toBe(true);
+		expect(body.result.content).toEqual([{ type: "text", text: expected }]);
 	});
 });
 

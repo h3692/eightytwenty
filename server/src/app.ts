@@ -1,5 +1,6 @@
 // The public connector: three read-only MCP tools at /mcp (stateless Streamable HTTP, default Origin check), the
 // Limiter in front of every tool call, and the /docs + /privacy pages. index.ts binds it to the bundled library.
+import { DurableObject } from "cloudflare:workers";
 import { McpServer } from "@modelcontextprotocol/server";
 import { createMcpHandler } from "agents/mcp/server";
 import { z } from "zod";
@@ -15,7 +16,7 @@ import writing from "../../playbook/writing.md";
 import docs from "../pages/index.html";
 import privacy from "../pages/privacy.html";
 import icon from "../pages/icon.svg";
-import { search, type Library } from "./search";
+import { DEFAULT_FLAGS, search, uncached, type Library, type Query } from "./search";
 
 export { Limiter } from "./limiter";
 
@@ -76,7 +77,8 @@ function createServer(env: Env, lib: Library) {
 			annotations: readOnly,
 		},
 		async (args) => {
-			const { results, library_version } = await search(env, lib, args);
+			const { results, library_version } = await search(env, lib, args, DEFAULT_FLAGS,
+				(q, key) => env.SEARCHER.get(env.SEARCHER.idFromName("global")).search(q, key));
 			if (!results.length)
 				return { content: [text(`No references match these filters. Try fewer filters or a broader purpose. (library_version ${library_version})`)] };
 			const lines = results.map((r, i) => `${i + 1}. ${r.id} | ${r.slide_type} | score ${r.score}\n   Purpose: ${r.purpose}\n   Why it works: ${r.why_it_works}`);
@@ -135,6 +137,15 @@ async function limit(request: Request, env: Env, body: any): Promise<Response | 
 	const v = await env.LIMITER.get(env.LIMITER.idFromName("global")).check(key, body.params?.name === "find_references", limits);
 	return v.ok ? null : rpcError(429, body.id, v.message, { "retry-after": String(v.retryAfter) });
 }
+
+// Uncached searches (embedding, vector scan, FTS, rerank, MMR, cache write) run here: a Durable Object's CPU time is its
+// own, so the Worker stays inside the Free plan's 10 ms per request. The entry exports it bound to the same library.
+export const searcher = (lib: Library) => class Searcher extends DurableObject<Env> {
+	search(query: Query, key: string) {
+		return uncached(this.env, lib, query, DEFAULT_FLAGS, key);
+	}
+};
+export type Searcher = InstanceType<ReturnType<typeof searcher>>;
 
 // Drop cached search results from other library builds (they can never be served again).
 export const prune = (env: Env, lib: Library) =>

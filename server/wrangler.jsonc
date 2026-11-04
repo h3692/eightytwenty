@@ -11,8 +11,9 @@
   "assets": { "directory": "../library/assets", "binding": "ASSETS", "run_worker_first": true },
   "d1_databases": [{ "binding": "DB", "database_name": "eightytwenty-db", "database_id": "0dfdc973-0aec-43de-b125-aa2501aa86e9", "migrations_dir": "migrations" }],
   "ai": { "binding": "AI", "remote": true },
-  "durable_objects": { "bindings": [{ "name": "LIMITER", "class_name": "Limiter" }] },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Limiter"] }],
+  // Searcher runs uncached searches: a Durable Object's CPU time is not counted against the Worker's.
+  "durable_objects": { "bindings": [{ "name": "LIMITER", "class_name": "Limiter" }, { "name": "SEARCHER", "class_name": "Searcher" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Limiter"] }, { "tag": "v2", "new_sqlite_classes": ["Searcher"] }],
   // Daily: drop cached search results of older library builds.
   "triggers": { "crons": ["17 3 * * *"] },
   "vars": {
