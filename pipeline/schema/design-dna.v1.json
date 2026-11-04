@@ -41,6 +41,7 @@
         "fill": {"$ref": "#/$defs/colour"},
         "line": {"$ref": "#/$defs/colour"},
         "dashed": {"type": "boolean"},
+        "geom": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^[a-zA-Z0-9]{1,40}$"}]},
         "text": {
           "oneOf": [{"type": "null"}, {
             "type": "object", "additionalProperties": false,

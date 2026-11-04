@@ -146,3 +146,18 @@ def test_dash_presets_python_pptx_cannot_map_still_extract_as_dashed(tmp_path, l
     deck_id = extract.run(path, lib, render=False)
     regions = json.loads((lib / "work" / deck_id / "slide-01.json").read_text())["regions"]
     assert [r["dashed"] for r in regions] == [True, True, False]
+
+
+def test_preset_geometry_is_extracted_from_a_closed_vocabulary(tmp_path, lib):
+    from pptx import Presentation
+    from pptx.enum.shapes import MSO_SHAPE
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    for shape in (MSO_SHAPE.OVAL, MSO_SHAPE.ROUNDED_RECTANGLE, MSO_SHAPE.RECTANGLE, MSO_SHAPE.RECTANGLE):
+        slide.shapes.add_shape(shape, 0, 0, 100, 100)
+    slide.shapes[-1]._element.xpath("./p:spPr/a:prstGeom")[0].set("prst", "Zorblax")  # not an OOXML preset
+    path = tmp_path / "geom.pptx"
+    prs.save(path)
+    deck_id = extract.run(path, lib, render=False)
+    regions = json.loads((lib / "work" / deck_id / "slide-01.json").read_text())["regions"]
+    assert [r["geom"] for r in regions] == ["ellipse", "roundRect", "rect", None]

@@ -1,9 +1,7 @@
 """Stage 3: merge geometry + labels into design-DNA records, draw each wireframe from the record alone, write descriptions."""
-import hashlib
 import io
+import itertools
 import json
-import math
-import random
 from pathlib import Path
 
 import jsonschema
@@ -17,8 +15,20 @@ SCHEMA = json.loads((HERE / "schema" / "design-dna.v1.json").read_text())
 _REGISTRY = Registry().with_resources([(s["$id"], Resource.from_contents(s)) for s in (SCHEMA, label_prep.SCHEMA)])
 DESCRIPTION_VERSION = "desc-v1"
 MAX_WIREFRAME = 30 * 1024
-TOKENS = {"percent": "##%", "currency": "$##M", "multiple": "##x", "plain": "##"}
-GREY = {"primary": 85, "accent": 130, "neutral-dark": 70, "neutral-light": 222, "white": 250}
+LABELS = {"title": "title", "tagline": "subtitle", "subtitle": "subtitle", "section-label": "label", "body": "text",
+          "bullet-list": "bullets", "big-number": "number", "number-label": "label", "chart": "chart", "table": "table",
+          "image": "image", "icon": "icon", "logo": "logo", "callout": "quote", "label": "label", "footer": "label",
+          "source-note": "label", "page-number": "label"}  # card, other and unknown roles fall back on the region type
+CHARTS = (("PIE", "pie"), ("DOUGHNUT", "doughnut"), ("SCATTER", "scatter"), ("BUBBLE", "bubble"), ("RADAR", "radar"),
+          ("STOCK", "stock"), ("SURFACE", "surface"), ("AREA", "area"), ("LINE", "line"), ("BAR", "bar"),
+          ("COLUMN", "bar"), ("CONE", "bar"), ("CYLINDER", "bar"), ("PYRAMID", "bar"))  # first match wins: BAR_OF_PIE is a pie
+ELLIPSES = {"ellipse", "flowChartConnector", "donut"}
+KEEP_TINY = {"[number]", "[icon]", "[logo]"}
+STACK = {"[title]": "title", "[subtitle]": "subtitle", "[text]": "text", "[bullets]": "text", "[quote]": "quote",
+         "[label]": "label"}  # labels whose stacked line boxes join into one block; text joins bullets
+MIN_AREA, BAND_AREA, SAME_BOX = 0.004, 0.15, 0.8  # fractions of the slide; SAME_BOX of the larger box
+STACK_GAP = 0.01  # of slide height: line boxes of one paragraph touch, separate blocks sit a blank line apart
+INK, BAND = 110, 242
 SKIP_ROLES = {"group", "decoration", "other"}
 
 
@@ -90,150 +100,121 @@ def wireframe(dna):
     raise ValueError(f"wireframe for {dna['id']} exceeds {MAX_WIREFRAME} bytes")
 
 
+def _label(r):
+    if r["chart"]:
+        return "[" + next((name + " chart" for key, name in CHARTS if key in r["chart"]["kind"]), "chart") + "]"
+    if r["table"]:
+        return "[table]"
+    if r["role"] == "body" and r["text"] and r["text"]["bullets"]:
+        return "[bullets]"
+    return "[" + (LABELS.get(r["role"]) or ("text" if r["text"] else "image" if r["type"] == "picture" else "shape")) + "]"
+
+
+def _plan(dna):
+    """What the wireframe shows: light panels, thin lines and labelled boxes, minus decoration, specks and duplicates."""
+    bands, lines, boxes = [], [], []
+    for r in dna["regions"]:
+        b, role = r["box"], r["role"]
+        x, y, w, h = box = (b["x"], b["y"], b["w"], b["h"])
+        area = w * h
+        if r["type"] == "group" or role == "group":
+            continue
+        if r["type"] == "line" or role in ("divider", "connector"):
+            if role != "decoration":  # shortcut: connector flips are not in the DNA, so diagonals may draw mirrored
+                xy = (x, y, x + w, y + h) if r["type"] == "line" else (
+                    (x, y + h / 2, x + w, y + h / 2) if w >= h else (x + w / 2, y, x + w / 2, y + h))
+                lines.append({"i": r["i"], "kind": "line", "xy": xy, "box": box, "label": None})
+            continue
+        x0, y0 = max(x, 0), max(y, 0)  # boxes hanging off the slide are drawn and labelled by their visible part
+        box = (x0, y0, max(min(x + w, 1) - x0, 0), max(min(y + h, 1) - y0, 0))
+        area = box[2] * box[3]
+        if role in ("decoration", "background-band"):
+            big = area > BAND_AREA or (role == "background-band" and area >= MIN_AREA)
+            if big and area < 0.9 and (r["fill"] or r["type"] == "picture"):  # >= 90% is the slide itself
+                bands.append({"i": r["i"], "kind": "band", "box": box, "label": None})
+            continue
+        geom = r.get("geom") or ""
+        kind = "ellipse" if geom in ELLIPSES else "round" if "round" in geom.lower() or geom == "flowChartAlternateProcess" else "rect"
+        boxes.append({"i": r["i"], "kind": kind, "box": box, "label": _label(r)})
+    joined = True
+    while joined:  # many decks put each line of text in its own box: join same-kind boxes stacked with no real gap
+        joined = False
+        for a, b in itertools.combinations(boxes, 2):
+            if a["label"] in STACK and STACK.get(a["label"]) == STACK.get(b["label"]) and _stacked(a["box"], b["box"]):
+                x0, y0 = min(a["box"][0], b["box"][0]), min(a["box"][1], b["box"][1])
+                x1 = max(a["box"][0] + a["box"][2], b["box"][0] + b["box"][2])
+                y1 = max(a["box"][1] + a["box"][3], b["box"][1] + b["box"][3])
+                a.update(i=min(a["i"], b["i"]), box=(x0, y0, x1 - x0, y1 - y0), label="[bullets]" if "[bullets]" in (a["label"], b["label"]) else a["label"])
+                boxes.remove(b)
+                joined = True
+                break
+    boxes = [c for c in boxes if c["box"][2] * c["box"][3] >= MIN_AREA or c["label"] in KEEP_TINY]
+    kept = []
+    for c in sorted(boxes, key=lambda c: -c["box"][2] * c["box"][3]):
+        same = next((k for k in kept if _overlap(k["box"], c["box"]) > SAME_BOX * k["box"][2] * k["box"][3]), None)
+        if same is None:
+            kept.append(c)
+        elif same["label"] == "[shape]":
+            same["label"] = c["label"]
+    for k in kept:  # a plain container's label would collide with the labels inside it
+        if k["label"] == "[shape]" and any(o is not k and _inside(o["box"], k["box"]) for o in kept):
+            k["label"] = None
+    return bands + lines + sorted(kept, key=lambda c: c["i"])
+
+
+def _overlap(a, b):
+    return max(0, min(a[0] + a[2], b[0] + b[2]) - max(a[0], b[0])) * max(0, min(a[1] + a[3], b[1] + b[3]) - max(a[1], b[1]))
+
+
+def _stacked(a, b):
+    """Overlapping columns, and vertically touching or overlapping (a gap under a line's leading)."""
+    across = min(a[0] + a[2], b[0] + b[2]) - max(a[0], b[0])
+    gap = max(a[1], b[1]) - min(a[1] + a[3], b[1] + b[3])
+    return across > 0 and gap <= STACK_GAP
+
+
+def _inside(a, b):
+    """Centre of box a lies in box b."""
+    cx, cy = a[0] + a[2] / 2, a[1] + a[3] / 2
+    return b[0] <= cx <= b[0] + b[2] and b[1] <= cy <= b[1] + b[3]
+
+
 def _draw(dna, W, H):
     s = W / 960
-    img = Image.new("L", (W, H), GREY.get(dna["background"], 255))
+    img = Image.new("L", (W, H), 255)
     d = ImageDraw.Draw(img)
-    rng = random.Random(int(hashlib.sha256(dna["id"].encode()).hexdigest()[:8], 16))
-    by_i = {r["i"]: r for r in dna["regions"]}
-    for r in dna["regions"]:
-        b = r["box"]
-        x0, y0 = b["x"] * W, b["y"] * H
-        x1, y1 = x0 + max(b["w"] * W, 1), y0 + max(b["h"] * H, 1)
-        box = (x0, y0, x1, y1)
-        fill, outline = GREY.get(r["fill"]), GREY.get(r["line"])
-        if r["type"] == "line":  # shortcut: connector flips are not in the DNA, so diagonals may draw mirrored
-            _line(d, (x0, y0, x1, y1), outline or 120, max(1, round(2 * s)), r["dashed"])
-            continue
-        if r["type"] == "picture" or r["role"] in ("image", "icon", "logo"):
-            d.rectangle(box, fill=235, outline=150)
-            d.line((x0, y0, x1, y1), fill=170)
-            d.line((x0, y1, x1, y0), fill=170)
-            continue
-        if fill is not None or outline is not None:
-            if r["dashed"]:
-                d.rectangle(box, fill=fill)
-                for edge in ((x0, y0, x1, y0), (x1, y0, x1, y1), (x1, y1, x0, y1), (x0, y1, x0, y0)):
-                    _line(d, edge, outline or 120, 1, True)
-            else:
-                d.rectangle(box, fill=fill, outline=outline)
-        if r["chart"]:
-            _chart(d, box, r["chart"], rng, s)
-        elif r["table"]:
-            _table(d, box, r["table"])
-        elif r["text"]:
-            under = fill if fill is not None else _under(r, by_i, dna)
-            _text(d, box, r, under, rng, s)
+    stroke = max(1, round(2 * s))
+    plan = _plan(dna)
+    for p in plan:
+        x, y, w, h = p["box"]
+        box = (x * W, y * H, x * W + max(w * W, 1), y * H + max(h * H, 1))
+        if p["kind"] == "band":
+            d.rectangle(box, fill=BAND)
+        elif p["kind"] == "line":
+            x0, y0, x1, y1 = p["xy"]
+            d.line((x0 * W, y0 * H, x1 * W, y1 * H), fill=INK, width=stroke)
+        elif p["kind"] == "ellipse":
+            d.ellipse(box, outline=INK, width=stroke)
+        elif p["kind"] == "round":
+            d.rounded_rectangle(box, radius=min(10 * s, (box[2] - box[0]) / 2, (box[3] - box[1]) / 2), outline=INK, width=stroke)
+        else:
+            d.rectangle(box, outline=INK, width=stroke)
+    placed = []  # (label spot, its box) as pixel x, y, w, h
+    for p in sorted((p for p in plan if p["label"]), key=lambda p: p["box"][2] * p["box"][3]):  # innermost first
+        x, y, w, h = p["box"]
+        inset = 0.7 if p["kind"] == "ellipse" else 1.0  # widest text that fits inside the ellipse
+        room_w, room_h = w * W * inset - 2 * stroke - 8 * s, h * H * inset - 2 * stroke - 4 * s
+        for size in range(min(18, int(room_h / 1.3 / s)), 7, -1):  # shrink to fit, give up below 8px
+            font = ImageFont.load_default(size=round(size * s))
+            tw = d.textlength(p["label"], font=font)
+            if tw <= room_w:
+                cx, cy, half = (x + w / 2) * W, (y + h / 2) * H, font.size * 0.7
+                spot, mine = (cx - tw / 2, cy - half, tw, 2 * half), (x * W, y * H, w * W, h * H)
+                # never print over another label, nor over a labelled box inside this one
+                if not any(_overlap(spot, o) or (_inside(ob, mine) and _overlap(spot, ob)) for o, ob in placed):
+                    d.text((cx, cy), p["label"], fill=INK, font=font, anchor="mm")
+                    placed.append((spot, mine))
+                break
     out = io.BytesIO()
     img.save(out, "PNG", optimize=True)
     return out.getvalue()
-
-
-def _under(r, by_i, dna):
-    """Grey of whatever the region sits on: nearest filled region drawn earlier that contains its centre."""
-    b = r["box"]
-    cx, cy = b["x"] + b["w"] / 2, b["y"] + b["h"] / 2
-    for o in reversed([o for o in dna["regions"] if o["i"] < r["i"] and o["fill"]]):
-        ob = o["box"]
-        if ob["x"] <= cx <= ob["x"] + ob["w"] and ob["y"] <= cy <= ob["y"] + ob["h"]:
-            return GREY[o["fill"]]
-    return GREY.get(dna["background"], 255)
-
-
-def _line(d, xy, fill, width, dashed):
-    if not dashed:
-        d.line(xy, fill=fill, width=width)
-        return
-    x0, y0, x1, y1 = xy
-    n = max(1, int(math.hypot(x1 - x0, y1 - y0) / 6))
-    for k in range(0, n, 2):
-        a, c = k / n, min(1, (k + 1) / n)
-        d.line((x0 + (x1 - x0) * a, y0 + (y1 - y0) * a, x0 + (x1 - x0) * c, y0 + (y1 - y0) * c), fill=fill, width=width)
-
-
-def _text(d, box, r, under, rng, s):
-    t, (x0, y0, x1, y1) = r["text"], box
-    ink = 200 if under < 128 else 120
-    pad = 6 * s
-    kind = t["number"] or ("plain" if r["role"] == "big-number" else None)
-    if kind:
-        size = max(8, int(min(y1 - y0, (x1 - x0) / 2.2) * 0.7))
-        font = ImageFont.load_default(size=size)
-        tw = d.textlength(TOKENS[kind], font=font)
-        tx = {"center": (x0 + x1 - tw) / 2, "right": x1 - pad - tw}.get(t["align"], x0 + pad)
-        d.text((tx, (y0 + y1) / 2), TOKENS[kind], fill=ink, font=font, anchor="lm")
-        return
-    thick = {"title": 10, "tagline": 6}.get(r["role"]) or {"display": 12, "heading": 8, "body": 4, "caption": 3}[t["size"]]
-    thick = max(2, round(thick * s))
-    step = thick * 2.2
-    lines = max(1, min(t["lines"], int((y1 - y0 - 2 * pad + thick * 1.2) // step) or 1))
-    starts = {round(k * lines / t["paragraphs"]) for k in range(t["paragraphs"])} if t["paragraphs"] else set()
-    bulleted = sorted(starts)[len(starts) - t["bullets"]:] if t["bullets"] else []
-    for k in range(lines):
-        indent = 4 * thick if any(b <= k for b in bulleted) else 0
-        if k in bulleted:
-            m = thick * 0.9
-            yy = y0 + pad + k * step + thick / 2
-            d.rectangle((x0 + pad + indent - 2.5 * m, yy - m / 2, x0 + pad + indent - 1.5 * m, yy + m / 2), fill=ink)
-        full = max(thick, x1 - x0 - 2 * pad - indent)  # a box narrower than its padding still gets a dot
-        length = full * (0.6 if k == lines - 1 and lines > 1 else rng.uniform(0.85, 1.0))
-        lx = {"center": x0 + indent + (x1 - x0 - indent - length) / 2, "right": x1 - pad - length}.get(t["align"], x0 + pad + indent)
-        ly = y0 + pad + k * step
-        d.rectangle((lx, ly, lx + length, ly + thick), fill=ink)
-
-
-def _chart(d, box, c, rng, s):
-    """A fake chart of the same kind and shape (series x categories) with dummy values seeded by the record id."""
-    x0, y0, x1, y1 = box
-    pad = 10 * s
-    ax0, ay0, ax1, ay1 = x0 + pad, y0 + pad, x1 - pad, y1 - pad
-    kind, n, m = c["kind"], max(1, c["categories"]), max(1, c["series"])
-    phase = rng.uniform(0, math.pi)
-    vals = [[0.35 + 0.3 * (0.5 + 0.5 * math.sin(phase + j * 0.9 + i * 0.6)) + rng.uniform(0, 0.1) for j in range(n)] for i in range(m)]
-    shades = [100 + (110 * i) // max(1, m) for i in range(m)]
-    if "PIE" in kind or "DOUGHNUT" in kind:
-        r_ = min(ax1 - ax0, ay1 - ay0) / 2
-        cx, cy = (ax0 + ax1) / 2, (ay0 + ay1) / 2
-        total, a = sum(vals[0]), -90.0
-        for j, v in enumerate(vals[0]):
-            sweep = 360 * v / total
-            d.pieslice((cx - r_, cy - r_, cx + r_, cy + r_), a, a + sweep, fill=90 + (130 * j) // n, outline=255)
-            a += sweep
-        if "DOUGHNUT" in kind:
-            d.ellipse((cx - r_ / 2, cy - r_ / 2, cx + r_ / 2, cy + r_ / 2), fill=255)
-        return
-    d.line((ax0, ay0, ax0, ay1, ax1, ay1), fill=140, width=1)
-    horizontal = kind.startswith("BAR")
-    if horizontal or kind.startswith("COLUMN") or kind.startswith("THREE_D_BAR") or kind.startswith("THREE_D_COLUMN"):
-        span = (ay1 - ay0) if horizontal else (ax1 - ax0)
-        slot = span / n
-        bw = slot * 0.7 / m
-        for j in range(n):
-            for i in range(m):
-                a = (ay0 if horizontal else ax0) + j * slot + slot * 0.15 + i * bw
-                if horizontal:
-                    d.rectangle((ax0, a, ax0 + vals[i][j] * (ax1 - ax0), a + bw - 1), fill=shades[i])
-                else:
-                    d.rectangle((a, ay1 - vals[i][j] * (ay1 - ay0), a + bw - 1, ay1), fill=shades[i])
-        return
-    xs = [ax0 + (ax1 - ax0) * (j + 0.5) / n for j in range(n)]
-    for i in range(m):
-        pts = [(x, ay1 - v * (ay1 - ay0)) for x, v in zip(xs, vals[i])]
-        if "AREA" in kind:
-            d.polygon([(xs[0], ay1)] + pts + [(xs[-1], ay1)], fill=shades[i])
-        elif "SCATTER" in kind or "BUBBLE" in kind:
-            for x, y in pts:
-                d.ellipse((x - 3 * s, y - 3 * s, x + 3 * s, y + 3 * s), fill=shades[i])
-        else:  # line, radar, stock and anything else: a polyline per series
-            d.line(pts, fill=shades[i], width=max(1, round(2 * s))) if len(pts) > 1 else d.ellipse((pts[0][0] - 2, pts[0][1] - 2, pts[0][0] + 2, pts[0][1] + 2), fill=shades[i])
-
-
-def _table(d, box, t):
-    x0, y0, x1, y1 = box
-    rows, cols = max(1, t["rows"]), max(1, t["cols"])
-    rh, cw = (y1 - y0) / rows, (x1 - x0) / cols
-    d.rectangle((x0, y0, x1, y0 + rh), fill=200)
-    for k in range(rows + 1):
-        d.line((x0, y0 + k * rh, x1, y0 + k * rh), fill=150)
-    for k in range(cols + 1):
-        d.line((x0 + k * cw, y0, x0 + k * cw, y1), fill=150)

@@ -17,7 +17,7 @@ from pathlib import Path
 import pypdfium2 as pdfium
 from pptx import Presentation
 from pptx.enum.dml import MSO_COLOR_TYPE, MSO_FILL
-from pptx.enum.shapes import MSO_SHAPE_TYPE, PP_PLACEHOLDER
+from pptx.enum.shapes import MSO_AUTO_SHAPE_TYPE, MSO_SHAPE_TYPE, PP_PLACEHOLDER
 from pptx.enum.text import PP_ALIGN
 
 SOFFICE_APP = Path("/Applications/LibreOffice.app/Contents/MacOS/soffice")
@@ -87,7 +87,8 @@ def _walk(shapes, xf, parent, regions, text, width, height):
         x, y, w, h = xf(shape.left or 0, shape.top or 0, shape.width or 0, shape.height or 0)
         r = {"i": len(regions), "parent": parent, "type": _type(shape),
              "box": {"x": round(x / width, 4), "y": round(y / height, 4), "w": round(w / width, 4), "h": round(h / height, 4)},
-             "fill": _fill(shape), "line": _line(shape), "dashed": _dashed(shape), "text": None, "chart": None, "table": None}
+             "fill": _fill(shape), "line": _line(shape), "dashed": _dashed(shape), "geom": _geom(shape),
+             "text": None, "chart": None, "table": None}
         regions.append(r)
         if r["type"] == "group":
             g = shape._element.grpSpPr.xfrm
@@ -199,6 +200,17 @@ def _line(shape):
 def _dashed(shape):
     # Raw XML, not line.dash_style: python-pptx's enum has no mapping for presets like "dot" and raises.
     return any(v != "solid" for v in shape._element.xpath("./p:spPr/a:ln/a:prstDash/@val"))
+
+
+def _geom(shape):
+    """Preset geometry name (ellipse, roundRect, ...), kept only if it is a known OOXML autoshape preset."""
+    for v in shape._element.xpath("./p:spPr/a:prstGeom/@prst"):
+        try:
+            MSO_AUTO_SHAPE_TYPE.from_xml(v)
+            return v
+        except ValueError:
+            pass
+    return None
 
 
 def _chromatic(hexrgb):
