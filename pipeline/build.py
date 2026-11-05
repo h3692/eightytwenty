@@ -70,7 +70,7 @@ def merge(slide, labels):
     patterns = {t["region"]: t for t in labels["text_patterns"]}
     regions = []
     for r in slide["regions"]:
-        r = dict(r, role=labels["regions"][str(r["i"])])
+        r = dict(r, role=labels["regions"].get(str(r["i"]), "other"))  # beyond the worksheet's largest regions
         if r["role"] in NEVER_TRACED:
             r.update(geom=None, path=None)  # a brand mark's outline never reaches a record
         if r["text"]:

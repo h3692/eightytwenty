@@ -1,0 +1,50 @@
+Write ONE JSON object to {out}
+It must validate against {schema}:
+  {{"version": 3, "components": [ {{...}}, {{...}} ]}}   at most 8 components, usually 3-6
+
+Look at the picture zoomed out: what are the 3-8 major blocks that give the slide its structure? Pick one component
+for each. Ignore everything smaller: single icons, decoration, connectors, footnotes, page numbers, sources.
+Every slide gets a title + subtitle header (top-left) automatically, except cover, section_divider and closing.
+
+Placement: "box" is [x, y, w, h], floats 0-1 of the CONTENT AREA (below the header, above the bottom tracker),
+not of the whole slide; x + w <= 1, y + h <= 1. It is snapped to a 12 x 8 grid (12 columns, 8 rows), so think
+in grid cells: a full-width bar one row high at the bottom is [0, 0.875, 1, 0.125]. Blocks side by side or stacked
+should not overlap. The listed regions are an optional alignment hint: use them only to place edges more exactly;
+the picture decides.
+
+Components (kind and its only fields; integers are counts you read off the picture):
+  tracker          n 2-8 pills along the bottom, active 1-n = the highlighted one (a section/agenda tracker
+                   strip at the top or bottom of the slide). No box.
+  logo             a logo top-right. No box.
+  text             box, lines 1-8, bullets true|false: a block of running text or a bullet list (drawn as at
+                   most 4 placeholder lines)
+  kpi_row          box, n 1-6: a row of big-number tiles (value + caption)
+  card_row         box, n 1-6, header_strip true|false, icon true|false: a row of boxes/cards with content
+  label_rows       box, rows 1-10, cols 1-4: rows each led by a dark label cell (a row-labelled grid or matrix)
+  table            box, rows 1-12, cols 1-8, header_row true|false, harvey true|false (rating balls in cells)
+  chart_area       box, chart_type one of: {chart_types} (other = map, sankey, anything else)
+  image_area       box, variant one of: {variants} (device = product mockup or screenshot)
+  steps            box, n 2-8, direction h|v: a numbered process or sequence of steps
+  timeline         box, workstreams 1-6, periods 2-12, milestones true|false: a Gantt chart
+  roadmap          box, phases 2-6: phases left to right with content under each
+  matrix           box, dots 0-8: a 2x2 matrix with plotted items
+  tree             box, levels 2-4, branching 2-4: an issue/driver tree (at most 16 leaves)
+  funnel           box, stages 2-6
+  hub              box, n 3-8, connectors true|false, cycle true|false: a centre node with n satellites around
+                   it (hub-and-spoke); connectors = lines from the centre to each satellite, cycle = arrows
+                   running round the satellites
+  before_after     box, rows 1-4: a before -> after contrast
+  takeaway         box: the one-line conclusion bar
+  quote            box: a quotation
+  hero_number      box: one huge number the slide is built around
+  section_divider  number 1-9: a section opener slide. No box.
+  cover            the deck's title slide. No box.
+  closing          a thank-you / questions slide. No box.
+
+Choose the nearest kind; when several fit, take the simpler one (a grid of text cells with dark row labels is
+label_rows, a grid with a header row is a table, a row of boxes is card_row).
+
+Hard rules:
+  - No words from the slide and no fields other than the ones above: the mockup only ever shows fixed placeholder
+    copy ("Header here", "Text here", "XX%" ...).
+  - Write only the JSON file(s) this worksheet asks for, nothing else.

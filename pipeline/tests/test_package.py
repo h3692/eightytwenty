@@ -7,6 +7,7 @@ from pipeline import package
 from pipeline.__main__ import main
 from pipeline.tests.conftest import CLIENT, EXCLUDED, fixture_labels
 from pipeline.tests.test_embed import server  # noqa: F401  (fixture)
+from pipeline.tests.test_leak_check import mockups
 
 
 def _library(lib, purposes):
@@ -77,6 +78,7 @@ def test_cli_runs_the_whole_pipeline_and_nothing_identifying_reaches_outputs(dec
     for f in sorted(work.glob("slide-??.json")):
         (work / "labels" / f.name).write_text(json.dumps(fixture_labels(json.loads(f.read_text()))))
     main(["build", deck_id, "--library", str(lib)])
+    mockups(lib, deck_id)
     with pytest.raises(SystemExit) as pending:
         main(["leak-check", deck_id, "--library", str(lib)])
     assert pending.value.code == 1  # judge verdicts still missing: nothing promoted

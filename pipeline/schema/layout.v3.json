@@ -12,7 +12,7 @@
   "$defs": {
     "component": {
       "type": "object", "required": ["kind"],
-      "properties": {"kind": {"enum": ["tracker", "logo", "text", "kpi_row", "card_row", "label_rows", "table", "chart_area", "image_area", "steps", "timeline", "roadmap", "matrix", "tree", "funnel", "before_after", "takeaway", "quote", "hero_number", "section_divider", "cover", "closing"]}},
+      "properties": {"kind": {"enum": ["tracker", "logo", "text", "kpi_row", "card_row", "label_rows", "table", "chart_area", "image_area", "steps", "timeline", "roadmap", "matrix", "tree", "funnel", "hub", "before_after", "takeaway", "quote", "hero_number", "section_divider", "cover", "closing"]}},
       "allOf": [
         {"if": {"required": ["kind"], "properties": {"kind": {"const": "tracker"}}}, "then": {"$ref": "#/$defs/tracker"}},
         {"if": {"required": ["kind"], "properties": {"kind": {"const": "logo"}}}, "then": {"$ref": "#/$defs/logo"}},
@@ -29,6 +29,7 @@
         {"if": {"required": ["kind"], "properties": {"kind": {"const": "matrix"}}}, "then": {"$ref": "#/$defs/matrix"}},
         {"if": {"required": ["kind"], "properties": {"kind": {"const": "tree"}}}, "then": {"$ref": "#/$defs/tree"}},
         {"if": {"required": ["kind"], "properties": {"kind": {"const": "funnel"}}}, "then": {"$ref": "#/$defs/funnel"}},
+        {"if": {"required": ["kind"], "properties": {"kind": {"const": "hub"}}}, "then": {"$ref": "#/$defs/hub"}},
         {"if": {"required": ["kind"], "properties": {"kind": {"const": "before_after"}}}, "then": {"$ref": "#/$defs/before_after"}},
         {"if": {"required": ["kind"], "properties": {"kind": {"const": "takeaway"}}}, "then": {"$ref": "#/$defs/takeaway"}},
         {"if": {"required": ["kind"], "properties": {"kind": {"const": "quote"}}}, "then": {"$ref": "#/$defs/quote"}},
@@ -44,7 +45,7 @@
     "text": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "lines"], "properties": {"kind": {"const": "text"}, "box": {"$ref": "#/$defs/box"}, "bullets": {"type": "boolean"}, "lines": {"type": "integer", "minimum": 1, "maximum": 8}}},
     "kpi_row": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "n"], "properties": {"kind": {"const": "kpi_row"}, "box": {"$ref": "#/$defs/box"}, "n": {"type": "integer", "minimum": 1, "maximum": 6}}},
     "card_row": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "n"], "properties": {"kind": {"const": "card_row"}, "box": {"$ref": "#/$defs/box"}, "n": {"type": "integer", "minimum": 1, "maximum": 6}, "header_strip": {"type": "boolean"}, "icon": {"type": "boolean"}}},
-    "label_rows": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "rows", "cols"], "properties": {"kind": {"const": "label_rows"}, "box": {"$ref": "#/$defs/box"}, "rows": {"type": "integer", "minimum": 1, "maximum": 6}, "cols": {"type": "integer", "minimum": 1, "maximum": 4}}},
+    "label_rows": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "rows", "cols"], "properties": {"kind": {"const": "label_rows"}, "box": {"$ref": "#/$defs/box"}, "rows": {"type": "integer", "minimum": 1, "maximum": 10}, "cols": {"type": "integer", "minimum": 1, "maximum": 4}}},
     "table": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "rows", "cols"], "properties": {"kind": {"const": "table"}, "box": {"$ref": "#/$defs/box"}, "rows": {"type": "integer", "minimum": 1, "maximum": 12}, "cols": {"type": "integer", "minimum": 1, "maximum": 8}, "header_row": {"type": "boolean"}, "harvey": {"type": "boolean"}}},
     "chart_area": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "chart_type"], "properties": {"kind": {"const": "chart_area"}, "box": {"$ref": "#/$defs/box"}, "chart_type": {"enum": ["bar", "column", "stacked_bar", "line", "pie", "donut", "scatter", "waterfall", "area", "other"]}}},
     "image_area": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "variant"], "properties": {"kind": {"const": "image_area"}, "box": {"$ref": "#/$defs/box"}, "variant": {"enum": ["photo", "device", "map", "icon"]}}},
@@ -54,6 +55,7 @@
     "matrix": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "dots"], "properties": {"kind": {"const": "matrix"}, "box": {"$ref": "#/$defs/box"}, "dots": {"type": "integer", "minimum": 0, "maximum": 8}}},
     "tree": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "levels", "branching"], "properties": {"kind": {"const": "tree"}, "box": {"$ref": "#/$defs/box"}, "levels": {"type": "integer", "minimum": 2, "maximum": 4}, "branching": {"type": "integer", "minimum": 2, "maximum": 4}}},
     "funnel": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "stages"], "properties": {"kind": {"const": "funnel"}, "box": {"$ref": "#/$defs/box"}, "stages": {"type": "integer", "minimum": 2, "maximum": 6}}},
+    "hub": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "n"], "properties": {"kind": {"const": "hub"}, "box": {"$ref": "#/$defs/box"}, "n": {"type": "integer", "minimum": 3, "maximum": 8}, "connectors": {"type": "boolean"}, "cycle": {"type": "boolean"}}},
     "before_after": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "rows"], "properties": {"kind": {"const": "before_after"}, "box": {"$ref": "#/$defs/box"}, "rows": {"type": "integer", "minimum": 1, "maximum": 4}}},
     "takeaway": {"type": "object", "additionalProperties": false, "required": ["kind", "box"], "properties": {"kind": {"const": "takeaway"}, "box": {"$ref": "#/$defs/box"}}},
     "quote": {"type": "object", "additionalProperties": false, "required": ["kind", "box"], "properties": {"kind": {"const": "quote"}, "box": {"$ref": "#/$defs/box"}}},

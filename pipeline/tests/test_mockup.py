@@ -118,10 +118,17 @@ def test_numbered_steps_and_card_counts():
     assert _texts(_shapes(_lay({**EXAMPLES["roadmap"], "phases": 5}))).count("Phase Header") == 5
 
 
+@pytest.mark.parametrize("lines, drawn", [(2, 2), (4, 4), (5, 4), (8, 4)])
+def test_text_blocks_draw_at_most_four_lines(lines, drawn):
+    for bullets in (True, False):
+        box = {**EXAMPLES["text"], "box": [0, 0, 0.5, 1], "lines": lines, "bullets": bullets}
+        assert _texts(_shapes(_lay(box))).count("Text here") == drawn
+
+
 def test_text_lines_and_bullets():
-    shape = next(s for s in _shapes(_lay({**EXAMPLES["text"], "lines": 5})) if _texts([s])[:1] == ["Text here"])
+    shape = next(s for s in _shapes(_lay({**EXAMPLES["text"], "lines": 3})) if _texts([s])[:1] == ["Text here"])
     paras = shape.text_frame.paragraphs
-    assert len(paras) == 5 and all(p._pPr.find(f"{{{A}}}buChar") is not None for p in paras)
+    assert len(paras) == 3 and all(p._pPr.find(f"{{{A}}}buChar") is not None for p in paras)
     shape = next(s for s in _shapes(_lay({**EXAMPLES["text"], "bullets": False})) if _texts([s])[:1] == ["Text here"])
     assert all(p._pPr is None or p._pPr.find(f"{{{A}}}buChar") is None for p in shape.text_frame.paragraphs)
 
@@ -169,6 +176,34 @@ def test_other_charts_are_a_placeholder_panel():
                                             ("map", "Map here"), ("icon", "Icon")])
 def test_image_areas_name_their_variant(variant, label):
     assert label in _texts(_shapes(_lay({**EXAMPLES["image_area"], "variant": variant})))
+
+
+def _lines(shapes):
+    """Straight connectors, split into plain lines and arrows (a tail-end arrowhead)."""
+    lines = [s for s in shapes if s.shape_type == MSO_SHAPE_TYPE.LINE]
+    arrows = [s for s in lines if s._element.find(f".//{{{A}}}tailEnd") is not None]
+    return len(lines) - len(arrows), len(arrows)
+
+
+@pytest.mark.parametrize("n", [3, 5, 8])
+@pytest.mark.parametrize("connectors, cycle", [(False, False), (True, False), (False, True), (True, True)])
+def test_hub_draws_a_centre_and_n_satellites_with_optional_spokes_and_cycle_arrows(n, connectors, cycle):
+    box = [0, 0, 1, 0.75]
+    shapes = _shapes(_lay({"kind": "hub", "box": box, "n": n, "connectors": connectors, "cycle": cycle}))
+    body = [s for s in shapes if s.top > H * 0.2]
+    assert _texts(body).count("Header here") == n + 1
+    centre = next(s for s in body if s.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE and s.auto_shape_type == MSO_SHAPE.OVAL)
+    assert _fill(centre) == "2B2F36"
+    assert _lines(body) == (n * connectors, n * cycle)
+    area_l, area_t, area_w, area_h = (round(v * 914400) for v in mockup.AREA)
+    assert all(s.left >= area_l - 1 and s.left + s.width <= area_l + area_w + 1 and s.top >= area_t - 1
+               and s.top + s.height <= area_t + area_h * 0.75 + 1 for s in body)
+    nodes = [s for s in body if s.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE]
+    for a in nodes:  # satellites never sit on each other or on the centre
+        for b in nodes:
+            if a is not b:
+                assert (a.left + a.width <= b.left or b.left + b.width <= a.left or a.top + a.height <= b.top
+                        or b.top + b.height <= a.top), (a.name, b.name)
 
 
 def test_section_divider_shows_its_number():

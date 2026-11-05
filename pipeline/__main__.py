@@ -2,7 +2,7 @@
 import argparse
 import sys
 
-from pipeline import build, embed, extract, label_prep, layout, leak_check, mockup, package
+from pipeline import build, embed, extract, label_prep, leak_check, mockup, package
 
 
 def main(argv=None):
@@ -20,7 +20,7 @@ def main(argv=None):
     p = sub.add_parser("embed", help="embed published descriptions via the local Worker")
     p.add_argument("--url", default=f"http://127.0.0.1:{embed.PORT}")
     sub.add_parser("package", help="write records.sql and copy wireframes for deploy")
-    p = sub.add_parser("layout-prep", help="write component layout worksheets for mockups")
+    p = sub.add_parser("layout-prep", help="write component layout worksheets only, for slides labelled before")
     p.add_argument("deck_id")
     p.add_argument("--slides", help="comma-separated slide numbers, e.g. 05,08 (default: all)")
     p = sub.add_parser("mockup", help="build v3 component layouts into mockup .pptx templates and PNGs")
@@ -36,7 +36,7 @@ def main(argv=None):
         print(f"deck_id {extract.run(a.deck, a.library, render=False, deck_id=a.deck_id)}")
     elif a.stage == "label-prep":
         work = label_prep.run(a.deck_id, a.library)
-        print(f"Label each slide: in Claude Code, ask it to follow every {work}/slide-NN.prompt.txt")
+        print(f"Label and draw each slide: in Claude Code, ask it to follow every {work}/slide-NN.prompt.txt")
     elif a.stage == "build":
         print("\n".join(build.run(a.deck_id, a.library)))
     elif a.stage == "leak-check":
@@ -55,7 +55,7 @@ def main(argv=None):
         if a.stage == "mockup":
             print("\n".join(map(str, mockup.run(a.deck_id, a.library, slides))))
         else:
-            out = layout.prep(a.deck_id, a.library, slides)
+            out = label_prep.run(a.deck_id, a.library, slides, layouts_only=True)
             print(f"Draw each layout: in Claude Code, ask it to follow every {out}/slide-NN.prompt.txt")
 
 

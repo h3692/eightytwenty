@@ -1,5 +1,7 @@
 """Stage 4: leak check. Fails closed: only records that pass every automated check AND a recorded judge verdict
 are promoted to library/records/ + library/wireframes/; anything else is withheld (and removed if promoted before).
+A record's picture is its slide's mockup (library/mockups/<deck>/slide-NN.png, built from layouts/<deck>/slide-NN.v3.json);
+a slide without a v3 layout or mockup is never published, and its mockup .pptx must pass the placeholder whitelist.
 
 Free-text fields (purpose, why_it_works, description, text patterns) must not contain digits, share a 3-word
 sequence with the slide's original text, or contain names (spaCy NER, plus any name found in the slide text).
@@ -10,17 +12,21 @@ NER and title-case slides mistake ordinary words for names, so a word only count
 or all caps), so a common-word name opening a sentence is left to the judge. Standard framework names
 (FRAMEWORKS, exact phrases) are exempt from the shared-words rule.
 """
+import html
+import io
 import json
 import re
 import shutil
 import unicodedata
+import zipfile
 from functools import cache
 from pathlib import Path
 
 import spacy
+from pptx import Presentation
 from wordfreq import zipf_frequency
 
-from pipeline import build
+from pipeline import build, mockup
 
 NAME_LABELS = {"PERSON", "ORG", "GPE", "LOC", "NORP", "FAC", "PRODUCT", "EVENT", "WORK_OF_ART", "LAW"}
 # design and labelling vocabulary that NER mislabels and the frequency list rates rare
@@ -117,6 +123,52 @@ def check(dna, source):
     return problems
 
 
+@cache
+def _stock_text():
+    """Text runs of the stock python-pptx master and layouts every mockup carries ("Click to edit ...")."""
+    out = io.BytesIO()
+    Presentation().save(out)
+    return frozenset(_texts(out.getvalue())[0])
+
+
+def _texts(blob):
+    """Every text run in a .pptx, and every cached chart value and embedded workbook string."""
+    runs, values = [], []
+    with zipfile.ZipFile(io.BytesIO(blob)) as z:
+        for name in z.namelist():
+            if name.endswith(".xlsx"):
+                values += sum(_texts(z.read(name)), [])
+            elif name.endswith(".xml"):
+                xml = z.read(name).decode()
+                runs += map(html.unescape, re.findall(r"<a:t(?:\s[^>]*)?>([^<]*)</a:t>", xml))
+                values += map(html.unescape, re.findall(r"<(?:c:v|t)(?:\s[^>]*)?>([^<]*)</(?:c:v|t)>", xml))
+    return runs, values
+
+
+def mockup_problems(path):
+    """A mockup .pptx holds fixed placeholder copy only: every text run is placeholder vocabulary (or the stock
+    master's boilerplate), chart data is numbers, the core properties are empty and there is no image."""
+    try:
+        blob = Path(path).read_bytes()
+        runs, values = _texts(blob)
+        props = Presentation(io.BytesIO(blob)).core_properties
+        with zipfile.ZipFile(io.BytesIO(blob)) as z:
+            images = [n for n in z.namelist() if re.search(r"\.(jpe?g|png|gif|bmp|tiff?|emf|wmf|svg|wdp)$", n, re.I)]
+            images += ["image content type"] * ("image/" in z.read("[Content_Types].xml").decode())
+    except Exception as e:  # fail closed on anything unreadable
+        return [f"unreadable: {e}"]
+    problems = [f"text outside the placeholder vocabulary: {t!r}" for t in dict.fromkeys(runs)
+                if t not in mockup.VOCAB and t not in _stock_text()]
+    problems += [f"text outside the placeholder vocabulary: {v!r}" for v in dict.fromkeys(values)
+                 if not re.fullmatch(r"-?\d+(\.\d+)?", v)]
+    named = [k for k in ("author", "category", "comments", "content_status", "identifier", "keywords", "language",
+                         "last_modified_by", "subject", "title", "version") if getattr(props, k)]
+    if named:
+        problems.append(f"core properties not anonymous: {', '.join(named)}")
+    problems += [f"image: {n}" for n in images]
+    return problems
+
+
 def _verdict(path):
     if not path.exists():
         return "pending"
@@ -136,20 +188,28 @@ def run(deck_id, library):
     report = {}
     for f in sorted((work / "build").glob("*.json")):
         dna, rid = json.loads(f.read_text()), f.stem
-        source = (work / "text" / f"slide-{dna['slide']:02d}.txt").read_text()
+        nn = f"slide-{dna['slide']:02d}"
+        source = (work / "text" / f"{nn}.txt").read_text()
+        pic, pptx = (lib / "mockups" / deck_id / f"{nn}{ext}" for ext in (".png", ".pptx"))
         problems = check(dna, source)
+        if not (lib / "layouts" / deck_id / f"{nn}.v3.json").exists():
+            problems.append(f"no v3 layout: write layouts/{deck_id}/{nn}.v3.json, then run mockup")
+        elif not (pic.exists() and pptx.exists()):
+            problems.append("no mockup: run mockup")
+        else:
+            problems += [f"mockup: {p}" for p in mockup_problems(pptx)]
         r = report[rid] = {"auto": "fail" if problems else "pass", "problems": problems, "judge": "pending"}
         if problems:
             for p in (judge / f"{rid}.json", judge / f"{rid}.png"):
                 p.unlink(missing_ok=True)
         else:
             shutil.copyfile(f, judge / f"{rid}.json")
-            shutil.copyfile(f.with_suffix(".png"), judge / f"{rid}.png")
+            shutil.copyfile(pic, judge / f"{rid}.png")
             r["judge"] = _verdict(judge / "verdicts" / f"{rid}.json")
         published = (lib / "records" / f"{rid}.json", lib / "wireframes" / f"{rid}.png")
         if r["auto"] == "pass" and r["judge"] == "pass":
             shutil.copyfile(f, published[0])
-            shutil.copyfile(f.with_suffix(".png"), published[1])
+            shutil.copyfile(pic, published[1])
         else:
             for p in published:
                 p.unlink(missing_ok=True)

@@ -23,6 +23,7 @@ EXAMPLES = {
     "matrix": {"kind": "matrix", "box": B, "dots": 4},
     "tree": {"kind": "tree", "box": B, "levels": 3, "branching": 2},
     "funnel": {"kind": "funnel", "box": B, "stages": 4},
+    "hub": {"kind": "hub", "box": B, "n": 5, "connectors": True, "cycle": True},
     "before_after": {"kind": "before_after", "box": B, "rows": 3},
     "takeaway": {"kind": "takeaway", "box": B},
     "quote": {"kind": "quote", "box": B},
@@ -53,6 +54,10 @@ def test_every_kind_has_an_example():
 @pytest.mark.parametrize("kind", EXAMPLES)
 def test_each_kind_validates(kind):
     assert layout.validate(_lay(EXAMPLES[kind]))["components"][0]["kind"] == kind
+
+
+def test_label_rows_go_up_to_ten_rows():
+    assert layout.validate(_lay({**EXAMPLES["label_rows"], "rows": 10}))["components"][0]["rows"] == 10
 
 
 def test_sample_on_grid_validates_unchanged():
@@ -111,6 +116,7 @@ def test_schema_has_no_free_text_fields():
     (_lay({**EXAMPLES["kpi_row"], "n": 7}), "n"),
     (_lay({**EXAMPLES["card_row"], "n": 0}), "n"),
     (_lay({**EXAMPLES["label_rows"], "cols": 5}), "cols"),
+    (_lay({**EXAMPLES["label_rows"], "rows": 11}), "rows"),
     (_lay({**EXAMPLES["table"], "rows": 13}), "rows"),
     (_lay({**EXAMPLES["table"], "cols": 9}), "cols"),
     (_lay({**EXAMPLES["chart_area"], "chart_type": "radar"}), "radar"),
@@ -125,6 +131,9 @@ def test_schema_has_no_free_text_fields():
     (_lay({**EXAMPLES["tree"], "levels": 5}), "levels"),
     (_lay({**EXAMPLES["tree"], "levels": 4, "branching": 3}), "leaves"),
     (_lay({**EXAMPLES["funnel"], "stages": 7}), "stages"),
+    (_lay({**EXAMPLES["hub"], "n": 2}), "n"),
+    (_lay({**EXAMPLES["hub"], "n": 9}), "n"),
+    (_lay({**EXAMPLES["hub"], "cycle": "yes"}), "cycle"),
     (_lay({**EXAMPLES["before_after"], "rows": 5}), "rows"),
     (_lay({**EXAMPLES["section_divider"], "number": 10}), "number"),
     (_lay({**EXAMPLES["matrix"], "harvey": True}), "harvey"),  # a field of another kind
@@ -146,11 +155,11 @@ def test_worksheet_shows_the_picture_and_the_components(deck_id, lib):
     out = lib / "layouts" / deck_id
     assert sorted(p.name for p in out.glob("*.prompt.txt")) == ["slide-01.prompt.txt", "slide-02.prompt.txt"]
     text = (out / "slide-02.prompt.txt").read_text()
-    for needed in ("slide-02.png", str(lib / "work" / deck_id / "slide-02.json"), str(out / "slide-02.v3.json"),
+    for needed in ("slide-02.png", '{"i": 0', str(out.absolute() / "slide-02.v3.json"), "do not write or change",
                    "layout.v3.json", '"version": 3', "8 components", "12 x 8", "zoomed out", "optional", *EXAMPLES,
                    "stacked_bar", "photo", "device"):
         assert needed in text, needed
-    assert (out / "slide-01.prompt.txt").read_text().replace("slide-01", "slide-02") == text
+    assert "labels/slide-02.json" not in text and "archetype" not in text  # layouts only: labels stay as they are
 
 
 def test_worksheet_slide_filter(deck_id, lib):

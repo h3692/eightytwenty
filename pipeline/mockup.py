@@ -7,6 +7,7 @@ byte-identical for the same layout and doubles as an empty slide template.
 import datetime
 import io
 import json
+import math
 import random
 import re
 import shutil
@@ -37,6 +38,7 @@ LIGHT, MID, DARK, WHITE = 0xF3F4F6, 0xE2E5E9, 0x2B2F36, 0xFFFFFF
 GREYS = (0x6B7280, 0x8A9099, 0xA9AFB8, 0xC9CDD3)  # secondary text -> hairline
 AREA = (0.78, 1.86, 11.78, 4.66)  # content area in inches (x, y, w, h): below the header, above the tracker
 GAP = 0.12  # in, between neighbouring components and repeated blocks
+MAX_TEXT_LINES = 4  # a text block reads as text at any height; more placeholder lines only add noise
 LEFT, MIDDLE, TOP, BOTTOM = PP_ALIGN.LEFT, MSO_ANCHOR.MIDDLE, MSO_ANCHOR.TOP, MSO_ANCHOR.BOTTOM
 SECTIONS = ("Executive Summary", "Situation", "Problem Analysis", "Customer", "Competition", "Solution",
             "Implementation", "Financials", "Risks", "Appendix")  # deck order
@@ -166,7 +168,7 @@ def _tracker(shapes, c, rng):
 # --- content components (x, y, w, h in slide inches) ----------------------------------------------------------
 
 def _text(shapes, c, x, y, w, h, rng):
-    _add(shapes, x, y, w, h, text=["Text here"] * c["lines"], size=14, align=LEFT, anchor=TOP,
+    _add(shapes, x, y, w, h, text=["Text here"] * min(c["lines"], MAX_TEXT_LINES), size=14, align=LEFT, anchor=TOP,
          bullets=c.get("bullets", False))
 
 
@@ -416,6 +418,35 @@ def _funnel(shapes, c, x, y, w, h, rng):
         bw = w * (1 - 0.6 * k / (n - 1))
         _add(shapes, x + (w - bw) / 2, sy, bw, sh, (DARK, GREYS[0], GREYS[1], GREYS[2], GREYS[3], MID)[k],
              text="Text here", color=WHITE if k < 3 else DARK)
+
+
+def _hub(shapes, c, x, y, w, h, rng):
+    n = c["n"]
+    cx, cy, d = x + w / 2, y + h / 2, min(h * 0.38, w * 0.25)
+    sw, sh = min(1.9, w * 0.24), min(0.45, h * 0.16)
+    rx, ry = (w - sw) / 2, (h - sh) / 2
+    pts = [(cx + rx * math.cos(a), cy + ry * math.sin(a)) for a in (math.radians(-90 + 360 * k / n) for k in range(n))]
+
+    def line(ax, ay, bx, by, arrow=False):
+        ln = shapes.add_connector(MSO_CONNECTOR.STRAIGHT, *(Emu(round(v * IN)) for v in (ax, ay, bx, by)))
+        ln.line.color.rgb, ln.line.width = _rgb(GREYS[1] if arrow else GREYS[2]), Pt(1.25 if arrow else 1)
+        if arrow:
+            ln.line._get_or_add_ln().append(parse_xml(f'<a:tailEnd {nsdecls("a")} type="triangle"/>'))
+
+    if c.get("connectors"):  # drawn first: the nodes cover the ends
+        for px, py in pts:
+            line(cx, cy, px, py)
+    if c.get("cycle"):  # clockwise arrows between neighbouring satellites, from pill edge to pill edge
+        for (ax, ay), (bx, by) in zip(pts, pts[1:] + pts[:1]):
+            dx, dy = bx - ax, by - ay
+            t = min(sw / 2 / abs(dx) if abs(dx) > 1e-9 else 1, sh / 2 / abs(dy) if abs(dy) > 1e-9 else 1)
+            t = min(t + 0.06 / math.hypot(dx, dy), 0.45)
+            line(ax + dx * t, ay + dy * t, bx - dx * t, by - dy * t, arrow=True)
+    _add(shapes, cx - d / 2, cy - d / 2, d, d, DARK, text="Header here", size=14, color=WHITE, bold=True,
+         preset=MSO_SHAPE.OVAL)
+    for px, py in pts:
+        _add(shapes, px - sw / 2, py - sh / 2, sw, sh, LIGHT, text="Header here", size=12, bold=True,
+             preset=MSO_SHAPE.ROUNDED_RECTANGLE)
 
 
 def _before_after(shapes, c, x, y, w, h, rng):

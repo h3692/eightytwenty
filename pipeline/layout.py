@@ -8,7 +8,6 @@ import jsonschema
 HERE = Path(__file__).parent
 SCHEMA_PATH = HERE / "schema" / "layout.v3.json"
 SCHEMA = json.loads(SCHEMA_PATH.read_text())
-TEMPLATE = (HERE / "templates" / "layout.txt").read_text()
 KINDS = SCHEMA["$defs"]["component"]["properties"]["kind"]["enum"]
 FULL = ("cover", "section_divider", "closing")  # whole-slide kinds: no header, no box
 COLS, ROWS = 12, 8
@@ -53,17 +52,3 @@ def validate(layout):
         raise ValueError("; ".join(bad))
     return out
 
-
-def prep(deck_id, library, slides=None):
-    """Write one layout worksheet per slide (or only the listed slide numbers); return the output folder."""
-    work, out = Path(library).absolute() / "work" / deck_id, Path(library).absolute() / "layouts" / deck_id
-    out.mkdir(parents=True, exist_ok=True)
-    defs = SCHEMA["$defs"]
-    for f in sorted(work.glob("slide-??.json")):
-        if slides and f.stem[-2:] not in slides:
-            continue
-        (out / f"{f.stem}.prompt.txt").write_text(TEMPLATE.format(
-            png=work / f"{f.stem}.png", regions=f, out=out / f"{f.stem}.v3.json", schema=SCHEMA_PATH,
-            chart_types=", ".join(defs["chart_area"]["properties"]["chart_type"]["enum"]),
-            variants=", ".join(defs["image_area"]["properties"]["variant"]["enum"])))
-    return out
