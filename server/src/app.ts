@@ -35,7 +35,6 @@ const PLAYBOOK: Record<string, string> = {
 };
 export const STAGES = Object.keys(PLAYBOOK);
 const MAX_IMAGE = 30 * 1024;
-const MAX_REGIONS = 40; // busy records reach ~39k tokens with every region, over what clients accept in one tool result
 const MAX_BODY = 4 * 1024 * 1024; // the MCP SDK's default maxRequestBodySize
 const enumOf = (values: string[]) => z.enum(values as [string, ...string[]]);
 const readOnly = { readOnlyHint: true, destructiveHint: false };
@@ -49,7 +48,7 @@ const FIND_INPUT = z.object({
 	slide_type: enumOf(labels.properties.archetype.enum).optional().describe("Archetype id (see the archetypes stage of get_playbook)."),
 	industry: enumOf(labels.properties.industry.enum).optional(),
 	data_type: enumOf(labels.properties.data_type.enum).optional(),
-	impact: enumOf(flow.properties.impact.items.enum).optional().describe("Only impact slides of this kind (how reference decks repeat a slide for effect); few exist."),
+	impact: enumOf(flow.properties.impact.items.enum).optional().describe("Only impact slides of this kind: how reference decks repeat a slide for effect. Use it when the user wants to emphasize or land a key point: shade_ribbon (the previous slide dimmed, a ribbon stating the takeaway), spotlight (one part highlighted), build (revealed step by step), repeat (an earlier slide brought back as a recap). Few exist."),
 	k: z.number().int().min(1).max(8).optional().describe("How many results, 1 to 8 (default 8)."),
 });
 const FLOWS_INPUT = z.object({
@@ -61,7 +60,13 @@ const REFERENCE_INPUT = z.object({ id: z.string().regex(/^[A-Za-z0-9-]{1,64}$/, 
 const DECK_ID = /^[0-9a-f]{16}$/; // slide ids are <deck id>-NN
 const PLAYBOOK_INDEX = `Playbook stages (call get_playbook with one of these as \`stage\`):\n${STAGES.map((s) => `- \`${s}\`: ${PLAYBOOK[s].match(/^# (.+)$/m)?.[1] ?? s}`).join("\n")}\n\n${workflow}`;
 
-function createServer(env: Env, lib: Library) {
+function createServer(env: Env, lib: Library, key: string) {
+	// Spends the daily budget only when a search misses the cache, just before the Searcher runs it.
+	const spend = async () => {
+		const v = await env.LIMITER.get(env.LIMITER.idFromName("global")).spend(key, limitsOf(env));
+		if (!v.ok) throw new Error(v.message);
+	};
+
 	const server = new McpServer({ name: "eightytwenty", version: "1.0.0" });
 
 	server.registerTool(
@@ -91,7 +96,7 @@ function createServer(env: Env, lib: Library) {
 		},
 		async (args) => {
 			const { results, library_version } = await search(env, lib, args, DEFAULT_FLAGS,
-				(q, key) => env.SEARCHER.get(env.SEARCHER.idFromName("global")).search(q, key));
+				async (q, k) => (await spend(), env.SEARCHER.get(env.SEARCHER.idFromName("global")).search(q, k)));
 			if (!results.length)
 				return { content: [text(`No references match these filters. Try fewer filters or a broader purpose. (library_version ${library_version})`)] };
 			const lines = results.map((r, i) => `${i + 1}. ${r.id} | ${r.slide_type} | score ${r.score}\n   Purpose: ${r.purpose}\n   Why it works: ${r.why_it_works}` +
@@ -113,7 +118,7 @@ function createServer(env: Env, lib: Library) {
 		},
 		async (args) => {
 			const { results, library_version } = await searchFlows(env, lib, args,
-				(q, key) => env.SEARCHER.get(env.SEARCHER.idFromName("global")).flows(q, key));
+				async (q, k) => (await spend(), env.SEARCHER.get(env.SEARCHER.idFromName("global")).flows(q, k)));
 			if (!results.length)
 				return { content: [text(`No deck flows match these filters. Try fewer filters or a broader purpose. (library_version ${library_version})`)] };
 			const lines = results.map((r, i) => `${i + 1}. ${r.id} | ${r.arc} | ${r.length} deck | ${r.industry} | score ${r.score}\n   Sections: ${r.sections}\n   Why the flow works: ${r.why_the_flow_works}`);
@@ -149,13 +154,8 @@ function createServer(env: Env, lib: Library) {
 			}
 			const row = await env.DB.prepare("SELECT dna, impact, layout FROM slides WHERE id = ?").bind(id).first<{ dna: string; impact: string; layout: string }>();
 			if (!row) return { content: [text(`No reference with id ${id}. Use an id returned by find_references.`)], isError: true };
-			const rec = JSON.parse(row.dna) as { regions: { box: { w: number; h: number } }[] };
-			const total = rec.regions.length;
-			if (total > MAX_REGIONS) {
-				const keep = new Set([...rec.regions].sort((a, b) => b.box.w * b.box.h - a.box.w * a.box.h).slice(0, MAX_REGIONS)); // stable: ties keep order
-				Object.assign(rec, { regions: rec.regions.filter((r) => keep.has(r)), regions_shown: `the ${MAX_REGIONS} largest of ${total}, by area` });
-			}
-			const dna = JSON.stringify({ ...rec, impact: row.impact, layout: JSON.parse(row.layout) });
+			// Busy records are stored with their 40 largest regions only (pipeline/package.py), so no record is too big to return.
+			const dna = JSON.stringify({ ...JSON.parse(row.dna), impact: row.impact, layout: JSON.parse(row.layout) });
 			const png = await env.ASSETS.fetch(`https://assets.local/wireframes/${id}.png`);
 			const bytes = png.ok ? new Uint8Array(await png.arrayBuffer()) : null;
 			if (!bytes || bytes.length > MAX_IMAGE) return { content: [text(dna)] };
@@ -182,19 +182,32 @@ export function clientKey(ip: string | null): string {
 	return ANTHROPIC.some(([net, bits]) => ip4(ip) >>> (32 - bits) === ip4(net) >>> (32 - bits)) ? "anthropic" : ip;
 }
 
-const SEARCHES = ["find_references", "find_deck_flows"];
-
 const rpcError = (status: number, id: unknown, message: string, headers: Record<string, string> = {}) =>
 	Response.json({ jsonrpc: "2.0", id: id ?? null, error: { code: -32000, message } }, { status, headers: { "access-control-allow-origin": "*", ...headers } });
 
-// Every tools/call counts toward the caller's per-minute limit; the two searches also spend the daily budget.
-async function limit(request: Request, env: Env, body: any): Promise<Response | null> {
+// The body as text, read only up to the SDK's 4 MiB cap: a body without a Content-Length is never buffered beyond it.
+const TOO_BIG = Symbol("too big");
+async function readCapped(request: Pick<Request, "headers" | "body">): Promise<string | typeof TOO_BIG> {
+	if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY) return TOO_BIG;
+	const chunks: Uint8Array[] = [];
+	let size = 0;
+	for await (const chunk of (request.body ?? new ReadableStream()) as ReadableStream<Uint8Array>) {
+		if ((size += chunk.byteLength) > MAX_BODY) return TOO_BIG;
+		chunks.push(chunk);
+	}
+	const all = new Uint8Array(size);
+	chunks.reduce((at, c) => (all.set(c, at), at + c.byteLength), 0);
+	return new TextDecoder().decode(all);
+}
+
+const limitsOf = (env: Env) => ({ perMinute: env.LIMIT_PER_MINUTE, perMinuteShared: env.LIMIT_PER_MINUTE_SHARED, dailySearchBudget: env.DAILY_SEARCH_BUDGET });
+
+// Every tools/call counts toward the caller's per-minute limit (uncached searches also spend the daily budget, in createServer).
+async function limit(request: Request, env: Env, body: any, key: string): Promise<Response | null> {
 	const calls = [body].flat().filter((m) => m?.method === "tools/call");
 	if (!calls.length) return null;
 	if (Array.isArray(body)) return rpcError(400, null, "Send one tools/call per request (JSON-RPC batches are not supported).");
-	const limits = { perMinute: env.LIMIT_PER_MINUTE, perMinuteShared: env.LIMIT_PER_MINUTE_SHARED, dailySearchBudget: env.DAILY_SEARCH_BUDGET };
-	const key = clientKey(request.headers.get("cf-connecting-ip"));
-	const v = await env.LIMITER.get(env.LIMITER.idFromName("global")).check(key, SEARCHES.includes(body.params?.name), limits);
+	const v = await env.LIMITER.get(env.LIMITER.idFromName("global")).check(key, limitsOf(env));
 	return v.ok ? null : rpcError(429, body.id, v.message, { "retry-after": String(v.retryAfter) });
 }
 
@@ -209,10 +222,6 @@ export const searcher = (lib: Library) => class Searcher extends DurableObject<E
 	}
 };
 export type Searcher = InstanceType<ReturnType<typeof searcher>>;
-
-// Drop cached search results from other library builds (they can never be served again).
-export const prune = (env: Env, lib: Library) =>
-	env.DB.prepare("DELETE FROM search_cache WHERE library_version IS NOT ?").bind(lib.manifest.library_version).run();
 
 const PAGE_HEADERS = {
 	"content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
@@ -230,19 +239,17 @@ export const app = (lib: Library): ExportedHandler<Env> => ({
 	async fetch(request, env) {
 		const { pathname } = new URL(request.url);
 		if (pathname === "/mcp") {
-			const body: any = request.method === "POST" ? await request.clone().json().catch(() => null) : null;
-			const denied = body ? await limit(request, env, body) : null;
+			const raw = request.method === "POST" ? await readCapped(request.clone()) : null;
+			if (raw === TOO_BIG) return rpcError(413, null, "The request body is over 4 MiB.");
+			const body: any = raw === null ? null : (() => { try { return JSON.parse(raw); } catch { return null; } })();
+			const key = clientKey(request.headers.get("cf-connecting-ip"));
+			const denied = body ? await limit(request, env, body, key) : null;
 			if (denied) return denied;
 			// Hand the parsed body to the SDK (its parsedBody option); otherwise it clones and parses the body twice more.
-			// Bodies without a size or over the SDK's 4 MiB cap are left to the SDK, so it still answers 413.
-			const parsed = body && Number(request.headers.get("content-length") ?? Infinity) <= MAX_BODY;
-			return createMcpHandler(() => createServer(env, lib)).fetch(request, parsed ? { parsedBody: body } : undefined);
+			return createMcpHandler(() => createServer(env, lib, key)).fetch(request, body ? { parsedBody: body } : undefined);
 		}
 		const page = PAGES[pathname];
 		if (page && request.method === "GET") return new Response(page[0], { headers: { "content-type": page[1], ...PAGE_HEADERS } });
 		return new Response("Not found", { status: 404 });
-	},
-	async scheduled(_controller, env) {
-		await prune(env, lib);
 	},
 });

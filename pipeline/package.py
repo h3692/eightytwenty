@@ -9,7 +9,7 @@ import json
 import shutil
 from pathlib import Path
 
-from pipeline import layout
+from pipeline import flow, layout
 
 SCHEMA_SQL = """DROP TABLE IF EXISTS flows;
 DROP TABLE IF EXISTS slides_fts;
@@ -24,6 +24,9 @@ CREATE TABLE flows (n INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE, deck_id TEXT
   length_bucket TEXT NOT NULL, industry TEXT NOT NULL, record TEXT NOT NULL, description TEXT NOT NULL);
 CREATE INDEX flows_filters ON flows (industry, length_bucket);
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+-- Cached results of the old library can never be served again (the key holds library_version): drop them on load.
+CREATE TABLE IF NOT EXISTS search_cache (key TEXT PRIMARY KEY, results TEXT NOT NULL, library_version TEXT);
+DELETE FROM search_cache;
 """
 
 
@@ -42,9 +45,10 @@ def run(library):
     flows = [json.loads(p.read_text()) for p in sorted((lib / "flows").glob("*.json"))]
     if manifest["ids"] != [r["id"] for r in records] or manifest.get("flows", {}).get("ids") != [f["id"] for f in flows]:
         raise SystemExit("library/records/ or library/flows/ changed since the last embed: run embed again before package.")
-    impact = {s["id"]: s.get("impact", "none") for f in flows for s in f["steps"]}  # v1 flows mark none
+    impact = flow.impacts(flows)
     lines = [SCHEMA_SQL]
     for n, r in enumerate(records):
+        r = dict(r, description=flow.described(r, impact.get(r["id"])))  # the same text embed.py embedded
         f = lib / "layouts" / r["deck_id"] / f"slide-{r['slide']:02d}.v3.json"
         try:
             lay = layout.validate(json.loads(f.read_text()))

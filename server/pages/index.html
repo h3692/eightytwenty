@@ -37,14 +37,14 @@ footer { margin-top: 3rem; color: var(--muted); font-size: .9rem; }
 <p class="lede">A free, read-only connector that gives your AI assistant a slide-design playbook for case competition decks, plus search over a curated library of slide layouts.</p>
 
 <p>Each library entry is an abstract layout record (region boxes, colour and type roles, hierarchy, a short note on why the slide works) and a wireframe drawn from that record. There are no original slides, names or numbers in it. Your assistant uses a reference as inspiration and builds the slide with its own tools.</p>
-<p>No account, no sign-in. It works with any assistant that supports remote MCP servers.</p>
+<p>No account, no sign-in. It works with assistants that connect to remote MCP servers, such as claude.ai, ChatGPT, Claude Code and Cursor; web pages cannot call it directly.</p>
 
 <h2>Connect</h2>
 <p>Server URL (Streamable HTTP, no authentication):</p>
 <p class="url"><code>https://eightytwenty.socratic.workers.dev/mcp</code></p>
 
 <h3>claude.ai</h3>
-<p>Settings → Connectors → Add custom connector. Enter a name and the URL above, leave authentication empty, and add it. In a chat, turn it on from the tools menu.</p>
+<p>Customize → Connectors → + Add → Add custom connector. Enter a name and the URL above, choose No sign in, and add it. In a chat, turn it on under + → Connectors.</p>
 
 <h3>Claude Code <span class="tag">not yet tested</span></h3>
 <pre><code>claude mcp add --transport http eightytwenty https://eightytwenty.socratic.workers.dev/mcp</code></pre>
@@ -57,7 +57,7 @@ footer { margin-top: 3rem; color: var(--muted); font-size: .9rem; }
 <p>All four are read-only. There is no way to upload to the library or list all of it.</p>
 <dl>
 <dt><code>get_playbook(stage?)</code></dt>
-<dd>The methodology: workflow, slide archetypes, anatomy and taglines, distinctive design, visual rules and design options, writing, a QA checklist, and how to audit the style of a deck you attach in chat. With no stage it returns the index and the workflow. Your assistant should call it before planning a deck.</dd>
+<dd>The methodology: workflow, narrative and impact slides, slide archetypes, anatomy and taglines, distinctive design, visual rules and design options, writing, a QA checklist, and how to audit the style of a deck you attach in chat. With no stage it returns the index and the workflow. Your assistant should call it before planning a deck.</dd>
 <dt><code>find_references(purpose, slide_type?, industry?, data_type?, impact?, k?)</code></dt>
 <dd>Searches the library by what a slide must do, with optional filters; <code>impact</code> (none, build, spotlight, shade_ribbon, repeat) finds slides that reference decks repeat for effect, and few exist. Returns up to eight short summaries (<code>k</code>, default 8), at most one per deck: id, slide type, a score, purpose, why it works, the layout's component kinds and its impact device if any, plus the library version. When planning a whole deck, use it after the slide-by-slide storyline is confirmed.</dd>
 <dt><code>find_deck_flows(purpose, industry?, length?)</code></dt>

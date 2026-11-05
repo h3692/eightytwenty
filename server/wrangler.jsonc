@@ -14,8 +14,8 @@
   // Searcher runs uncached searches: a Durable Object's CPU time is not counted against the Worker's.
   "durable_objects": { "bindings": [{ "name": "LIMITER", "class_name": "Limiter" }, { "name": "SEARCHER", "class_name": "Searcher" }] },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Limiter"] }, { "tag": "v2", "new_sqlite_classes": ["Searcher"] }],
-  // Daily: drop cached search results of older library builds.
-  "triggers": { "crons": ["17 3 * * *"] },
+  // No cron: every library load (records.sql) clears the search cache. An empty list removes the old daily trigger.
+  "triggers": { "crons": [] },
   "vars": {
     // Tool calls per minute per client IP (IPv6: per /64). Over it: 429 and a cooldown of 1, 2, 4 ... 60 minutes.
     "LIMIT_PER_MINUTE": 20,

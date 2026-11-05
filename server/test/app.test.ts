@@ -3,7 +3,7 @@ import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test"
 import { beforeEach, describe, expect, it } from "vitest";
 import labels from "../../pipeline/schema/labels.v1.json";
 import archetypesMd from "../../playbook/archetypes.md";
-import { app, clientKey, prune, STAGES } from "../src/app";
+import { app, clientKey, STAGES } from "../src/app";
 import type { Limiter } from "../src/limiter";
 import { DEFAULT_FLAGS, EMBED_MODEL, RERANK_MODEL, search, searchFlows } from "../src/search";
 import { fakeAI, flowFloats, flows, floats, impacts, layouts, library, manifest, rows, seed } from "./fixture";
@@ -289,22 +289,6 @@ describe("get_reference", () => {
 		expect(JSON.parse(body.result.content[0].text).id).toBe(rows[1].id);
 	});
 
-	it("caps a busy record at its 40 largest regions, in their original order, well under 20k tokens", async () => {
-		const id = "ffffffffffffffff-01";
-		const regions = Array.from({ length: 1000 }, (_, i) => ({ i, parent: null, type: "shape", role: "card", box: { x: 0, y: 0, w: ((i * 389) % 1000) / 1000, h: 0.5 }, fill: "accent", line: null, dashed: false, text: { words: 3, paragraphs: 1, lines: 1, bullets: 0, align: "left", weight: "regular", color: "neutral-dark", number: null, size: "body", pattern: null, pattern_words: null }, chart: null, table: null }));
-		const dna = { ...rows[0], id, deck_id: "ffffffffffffffff", regions };
-		await env.DB.prepare("INSERT INTO slides VALUES (99, ?, ?, 'chart', 'retail', 'time-series', 'p', 'w', 'd', ?, 'build', ?)").bind(id, dna.deck_id, JSON.stringify(dna), JSON.stringify(layouts[0])).run();
-		expect(JSON.stringify(dna).length).toBeGreaterThan(200_000);
-		const { body } = await tool("get_reference", { id });
-		const out = JSON.parse(body.result.content[0].text);
-		const largest = [...regions].sort((a, b) => b.box.w - a.box.w).slice(0, 40).map((r) => r.i).sort((a, b) => a - b);
-		expect(out.regions.map((r: { i: number }) => r.i)).toEqual(largest);
-		expect(out.regions[0]).toEqual(regions[largest[0]]);
-		expect(out).toMatchObject({ purpose: rows[0].purpose, why_it_works: rows[0].why_it_works, archetype: rows[0].archetype, insight_device: "highlight", impact: "build", layout: layouts[0] });
-		expect(out.regions_shown).toMatch(/40 largest of 1000/);
-		expect(body.result.content[0].text.length).toBeLessThan(40_000); // ~4 characters per token
-	});
-
 	it("returns a deck flow for a deck id, marking each step's slide as available or not", async () => {
 		const { body } = await tool("get_reference", { id: flows[0].id });
 		expect(body.result.isError).toBeFalsy();
@@ -333,7 +317,7 @@ describe("rate limits", () => {
 		const { res, body } = await tool("get_playbook", {}, { e, from });
 		expect(res.status).toBe(429);
 		expect(res.headers.get("retry-after")).toBe("60");
-		expect(body.error.message).toBe("Slow down: too many searches. Try again in 1 minute.");
+		expect(body.error.message).toBe("Slow down: too many requests. Try again in 1 minute.");
 		expect((await tool("get_playbook", {}, { e })).res.status).toBe(200);
 	});
 
@@ -342,15 +326,34 @@ describe("rate limits", () => {
 		for (let i = 0; i < 3; i++) expect((await rpc("tools/list", {}, { e, from })).res.status).toBe(200);
 	});
 
-	it("only the two searches spend the daily search budget", async () => {
-		const e = testEnv({ DAILY_SEARCH_BUDGET: 0 });
-		expect((await tool("get_playbook", {}, { e })).res.status).toBe(200);
-		expect((await tool("get_reference", { id: flows[0].id }, { e })).res.status).toBe(200);
-		for (const [name, args] of [["find_references", { purpose: "market share" }], ["find_deck_flows", { purpose: "win" }]] as const) {
+	it("spends the daily search budget only on uncached searches, after validation", async () => {
+		// The global Limiter keeps today's count from earlier tests: allow exactly two more searches.
+		const used = await runInDurableObject(env.LIMITER.get(env.LIMITER.idFromName("global")), (l: Limiter) =>
+			l.sql.exec<{ used: number }>("SELECT used FROM budget").toArray()[0]?.used ?? 0);
+		const e = testEnv({ DAILY_SEARCH_BUDGET: used + 2 });
+		expect((await tool("get_playbook", {}, { e })).body.result.isError).toBeFalsy();
+		expect((await tool("get_reference", { id: flows[0].id }, { e })).body.result.isError).toBeFalsy();
+		expect((await tool("find_references", { purpose: "market share", k: 9 }, { e })).body.result.isError).toBe(true);
+		for (let i = 0; i < 2; i++) expect((await tool("find_references", { purpose: "market share" }, { e })).body.result.content[0].text).toMatch(/^library_version/); // one miss, one hit
+		expect((await tool("find_deck_flows", { purpose: "win" }, { e })).body.result.isError).toBeFalsy();
+		for (const [name, args] of [["find_references", { purpose: "pricing tiers" }], ["find_deck_flows", { purpose: "launch" }]] as const) {
 			const { res, body } = await tool(name, args, { e });
-			expect(res.status).toBe(429);
-			expect(body.error.message).toBe("The shared daily search budget is used up. Try again after 00:00 UTC.");
+			expect(res.status).toBe(200);
+			expect(body.result).toMatchObject({ isError: true, content: [{ text: "The shared daily search budget is used up. Try again after 00:00 UTC." }] });
 		}
+	});
+
+	it("reads a body without a declared size only up to 4 MiB: small ones work, bigger ones get 413", async () => {
+		const send = (bytes: Uint8Array) => call("/mcp", {
+			method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream", "cf-connecting-ip": nextIp() },
+			body: new ReadableStream({ start(c) { for (let i = 0; i < bytes.length; i += 65_536) c.enqueue(bytes.subarray(i, i + 65_536)); c.close(); } }), duplex: "half",
+		} as RequestInit);
+		const small = new TextEncoder().encode(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} }));
+		expect((await send(small)).status).toBe(200);
+		const big = new TextEncoder().encode(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: { pad: "x".repeat(5 * 1024 * 1024) } }));
+		const res = await send(big);
+		expect(res.status).toBe(413);
+		expect((await res.json() as any).error.code).toBe(-32000);
 	});
 });
 
@@ -375,6 +378,14 @@ describe("clientKey", () => {
 	});
 });
 
+describe("tool descriptions", () => {
+	it("point the impact filter at requests to emphasize a key point", async () => {
+		const { body } = await rpc("tools/list");
+		const find = body.result.tools.find((t: { name: string }) => t.name === "find_references");
+		expect(find.inputSchema.properties.impact.description).toMatch(/emphasi[sz]e/);
+	});
+});
+
 describe("Limiter", () => {
 	const limits = { perMinute: 2, perMinuteShared: 5, dailySearchBudget: 100 };
 	const inDO = <T>(fn: (l: Limiter, state: DurableObjectState) => T) => runInDurableObject(env.LIMITER.get(env.LIMITER.newUniqueId()), fn);
@@ -382,11 +393,11 @@ describe("Limiter", () => {
 	it("escalates cooldowns for repeat offenders: 1, 2, 4 minutes", async () => {
 		await inDO((l) => {
 			let t = 0;
-			const burst = () => { for (let i = 0; i < 2; i++) expect(l.check("k", false, limits, t).ok).toBe(true); return l.check("k", false, limits, t); };
+			const burst = () => { for (let i = 0; i < 2; i++) expect(l.check("k", limits, t).ok).toBe(true); return l.check("k", limits, t); };
 			expect(burst().message).toMatch(/in 1 minute\.$/);
 			t += 61_000;
 			expect(burst().message).toMatch(/in 2 minutes\.$/);
-			expect(l.check("k", false, limits, t + 60_000).message).toMatch(/in 1 minute\.$/); // still cooling down
+			expect(l.check("k", limits, t + 60_000).message).toMatch(/in 1 minute\.$/); // still cooling down
 			t += 121_000;
 			expect(burst().message).toMatch(/in 4 minutes\.$/);
 		});
@@ -394,25 +405,34 @@ describe("Limiter", () => {
 
 	it("gives the shared anthropic bucket the higher limit", async () => {
 		await inDO((l) => {
-			for (let i = 0; i < 5; i++) expect(l.check("anthropic", false, limits, 0).ok).toBe(true);
-			expect(l.check("anthropic", false, limits, 0).ok).toBe(false);
+			for (let i = 0; i < 5; i++) expect(l.check("anthropic", limits, 0).ok).toBe(true);
+			expect(l.check("anthropic", limits, 0).ok).toBe(false);
 		});
 	});
 
 	it("counts the daily budget per UTC day", async () => {
 		await inDO((l) => {
 			const b = { ...limits, dailySearchBudget: 1 }, day = 86_400_000;
-			expect(l.check("a", true, b, 0).ok).toBe(true);
-			expect(l.check("b", true, b, 1000).message).toMatch(/daily search budget/);
-			expect(l.check("b", false, b, 1000).ok).toBe(true);
-			expect(l.check("b", true, b, day).ok).toBe(true);
+			expect(l.spend("a", b, 0).ok).toBe(true);
+			expect(l.spend("b", b, 1000).message).toMatch(/daily search budget/);
+			expect(l.spend("b", b, day).ok).toBe(true);
+		});
+	});
+
+	it("keeps a tenth of the daily budget out of the shared anthropic bucket's reach", async () => {
+		await inDO((l) => {
+			const b = { ...limits, dailySearchBudget: 10 };
+			for (let i = 0; i < 9; i++) expect(l.spend("anthropic", b, 0).ok).toBe(true);
+			expect(l.spend("anthropic", b, 0).message).toMatch(/daily search budget/);
+			expect(l.spend("198.51.100.7", b, 0).ok).toBe(true);
+			expect(l.spend("198.51.100.7", b, 0).ok).toBe(false);
 		});
 	});
 
 	it("forgets a client 24 hours after its last request", async () => {
 		await inDO((l) => {
-			l.check("old", false, limits, 0);
-			l.check("new", false, limits, 86_400_000 + 120_000);
+			l.check("old", limits, 0);
+			l.check("new", limits, 86_400_000 + 120_000);
 			const keys = l.sql.exec<{ key: string }>("SELECT key FROM keys").toArray().map((r) => r.key);
 			expect(keys).toEqual(["new"]);
 			expect(l.sql.exec("SELECT day FROM budget").toArray().length).toBeLessThanOrEqual(1);
@@ -422,8 +442,8 @@ describe("Limiter", () => {
 	it("deletes idle clients on an alarm even when no other request arrives", async () => {
 		await inDO(async (l, state) => {
 			const day = 86_400_000, now = Date.now();
-			l.check("idle", false, limits, now - day - 1000);
-			l.check("recent", false, limits, now - 1000);
+			l.check("idle", limits, now - day - 1000);
+			l.check("recent", limits, now - 1000);
 			expect(await state.storage.getAlarm()).not.toBeNull();
 			await l.alarm();
 			expect(l.sql.exec<{ key: string }>("SELECT key FROM keys").toArray().map((r) => r.key)).toEqual(["recent"]);
@@ -456,15 +476,5 @@ describe("pages", () => {
 	it("never serves library files over a public URL", async () => {
 		for (const p of [`/wireframes/${rows[0].id}.png`, "/vecs.bin", "/norms.bin", "/manifest.json", "/records.sql"])
 			expect((await call(p)).status).toBe(404);
-	});
-});
-
-describe("cache hygiene", () => {
-	it("prunes cached results of other library versions", async () => {
-		await tool("find_references", { purpose: "market share" });
-		await env.DB.prepare("INSERT INTO search_cache (key, results, library_version) VALUES ('old', '[]', 'bge-m3/desc-v1/old')").run();
-		await prune(env, lib);
-		const left = await env.DB.prepare("SELECT library_version FROM search_cache").all<{ library_version: string }>();
-		expect(left.results.map((r) => r.library_version)).toEqual([manifest.library_version]);
 	});
 });

@@ -45,7 +45,7 @@ DESIGN_TERMS = {"kpi", "kpis", "swot", "gantt", "harvey", "roi", "cagr", "mece",
                 "waterfall", "swimlane", "swimlanes", "donut", "doughnut", "italic", "breakeven", "infographic",
                 "summarise", "summarises", "summarize", "summarizes",
                 # common case-competition terms
-                "financials", "deliverables", "storyboard", "faq", "roadmap", "persona", "agenda", "appendix",
+                "financials", "deliverables", "storyboard", "faq", "roadmap", "persona", "personas", "agenda", "appendix",
                 "takeaway", "benchmark", "playbook", "scorecard", "dashboard", "wireframe", "mockup", "pillar",
                 "pillars", "workstream", "workstreams", "milestone", "milestones", "synergy", "synergies", "npv",
                 "ebitda", "tam", "sam", "som", "b2b", "b2c", "d2c", "sku", "skus", "go", "to", "market", "gtm"}
@@ -179,13 +179,13 @@ def problems_in(text, source, names):
     return found
 
 
-def check(dna, source):
+def check(dna, source, deck_names=frozenset()):
     problems = []
     try:
         build.check_schema(dna)
     except Exception as e:  # fail closed on any schema problem
         return [f"schema: {e}"]
-    names = source_names(source)
+    names = source_names(source) | deck_names  # a name on any slide of the deck counts
     fields = {k: dna[k] for k in ("purpose", "why_it_works", "description")}
     fields |= {f"regions/{r['i']}/pattern": r["text"]["pattern"] for r in dna["regions"] if r["text"] and r["text"]["pattern"]}
     for key, text in fields.items():
@@ -296,6 +296,9 @@ def run(deck_id, library):
     (lib / "records").mkdir(exist_ok=True)
     (lib / "wireframes").mkdir(exist_ok=True)
     report, skip = {}, dedupe.excluded(deck_id, lib)
+    visible = sorted(work.glob("slide-??.json"))
+    deck_text = "\n".join((work / "text" / f"{f.stem}.txt").read_text() for f in visible)
+    deck_names = source_names(deck_text)
     for f in sorted((work / "build").glob("*.json")):
         dna, rid = json.loads(f.read_text()), f.stem
         if rid in skip:  # blank or a near-duplicate: withdrawn, never judged
@@ -309,7 +312,7 @@ def run(deck_id, library):
         source = (work / "text" / f"{nn}.txt").read_text()
         pic, pptx = (lib / "mockups" / deck_id / f"{nn}{ext}" for ext in (".png", ".pptx"))
         layout = lib / "layouts" / deck_id / f"{nn}.v3.json"
-        problems = check(dna, source)
+        problems = check(dna, source, deck_names)
         if not layout.exists():
             problems.append(f"no v3 layout: write layouts/{deck_id}/{nn}.v3.json, then run mockup")
         elif not (pic.exists() and pptx.exists()):
@@ -333,15 +336,17 @@ def run(deck_id, library):
         else:
             for p in published:
                 p.unlink(missing_ok=True)
+    for p in (lib / "records").glob(f"{deck_id}-*.json"):  # published before, but its build is gone: withdraw it
+        if p.stem not in report:
+            p.unlink()
+            (lib / "wireframes" / f"{p.stem}.png").unlink(missing_ok=True)
     ids = [rid for rid, r in report.items() if r["auto"] == "pass"]
-    visible = sorted(work.glob("slide-??.json"))
     record, published = work / "flow-record.json", lib / "flows" / f"{deck_id}.json"
     shown = sum(r["published"] for r in report.values())  # slides of this deck published
     if len(visible) < flow.MIN_SLIDES:
         (judge / "flow.json").unlink(missing_ok=True)
     else:
         if record.exists():
-            deck_text = "\n".join((work / "text" / f"{f.stem}.txt").read_text() for f in visible)
             problems = check_flow(json.loads(record.read_text()), deck_text)
         else:
             problems = ["no flow record: run flow-prep, follow its worksheet, then flow-build"]

@@ -6,6 +6,7 @@ export type Limits = { perMinute: number; perMinuteShared: number; dailySearchBu
 export type Verdict = { ok: boolean; message: string; retryAfter: number };
 
 const WINDOW_MS = 60_000, MAX_COOLDOWN_MIN = 60, KEEP_MS = 86_400_000;
+const SHARED_SHARE = 0.9; // the shared AI-provider bucket can spend at most this share of the daily budget, so direct clients keep the rest
 
 export class Limiter extends DurableObject<Env> {
 	sql = this.ctx.storage.sql;
@@ -20,8 +21,8 @@ export class Limiter extends DurableObject<Env> {
 			CREATE TABLE IF NOT EXISTS budget (day TEXT PRIMARY KEY, used INTEGER)`);
 	}
 
-	// `search` = the call spends the daily budget (find_references). The shared "anthropic" key gets perMinuteShared.
-	check(key: string, search: boolean, limits: Limits, now = Date.now()): Verdict {
+	// Every tool call counts toward the key's per-minute limit. The shared "anthropic" key gets perMinuteShared.
+	check(key: string, limits: Limits, now = Date.now()): Verdict {
 		const day = new Date(now).toISOString().slice(0, 10);
 		if (now - this.pruned >= WINDOW_MS) {
 			this.sql.exec("DELETE FROM keys WHERE seen < ?", now - KEEP_MS);
@@ -38,7 +39,7 @@ export class Limiter extends DurableObject<Env> {
 		const save = () => this.sql.exec("INSERT OR REPLACE INTO keys VALUES (?, ?, ?, ?, ?, ?)", key, row.window_start, row.count, row.strikes, row.cooldown_until, now);
 		const slowDown = (until: number): Verdict => {
 			const min = Math.ceil((until - now) / 60_000);
-			return { ok: false, message: `Slow down: too many searches. Try again in ${min} minute${min === 1 ? "" : "s"}.`, retryAfter: min * 60 };
+			return { ok: false, message: `Slow down: too many requests. Try again in ${min} minute${min === 1 ? "" : "s"}.`, retryAfter: min * 60 };
 		};
 
 		if (row.cooldown_until > now) return slowDown(row.cooldown_until);
@@ -50,16 +51,19 @@ export class Limiter extends DurableObject<Env> {
 			save();
 			return slowDown(row.cooldown_until);
 		}
-		if (search) {
-			const used = this.sql.exec<{ used: number }>("SELECT used FROM budget WHERE day = ?", day).toArray()[0]?.used ?? 0;
-			if (used >= limits.dailySearchBudget) {
-				save();
-				const retryAfter = Math.ceil((Date.parse(day) + KEEP_MS - now) / 1000);
-				return { ok: false, message: "The shared daily search budget is used up. Try again after 00:00 UTC.", retryAfter };
-			}
-			this.sql.exec("INSERT OR REPLACE INTO budget VALUES (?, ?)", day, used + 1);
-		}
 		save();
+		return { ok: true, message: "ok", retryAfter: 0 };
+	}
+
+	// An uncached search (the Workers AI calls) spends one unit of the global daily budget.
+	spend(key: string, limits: Limits, now = Date.now()): Verdict {
+		const day = new Date(now).toISOString().slice(0, 10);
+		const used = this.sql.exec<{ used: number }>("SELECT used FROM budget WHERE day = ?", day).toArray()[0]?.used ?? 0;
+		if (used >= (key === "anthropic" ? Math.floor(limits.dailySearchBudget * SHARED_SHARE) : limits.dailySearchBudget)) {
+			const retryAfter = Math.ceil((Date.parse(day) + KEEP_MS - now) / 1000);
+			return { ok: false, message: "The shared daily search budget is used up. Try again after 00:00 UTC.", retryAfter };
+		}
+		this.sql.exec("INSERT OR REPLACE INTO budget VALUES (?, ?)", day, used + 1);
 		return { ok: true, message: "ok", retryAfter: 0 };
 	}
 

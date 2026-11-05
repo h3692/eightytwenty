@@ -97,6 +97,8 @@ def test_leaks_in_free_text_fail_closed_even_with_judge_pass(deck, lib, field, v
 
 def test_design_vocabulary_is_not_a_name():
     assert leak_check.problems_in("Gantt bars and a SWOT grid with KPI tiles and Harvey balls", "", set()) == []
+    # plurals too, even when the deck's text tags the word as a name somewhere
+    assert leak_check.problems_in("Two Personas side by side", "Personas", {"personas"}) == []
 
 
 def test_names_from_the_slide_text_are_blocked_even_if_ner_misses_them():
@@ -547,3 +549,26 @@ def test_a_verdict_is_discarded_when_its_item_fails_the_automated_check(deck, li
     # the copies go, and the verdicts with them: whatever text replaces the leak is judged afresh
     assert not (verdicts / f"{ids[0]}.json").exists() and not (verdicts / "flow.json").exists()
     assert (verdicts / f"{ids[1]}.json").exists()
+
+
+def test_slide_prose_is_checked_for_names_from_anywhere_in_the_deck(deck, lib):
+    deck_id, ids = _six_slide_deck(deck, lib)  # only slide 5's text names Quillmoor
+    record = lib / "work" / deck_id / "build" / f"{ids[2]}.json"
+    record.write_text(json.dumps(dict(json.loads(record.read_text()), purpose="Open on the quillmoor promise first")))
+    report = leak_check.run(deck_id, lib)
+    assert report[ids[2]]["auto"] == "fail" and any("quillmoor" in p for p in report[ids[2]]["problems"])
+
+
+def test_a_published_record_whose_build_is_gone_is_withdrawn(deck, lib):
+    deck_id, ids = _six_slide_deck(deck, lib)
+    for rid in [*ids, "flow"]:
+        _judge(lib, deck_id, rid, False)
+    leak_check.run(deck_id, lib)
+    other = lib / "records" / "ffffffffffffffff-01.json"  # another deck's record is left alone
+    other.write_text("{}")
+    assert (lib / "records" / f"{ids[1]}.json").exists()
+    (lib / "work" / deck_id / "build" / f"{ids[1]}.json").unlink()
+    report = leak_check.run(deck_id, lib)
+    assert ids[1] not in report
+    assert not (lib / "records" / f"{ids[1]}.json").exists() and not (lib / "wireframes" / f"{ids[1]}.png").exists()
+    assert (lib / "records" / f"{ids[0]}.json").exists() and other.exists()

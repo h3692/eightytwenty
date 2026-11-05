@@ -21,6 +21,24 @@ IMPACTS = SCHEMA["properties"]["impact"]["items"]["enum"]
 TEMPLATE = (HERE / "templates" / "flow.txt").read_text()
 IMPACT_TEMPLATE = (HERE / "templates" / "flow-impact.txt").read_text()
 MIN_SLIDES = 6
+# What each impact frame is for, appended to an impact slide's description when it is embedded and packaged, so a
+# request like "emphasize a key point" finds them. Fixed text: nothing from the source deck.
+IMPACT_PURPOSE = {
+    "build": "Impact frame, build: reveals the slide's content step by step, to pace the argument and land each point in turn.",
+    "spotlight": "Impact frame, spotlight: repeats an earlier slide with one part highlighted and the rest faded, to draw attention to one point.",
+    "shade_ribbon": "Impact frame, shade and ribbon: repeats the previous slide dimmed with a ribbon stating the key point, to emphasize the main takeaway.",
+    "repeat": "Impact frame, repeat: brings an earlier slide back, such as the agenda, summary or cover, to recap or bookend the story.",
+}
+
+
+def impacts(flows):
+    """Slide id -> the impact kind of its step in a published flow (v1 flows mark none)."""
+    return {s["id"]: s.get("impact", "none") for f in flows for s in f.get("steps", [])}
+
+
+def described(record, impact):
+    """The text a slide is embedded and searched by: its description, plus what its impact frame is for."""
+    return f"{record['description']} {IMPACT_PURPOSE[impact]}" if impact in IMPACT_PURPOSE else record["description"]
 RECORD_KEYS = {"schema_version", "id", "deck_id", "arc", "why_the_flow_works", "steps", "dividers", "pacing",
                "length_bucket", "industry", "description"}
 STEP_KEYS = {"id", "archetype", "section", "impact", "builds_on"}

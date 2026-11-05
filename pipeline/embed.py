@@ -12,7 +12,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from pipeline import build
+from pipeline import build, flow
 
 MODEL, POOLING, DIMS, PORT, BATCH = "@cf/baai/bge-m3", "cls", 1024, 8799, 20
 START = "npx wrangler dev --config pipeline/embed_worker/wrangler.jsonc"
@@ -52,7 +52,8 @@ def run(library, url=f"http://127.0.0.1:{PORT}"):
     if not records:
         raise SystemExit("No published records in library/records/ (run leak-check first).")
     flows = [json.loads(p.read_text()) for p in sorted((lib / "flows").glob("*.json"))]
-    vecs, norms = _embed(url, [r["description"] for r in records])
+    impact = flow.impacts(flows)
+    vecs, norms = _embed(url, [flow.described(r, impact.get(r["id"])) for r in records])
     flow_vecs, _ = _embed(url, [f["description"] for f in flows])
     digest = hashlib.sha256(json.dumps([records, flows], sort_keys=True).encode() + bytes(vecs + flow_vecs)).hexdigest()[:12]
     (lib / "vecs.bin").write_bytes(vecs)

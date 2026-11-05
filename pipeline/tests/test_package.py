@@ -199,3 +199,29 @@ def test_refuses_a_row_over_d1s_statement_limit(lib):
     f.write_text(json.dumps(dict(json.loads(f.read_text()), description="Options slide. " * 8000)))
     with pytest.raises(SystemExit, match=ids[0]):
         package.run(lib)
+
+
+def test_impact_slides_are_described_and_searchable_by_what_their_impact_frame_is_for(lib):
+    from pipeline import flow
+    ids = _library(lib, ["Compare the options side by side", "Pick a winner"])
+    _flows(lib, ["00000000000000aa"])
+    f = lib / "flows" / "00000000000000aa.json"
+    f.write_text(json.dumps(dict(json.loads(f.read_text()), steps=[{"id": ids[1], "archetype": "options", "section": "solution",
+                                                                    "impact": "spotlight", "builds_on": 1}])))
+    package.run(lib)
+    db = _load(lib)
+    rows = db.execute("SELECT description FROM slides ORDER BY n").fetchall()
+    assert rows[0][0] == "Options slide. Purpose: Compare the options side by side."
+    assert rows[1][0] == f"Options slide. Purpose: Pick a winner. {flow.IMPACT_PURPOSE['spotlight']}"
+    assert db.execute("SELECT s.id FROM slides_fts f JOIN slides s ON s.n = f.rowid WHERE slides_fts MATCH 'attention'").fetchall() == [(ids[1],)]
+
+
+def test_loading_a_library_clears_the_search_cache(lib):
+    _library(lib, ["Compare the options side by side"])
+    db = sqlite3.connect(":memory:")
+    db.execute("CREATE TABLE search_cache (key TEXT PRIMARY KEY, results TEXT NOT NULL, library_version TEXT)")
+    db.execute("INSERT INTO search_cache VALUES ('k', '[]', 'bge-m3/desc-v1/old')")
+    package.run(lib)
+    db.executescript((lib / "records.sql").read_text())
+    assert db.execute("SELECT count(*) FROM search_cache").fetchone() == (0,)
+    _load(lib)  # also loads where the cache table does not exist yet

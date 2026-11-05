@@ -15,7 +15,7 @@ from pipeline import label_prep
 HERE = Path(__file__).parent
 SCHEMA = json.loads((HERE / "schema" / "design-dna.v1.json").read_text())
 _REGISTRY = Registry().with_resources([(s["$id"], Resource.from_contents(s)) for s in (SCHEMA, label_prep.SCHEMA)])
-DESCRIPTION_VERSION = "desc-v1"
+DESCRIPTION_VERSION = "desc-v2"  # v2: impact slides add what their impact frame is for
 MAX_WIREFRAME = 30 * 1024
 LABELS = {"title": "title", "tagline": "subtitle", "subtitle": "subtitle", "section-label": "label", "body": "text",
           "bullet-list": "bullets", "big-number": "number", "number-label": "label", "chart": "chart", "table": "table",

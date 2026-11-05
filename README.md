@@ -26,7 +26,8 @@ Add `https://eightytwenty.socratic.workers.dev/mcp` as a remote MCP connector in
   slide type, industry, data type and impact slide kind. Returns up to 8 short summaries.
 - `find_deck_flows`: search whole-deck flows by what the deck needs to do, optionally by industry and
   deck length.
-- `get_reference`: the full record for one slide result plus its wireframe, or one deck flow.
+- `get_reference`: the record for one slide result (its 40 largest regions), its layout and wireframe,
+  or one deck flow.
 
 All tools are read-only. There is no way to upload to or list the whole library.
 

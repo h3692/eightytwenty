@@ -66,8 +66,8 @@ def test_writes_int8_vectors_norms_and_manifest_in_spike_layout(lib, server):
     man = json.loads((lib / "manifest.json").read_text())
     assert man["model"] == "@cf/baai/bge-m3" and man["pooling"] == "cls" and man["dims"] == 1024
     assert man["ids"] == sorted(ids) and man["count"] == 3
-    assert man["description_version"] == "desc-v1" and man["schema_version"] == "design-dna/v1"
-    assert man["library_version"].startswith("bge-m3/desc-v1/")
+    assert man["description_version"] == "desc-v2" and man["schema_version"] == "design-dna/v1"
+    assert man["library_version"].startswith("bge-m3/desc-v2/")
 
 
 def test_library_version_is_deterministic_per_build(lib, server):
@@ -139,3 +139,18 @@ def test_no_flows_writes_an_empty_flow_vector_set(lib, server):
     embed.run(lib, server)
     assert (lib / "flow_vecs.bin").read_bytes() == b""
     assert json.loads((lib / "manifest.json").read_text())["flows"] == {"count": 0, "ids": []}
+
+
+def test_impact_slides_are_embedded_with_what_their_impact_frame_is_for(lib, server):
+    from pipeline import flow
+    ids = _records(lib, 2)
+    _flows(lib, 1)
+    f = lib / "flows" / "0000000000000000.json"
+    f.write_text(json.dumps(dict(json.loads(f.read_text()), steps=[{"id": ids[0], "impact": "shade_ribbon"}])))
+    embed.run(lib, server)
+    vecs = (lib / "vecs.bin").read_bytes()
+    for row, text in enumerate([f"Slide about {ids[0]} {flow.IMPACT_PURPOSE['shade_ribbon']}", f"Slide about {ids[1]}"]):
+        v = _vec(text)
+        m = max(map(abs, v))
+        assert list(struct.unpack("1024b", vecs[row * 1024:(row + 1) * 1024])) == [round(x * 127 / m) for x in v]
+    assert "emphasi" in flow.IMPACT_PURPOSE["shade_ribbon"] and set(flow.IMPACT_PURPOSE) == {"build", "spotlight", "shade_ribbon", "repeat"}
