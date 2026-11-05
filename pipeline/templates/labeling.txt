@@ -1,0 +1,45 @@
+Label one slide for the eightytwenty design library and describe it as a few big components, in one pass.
+Look at the rendered slide ONCE, then write BOTH files below, nothing else:
+  1. {labels_out}
+     its labels
+  2. {layout_out}
+     its component layout, zoomed out (a fixed builder draws it as a clean greyscale wireframe slide)
+
+The rendered slide: {png}
+Its {count} largest extracted regions (of {total}; every other region is labelled "other" automatically), one per
+line: index "i", type, normalised box {{x, y, w, h}}, colour/type roles, text counts.
+{regions}
+
+=== File 1: labels ===
+Write ONE JSON object to {labels_out}
+It must validate against pipeline/schema/labels.v1.json. Fields:
+
+  archetype       one of: {archetypes}
+  purpose         what job the slide does in the argument, abstract, 10-200 characters
+  argument_shape  one of: {argument_shapes}
+  insight_device  one of: {insight_devices}
+  data_type       one of: {data_types}
+  industry        coarse industry, one of: {industries}
+  why_it_works    why the design works, 20-400 characters
+  regions         an object mapping EVERY region index listed above (as a string), and no other, to a role, one of:
+                  {roles}
+  text_patterns   for each listed text region worth imitating: {{"region": <index>, "pattern": "<shape of the text>",
+                  "words": <word count>}}, e.g. {{"region": 3, "pattern": "claim + mechanism + number", "words": 14}}
+
+Hard rules for every free-text field (purpose, why_it_works, pattern). A leak check rejects the record otherwise:
+  - Describe the design, never the content. No client, competition, team, school, year, person, company,
+    brand, product or place names, and no hint that identifies them.
+  - No digits at all (write "one big number", not "3x").
+  - Never copy three or more consecutive words from the slide's text.
+  - No brand identity. No specific colour names (red, blue, coral, teal, navy, gold ... or "-ish" forms): use
+    roles (primary, accent, brand-colour fill, dark, light, mid-grey, black, white, greyscale, tint, shade,
+    saturated, muted).
+  - No mascot, wordmark, lockup, logomark, monogram, emblem, crest, watermark, signature, sponsor, affiliation,
+    portrait, domain or URL, and no "brand art", "brand illustration", "brand motif" or "brand swoosh". Write
+    "headshot slots" for portraits; "logo" is fine as a placement ("logo top right").
+  - Never say what an illustration depicts (botanical, an animal, a character, a landmark, a skyline, a world
+    map): write "illustration", "photo", "icon", "image" or "map".
+  - No other fields than the ones above.
+
+=== File 2: component layout ===
+{components}

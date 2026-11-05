@@ -1,0 +1,11 @@
+// Local-only helper: `npx wrangler dev --config pipeline/embed_worker/wrangler.jsonc`.
+// Runs on this machine; only the Workers AI call goes to Cloudflare, under your `wrangler login` account.
+// Never deploy it (workers_dev is off and the script refuses non-local hosts).
+{
+  "name": "eightytwenty-embed-local",
+  "main": "index.js",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": false,
+  "ai": { "binding": "AI", "remote": true },
+  "dev": { "ip": "127.0.0.1", "port": 8799 }
+}

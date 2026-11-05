@@ -1,0 +1,19 @@
+# Library data: decks, renders, design-DNA JSON, embeddings, wireframes
+library/
+*.pptx
+*.pdf
+
+# Eval answers
+eval/golden/
+
+# Secrets
+.env*
+.dev.vars
+
+# Tooling
+.wrangler/
+node_modules/
+__pycache__/
+*.egg-info/
+.venv/
+.DS_Store

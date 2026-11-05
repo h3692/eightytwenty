@@ -1,0 +1,9 @@
+Describe one slide as a few big components; a fixed builder draws them as a clean greyscale wireframe slide.
+Its labels already exist: do not write or change any labels file.
+
+Look at the rendered slide: {png}
+An optional alignment hint, the {count} largest extracted regions of the same slide (of {total}), one per line:
+index "i", type, normalised box {{x, y, w, h}}, colour/type roles, text counts.
+{regions}
+
+{components}

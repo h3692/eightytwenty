@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>eightytwenty: a slide-design connector for AI assistants</title>
+<meta name="description" content="A free, read-only MCP connector: a slide-design playbook for case competition decks and search over a curated library of slide layouts.">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<style>
+:root { color-scheme: light dark; --ink: #1f2a37; --muted: #5b6573; --line: #d9d4ca; --bg: #fbfaf7; --code: #f1eee7; --accent: #b7791f; }
+@media (prefers-color-scheme: dark) { :root { --ink: #ece8e1; --muted: #a9a39a; --line: #3a3833; --bg: #191816; --code: #24221f; --accent: #e0a43a; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 44rem; margin: 0 auto; padding: 3rem 1.25rem 4rem; }
+header { display: flex; align-items: center; gap: .75rem; }
+header img { width: 2.5rem; height: 2.5rem; }
+h1 { font-size: 1.6rem; line-height: 1.2; margin: 0; }
+h2 { font-size: 1.15rem; margin: 2.5rem 0 .5rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+h3 { font-size: 1rem; margin: 1.5rem 0 .25rem; }
+p, li { max-width: 65ch; }
+.lede { font-size: 1.1rem; color: var(--muted); margin: 1.25rem 0 0; }
+code, pre { font: .9em/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--code); border-radius: 4px; }
+code { padding: .1em .3em; }
+pre { padding: .75rem 1rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+pre code { padding: 0; background: none; }
+.url { font-size: 1rem; padding: .75rem 1rem; border-left: 3px solid var(--accent); background: var(--code); overflow-wrap: anywhere; }
+.tag { font-size: .8rem; font-weight: 600; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 .5em; margin-left: .35em; white-space: nowrap; }
+dt { font-weight: 600; margin-top: 1rem; }
+dd { margin: .25rem 0 0; }
+a { color: inherit; text-underline-offset: .2em; }
+footer { margin-top: 3rem; color: var(--muted); font-size: .9rem; }
+</style>
+</head>
+<body>
+<main>
+<header><img src="/icon.svg" alt=""><h1>eightytwenty</h1></header>
+<p class="lede">A free, read-only connector that gives your AI assistant a slide-design playbook for case competition decks, plus search over a curated library of slide layouts.</p>
+
+<p>Each library entry is an abstract layout record (region boxes, colour and type roles, hierarchy, a short note on why the slide works) and a wireframe drawn from that record. There are no original slides, names or numbers in it. Your assistant uses a reference as inspiration and builds the slide with its own tools.</p>
+<p>No account, no sign-in. It works with assistants that connect to remote MCP servers, such as claude.ai, ChatGPT, Claude Code and Cursor; web pages cannot call it directly.</p>
+
+<h2>Connect</h2>
+<p>Server URL (Streamable HTTP, no authentication):</p>
+<p class="url"><code>https://eightytwenty.socratic.workers.dev/mcp</code></p>
+
+<h3>claude.ai</h3>
+<p>Customize → Connectors → + Add → Add custom connector. Enter a name and the URL above, choose No sign in, and add it. In a chat, turn it on under + → Connectors.</p>
+
+<h3>Claude Code <span class="tag">not yet tested</span></h3>
+<pre><code>claude mcp add --transport http eightytwenty https://eightytwenty.socratic.workers.dev/mcp</code></pre>
+
+<h3>Other MCP clients <span class="tag">not yet tested</span></h3>
+<p>ChatGPT (developer mode), Cursor, VS Code, Gemini CLI and others: add a remote MCP server with the URL above and no authentication. For clients that use an <code>mcpServers</code> JSON file, such as Cursor:</p>
+<pre><code>{ "mcpServers": { "eightytwenty": { "url": "https://eightytwenty.socratic.workers.dev/mcp" } } }</code></pre>
+
+<h2>Tools</h2>
+<p>All four are read-only. There is no way to upload to the library or list all of it.</p>
+<dl>
+<dt><code>get_playbook(stage?)</code></dt>
+<dd>The methodology: workflow, narrative and impact slides, slide archetypes, anatomy and taglines, distinctive design, visual rules and design options, writing, a QA checklist, and how to audit the style of a deck you attach in chat. With no stage it returns the index and the workflow. Your assistant should call it before planning a deck.</dd>
+<dt><code>find_references(purpose, slide_type?, industry?, data_type?, impact?, k?)</code></dt>
+<dd>Searches the library by what a slide must do, with optional filters; <code>impact</code> (none, build, spotlight, shade_ribbon, repeat) finds slides that reference decks repeat for effect, and few exist. Returns up to eight short summaries (<code>k</code>, default 8), at most one per deck: id, slide type, a score, purpose, why it works, the layout's component kinds and its impact device if any, plus the library version. When planning a whole deck, use it after the slide-by-slide storyline is confirmed.</dd>
+<dt><code>find_deck_flows(purpose, industry?, length?)</code></dt>
+<dd>Searches the library's deck flows (how strong decks order their sections) by what a whole deck must achieve, optionally by industry and length (short, medium, long). Returns up to three summaries: deck id, arc, length, industry, section sequence, why the flow works, and a score. Use it after the slide-by-slide storyline is confirmed.</dd>
+<dt><code>get_reference(id)</code></dt>
+<dd>One slide: its labels (purpose, why it works, archetype, insight device, impact), its component layout, its design-DNA record (the 40 largest regions), and its wireframe image where the client shows images. Given a deck id, it returns that deck's flow: its steps in order, each with a slide id, its impact device, and whether that slide is in the library.</dd>
+</dl>
+
+<h2>Try asking</h2>
+<ul>
+<li>“Use eightytwenty to plan the executive summary slide for my case on a regional grocery chain.”</li>
+<li>“Find reference layouts for a slide that compares three market-entry options, and build one in my style.”</li>
+<li>“Here is my deck. Audit its style with the eightytwenty playbook and fix slide 4.”</li>
+</ul>
+
+<h2>Limits</h2>
+<p>Each client IP address can make 20 tool calls a minute. Going over starts a cooldown of 1 minute that doubles for repeat bursts, up to an hour. Requests from claude.ai share one larger allowance, and searches across all users share a daily budget that resets at 00:00 UTC.</p>
+
+<footer><a href="/privacy">Privacy</a> · MIT licensed</footer>
+</main>
+</body>
+</html>
