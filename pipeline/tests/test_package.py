@@ -175,3 +175,27 @@ def test_refuses_a_missing_or_invalid_layout(lib, layout):
     with pytest.raises(SystemExit, match="layout"):
         package.run(lib)
     assert not (lib / "records.sql").exists()
+
+
+def test_busy_records_keep_their_largest_regions_so_every_statement_fits_d1(lib):
+    ids = _library(lib, ["Compare the options side by side"])
+    f = lib / "records" / f"{ids[0]}.json"
+    regions = [{"i": i, "type": "shape", "box": {"x": 0, "y": 0, "w": 0.001 * (i % 50 + 1), "h": 0.5}, "fill": "white",
+                "role": "decoration"} for i in range(977)]
+    f.write_text(json.dumps(dict(json.loads(f.read_text()), regions=regions)))
+    package.run(lib)
+    sql = (lib / "records.sql").read_text()
+    assert max(len(s.encode()) for s in sql.split(";\n")) <= package.MAX_STATEMENT
+    dna = json.loads(_load(lib).execute("SELECT dna FROM slides").fetchone()[0])
+    # the same 40 get_reference serves: largest by area, ties in their original order
+    top = set(sorted(range(977), key=lambda i: -(i % 50))[:40])  # 19 + 19 of the two largest sizes, then 47 and 97
+    assert [r["i"] for r in dna["regions"]] == [i for i in range(977) if i in top]
+    assert dna["regions_shown"] == "the 40 largest of 977, by area"
+
+
+def test_refuses_a_row_over_d1s_statement_limit(lib):
+    ids = _library(lib, ["Compare the options side by side"])
+    f = lib / "records" / f"{ids[0]}.json"
+    f.write_text(json.dumps(dict(json.loads(f.read_text()), description="Options slide. " * 8000)))
+    with pytest.raises(SystemExit, match=ids[0]):
+        package.run(lib)

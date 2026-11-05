@@ -27,6 +27,10 @@ CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 """
 
 
+MAX_REGIONS = 40  # what get_reference serves (server/src/app.ts); busy slides reach ~1000 regions, over D1's row limit
+MAX_STATEMENT = 100_000  # D1's maximum SQL statement length, in bytes
+
+
 def _q(v):
     return "'" + str(v).replace("'", "''") + "'"
 
@@ -46,10 +50,16 @@ def run(library):
             lay = layout.validate(json.loads(f.read_text()))
         except (OSError, ValueError) as e:
             raise SystemExit(f"{r['id']}: no valid v3 layout at {f} ({e}): rewrite it and run mockup + leak-check.")
+        if len(r.get("regions", [])) > MAX_REGIONS:  # the largest by area, ties keep order, as get_reference picks
+            keep = {id(x) for x in sorted(r["regions"], key=lambda x: -x["box"]["w"] * x["box"]["h"])[:MAX_REGIONS]}
+            r = dict(r, regions=[x for x in r["regions"] if id(x) in keep],
+                     regions_shown=f"the {MAX_REGIONS} largest of {len(r['regions'])}, by area")
         cols = [r["id"], r["deck_id"], r["archetype"], r["industry"], r["data_type"], r["purpose"], r["why_it_works"],
                 r["description"], json.dumps(r, separators=(",", ":")), impact.get(r["id"], "none"),
                 json.dumps(lay, separators=(",", ":"))]
         lines.append(f"INSERT INTO slides VALUES ({n}, {', '.join(map(_q, cols))});")
+        if len(lines[-1].encode()) > MAX_STATEMENT:
+            raise SystemExit(f"{r['id']}: its row is over D1's {MAX_STATEMENT:,}-byte statement limit; shorten it.")
         lines.append(f"INSERT INTO slides_fts (rowid, purpose, why_it_works, description) VALUES "
                      f"({n}, {_q(r['purpose'])}, {_q(r['why_it_works'])}, {_q(r['description'])});")
     for n, f in enumerate(flows):
