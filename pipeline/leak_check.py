@@ -1,7 +1,12 @@
 """Stage 4: leak check. Fails closed: only records that pass every automated check AND a recorded judge verdict
 are promoted to library/records/ + library/wireframes/; anything else is withheld (and removed if promoted before).
 A record's picture is its slide's mockup (library/mockups/<deck>/slide-NN.png, built from layouts/<deck>/slide-NN.v3.json);
-a slide without a v3 layout or mockup is never published, and its mockup .pptx must pass the placeholder whitelist.
+a slide without a v3 layout or mockup, or with a mockup older than its layout, is never published, and its mockup .pptx
+must pass the placeholder whitelist.
+
+A deck flow (work/<deck>/flow-record.json, decks of flow.MIN_SLIDES+ slides) is checked the same way against the text of
+EVERY slide of the deck, judged with the whole deck, and published to library/flows/ only if at least MIN_SHARE of
+its slides are published too.
 
 Free-text fields (purpose, why_it_works, description, text patterns) must not contain digits, share a 3-word
 sequence with the slide's original text, or contain names (spaCy NER, plus any name found in the slide text).
@@ -26,7 +31,7 @@ import spacy
 from pptx import Presentation
 from wordfreq import zipf_frequency
 
-from pipeline import build, mockup
+from pipeline import build, flow, mockup
 
 NAME_LABELS = {"PERSON", "ORG", "GPE", "LOC", "NORP", "FAC", "PRODUCT", "EVENT", "WORK_OF_ART", "LAW"}
 # design and labelling vocabulary that NER mislabels and the frequency list rates rare
@@ -49,6 +54,8 @@ FRAMEWORKS = sorted((p.split() for p in (  # standard framework names, as _words
     "political economic social technological environmental legal",
     "political economic social technological")), key=len, reverse=True)
 TEMPLATE = (Path(__file__).parent / "templates" / "judge.txt").read_text()
+MIN_SHARE = 0.6  # of a deck's slides that must be published before its flow is
+MASTER_PARTS = ("ppt/slideMasters/", "ppt/slideLayouts/")  # the only parts the stock boilerplate may sit in
 
 
 @cache
@@ -123,31 +130,55 @@ def check(dna, source):
     return problems
 
 
+def check_flow(record, source):
+    """Problems in a deck-flow record; source is the text of every slide in the deck, so a name or phrase from any
+    slide fails it. why_the_flow_works is its only free text: everything else is fixed lists and computed."""
+    try:
+        if set(record) != flow.RECORD_KEYS:
+            raise ValueError(f"fields {sorted(set(record) ^ flow.RECORD_KEYS)}")
+        flow.validate({"sections": [s["section"] for s in record["steps"]], "arc": record["arc"],
+                       "why_the_flow_works": record["why_the_flow_works"]}, len(record["steps"]))
+    except Exception as e:  # fail closed on any schema problem
+        return [f"schema: {e}"]
+    return [f"why_the_flow_works: {p}"
+            for p in problems_in(record["why_the_flow_works"], source, source_names(source))]
+
+
+@cache
+def _stock_app():
+    out = io.BytesIO()
+    Presentation().save(out)
+    with zipfile.ZipFile(out) as z:
+        return z.read("docProps/app.xml")
+
+
 @cache
 def _stock_text():
     """Text runs of the stock python-pptx master and layouts every mockup carries ("Click to edit ...")."""
     out = io.BytesIO()
     Presentation().save(out)
-    return frozenset(_texts(out.getvalue())[0])
+    return frozenset(t for _, t in _texts(out.getvalue())[0])
 
 
 def _texts(blob):
-    """Every text run in a .pptx, and every cached chart value and embedded workbook string."""
+    """Every text run in a .pptx as (part name, text), and every cached chart value and embedded workbook string."""
     runs, values = [], []
     with zipfile.ZipFile(io.BytesIO(blob)) as z:
         for name in z.namelist():
             if name.endswith(".xlsx"):
-                values += sum(_texts(z.read(name)), [])
+                inner_runs, inner_values = _texts(z.read(name))
+                values += [t for _, t in inner_runs] + inner_values
             elif name.endswith(".xml"):
                 xml = z.read(name).decode()
-                runs += map(html.unescape, re.findall(r"<a:t(?:\s[^>]*)?>([^<]*)</a:t>", xml))
+                runs += [(name, html.unescape(t)) for t in re.findall(r"<a:t(?:\s[^>]*)?>([^<]*)</a:t>", xml)]
                 values += map(html.unescape, re.findall(r"<(?:c:v|t)(?:\s[^>]*)?>([^<]*)</(?:c:v|t)>", xml))
     return runs, values
 
 
 def mockup_problems(path):
     """A mockup .pptx holds fixed placeholder copy only: every text run is placeholder vocabulary (or the stock
-    master's boilerplate), chart data is numbers, the core properties are empty and there is no image."""
+    master's boilerplate, inside the master and layout parts only), chart data is numbers, the core properties are
+    empty, the app properties are the stock defaults and there is no image."""
     try:
         blob = Path(path).read_bytes()
         runs, values = _texts(blob)
@@ -155,16 +186,19 @@ def mockup_problems(path):
         with zipfile.ZipFile(io.BytesIO(blob)) as z:
             images = [n for n in z.namelist() if re.search(r"\.(jpe?g|png|gif|bmp|tiff?|emf|wmf|svg|wdp)$", n, re.I)]
             images += ["image content type"] * ("image/" in z.read("[Content_Types].xml").decode())
+            app = z.read("docProps/app.xml")
     except Exception as e:  # fail closed on anything unreadable
         return [f"unreadable: {e}"]
-    problems = [f"text outside the placeholder vocabulary: {t!r}" for t in dict.fromkeys(runs)
-                if t not in mockup.VOCAB and t not in _stock_text()]
+    problems = list(dict.fromkeys(f"text outside the placeholder vocabulary: {t!r}" for part, t in runs
+                                  if t not in mockup.VOCAB and not (t in _stock_text() and part.startswith(MASTER_PARTS))))
     problems += [f"text outside the placeholder vocabulary: {v!r}" for v in dict.fromkeys(values)
                  if not re.fullmatch(r"-?\d+(\.\d+)?", v)]
     named = [k for k in ("author", "category", "comments", "content_status", "identifier", "keywords", "language",
                          "last_modified_by", "subject", "title", "version") if getattr(props, k)]
     if named:
         problems.append(f"core properties not anonymous: {', '.join(named)}")
+    if app != _stock_app():  # Company, Manager, HyperlinkBase, TitlesOfParts ... as python-pptx ships them
+        problems.append("app properties not the stock defaults (docProps/app.xml)")
     problems += [f"image: {n}" for n in images]
     return problems
 
@@ -191,11 +225,14 @@ def run(deck_id, library):
         nn = f"slide-{dna['slide']:02d}"
         source = (work / "text" / f"{nn}.txt").read_text()
         pic, pptx = (lib / "mockups" / deck_id / f"{nn}{ext}" for ext in (".png", ".pptx"))
+        layout = lib / "layouts" / deck_id / f"{nn}.v3.json"
         problems = check(dna, source)
-        if not (lib / "layouts" / deck_id / f"{nn}.v3.json").exists():
+        if not layout.exists():
             problems.append(f"no v3 layout: write layouts/{deck_id}/{nn}.v3.json, then run mockup")
         elif not (pic.exists() and pptx.exists()):
             problems.append("no mockup: run mockup")
+        elif min(pic.stat().st_mtime, pptx.stat().st_mtime) < layout.stat().st_mtime:
+            problems.append("stale mockup: its v3 layout changed after it was built, run mockup")
         else:
             problems += [f"mockup: {p}" for p in mockup_problems(pptx)]
         r = report[rid] = {"auto": "fail" if problems else "pass", "problems": problems, "judge": "pending"}
@@ -207,13 +244,38 @@ def run(deck_id, library):
             shutil.copyfile(pic, judge / f"{rid}.png")
             r["judge"] = _verdict(judge / "verdicts" / f"{rid}.json")
         published = (lib / "records" / f"{rid}.json", lib / "wireframes" / f"{rid}.png")
-        if r["auto"] == "pass" and r["judge"] == "pass":
+        r["published"] = r["auto"] == "pass" and r["judge"] == "pass"
+        if r["published"]:
             shutil.copyfile(f, published[0])
             shutil.copyfile(pic, published[1])
         else:
             for p in published:
                 p.unlink(missing_ok=True)
     ids = [rid for rid, r in report.items() if r["auto"] == "pass"]
-    (judge / "JUDGE.txt").write_text(TEMPLATE.format(deck_id=deck_id, ids=", ".join(ids) or "none"))
+    visible = sorted(work.glob("slide-??.json"))
+    record, published = work / "flow-record.json", lib / "flows" / f"{deck_id}.json"
+    shown = sum(r["published"] for r in report.values())  # slides of this deck published
+    (judge / "flow.json").unlink(missing_ok=True)
+    if len(visible) >= flow.MIN_SLIDES:
+        if record.exists():
+            deck_text = "\n".join((work / "text" / f"{f.stem}.txt").read_text() for f in visible)
+            problems = check_flow(json.loads(record.read_text()), deck_text)
+        else:
+            problems = ["no flow record: run flow-prep, follow its worksheet, then flow-build"]
+        r = report["flow"] = {"auto": "fail" if problems else "pass", "problems": problems, "judge": "pending"}
+        if not problems:
+            shutil.copyfile(record, judge / "flow.json")
+            r["judge"] = _verdict(judge / "verdicts" / "flow.json")
+        r["published"] = r["auto"] == "pass" and r["judge"] == "pass" and shown / len(visible) >= MIN_SHARE
+        if r["auto"] == "pass" and r["judge"] == "pass" and not r["published"]:
+            problems.append(f"withheld: {shown} of {len(visible)} slides published, a flow needs {MIN_SHARE:.0%}")
+    if report.get("flow", {}).get("published"):
+        published.parent.mkdir(exist_ok=True)
+        shutil.copyfile(record, published)
+    else:
+        published.unlink(missing_ok=True)
+    flow_line = ("Deck flow: flow.json, judged with the whole deck; verdict in verdicts/flow.json"
+                 if (judge / "flow.json").exists() else "Deck flow: none")
+    (judge / "JUDGE.txt").write_text(TEMPLATE.format(deck_id=deck_id, ids=", ".join(ids) or "none", flow=flow_line))
     (work / "leak-report.json").write_text(json.dumps(report, indent=1))
     return report

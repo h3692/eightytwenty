@@ -2,7 +2,7 @@
 import argparse
 import sys
 
-from pipeline import build, embed, extract, label_prep, leak_check, mockup, package
+from pipeline import build, embed, extract, flow, label_prep, leak_check, mockup, package
 
 
 def main(argv=None):
@@ -15,7 +15,9 @@ def main(argv=None):
     p.add_argument("deck_id")
     p.add_argument("deck")
     for name, help_ in (("label-prep", "write labeling worksheets"), ("build", "labels + geometry -> DNA, wireframe"),
-                        ("leak-check", "check, write judge worksheet, promote passing records")):
+                        ("leak-check", "check, write judge worksheet, promote passing records"),
+                        ("flow-prep", "write the deck-flow worksheet and contact sheet"),
+                        ("flow-build", "flow.json + labels -> deck-flow record")):
         sub.add_parser(name, help=help_).add_argument("deck_id")
     p = sub.add_parser("embed", help="embed published descriptions via the local Worker")
     p.add_argument("--url", default=f"http://127.0.0.1:{embed.PORT}")
@@ -43,9 +45,17 @@ def main(argv=None):
         report = leak_check.run(a.deck_id, a.library)
         for rid, r in report.items():
             print(rid, f"auto={r['auto']}", f"judge={r['judge']}", *r["problems"], sep="  ")
-        if any(r["auto"] != "pass" or r["judge"] != "pass" for r in report.values()):
+        if not all(r["published"] for r in report.values()):
             print(f"Not published: fix labels and rebuild, or judge in a fresh session (library/judge/{a.deck_id}/JUDGE.txt).")
             sys.exit(1)
+    elif a.stage in ("flow-prep", "flow-build"):
+        out = flow.prep(a.deck_id, a.library) if a.stage == "flow-prep" else flow.build_flow(a.deck_id, a.library)
+        if out is None:
+            print(f"{a.deck_id}: fewer than {flow.MIN_SLIDES} visible slides, no deck flow (skipped)")
+        elif a.stage == "flow-prep":
+            print(f"Write the deck flow: in Claude Code, ask it to follow {out}")
+        else:
+            print(f"flow record {out['id']}: {out['arc']}, {out['length_bucket']}, {out['industry']}")
     elif a.stage == "embed":
         embed.run(a.library, a.url)
     elif a.stage == "package":

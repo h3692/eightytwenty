@@ -105,3 +105,37 @@ def test_local_worker_uses_the_logged_in_account_and_stays_local():
     assert '"remote": true' in cfg and '"ip": "127.0.0.1"' in cfg and str(embed.PORT) in cfg
     assert "@cf/baai/bge-m3" in js and "localhost" in js and "127.0.0.1" in js
     assert "token" not in (cfg + js).lower()
+
+
+def _flows(lib, n):
+    (lib / "flows").mkdir(parents=True)
+    ids = [f"{k:016x}" for k in range(n)]
+    for i in ids:
+        (lib / "flows" / f"{i}.json").write_text(json.dumps({"id": i, "deck_id": i, "description": f"Deck flow {i}"}))
+    return ids
+
+
+def test_flows_get_their_own_vector_set_under_the_shared_library_version(lib, server):
+    _records(lib, 2)
+    flow_ids = _flows(lib, 3)
+    embed.run(lib, server)
+    vecs = (lib / "flow_vecs.bin").read_bytes()
+    assert len(vecs) == 3 * 1024 and len((lib / "vecs.bin").read_bytes()) == 2 * 1024
+    for row, fid in enumerate(sorted(flow_ids)):
+        v = _vec(f"Deck flow {fid}")
+        m = max(map(abs, v))
+        assert list(struct.unpack("1024b", vecs[row * 1024:(row + 1) * 1024])) == [round(x * 127 / m) for x in v]
+    man = json.loads((lib / "manifest.json").read_text())
+    assert man["flows"] == {"count": 3, "ids": sorted(flow_ids)} and man["count"] == 2
+    first = man["library_version"]
+    (lib / "flows" / f"{flow_ids[0]}.json").unlink()  # a flow change is a new library version
+    embed.run(lib, server)
+    man = json.loads((lib / "manifest.json").read_text())
+    assert man["library_version"] != first and man["flows"]["count"] == 2
+
+
+def test_no_flows_writes_an_empty_flow_vector_set(lib, server):
+    _records(lib, 1)
+    embed.run(lib, server)
+    assert (lib / "flow_vecs.bin").read_bytes() == b""
+    assert json.loads((lib / "manifest.json").read_text())["flows"] == {"count": 0, "ids": []}

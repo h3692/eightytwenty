@@ -1,0 +1,24 @@
+Describe the flow of one whole deck for the eightytwenty design library: the section of every slide, the arc
+pattern and why the flow works. Look at the contact sheet ONCE, then write ONE file, nothing else:
+  {out}
+
+The contact sheet, every slide in deck order (numbered): {sheet}
+The deck's {count} slides, one per line: number, slide type, purpose (from its labels):
+{slides}
+
+Write ONE JSON object to {out}
+It must validate against {schema}. Fields:
+
+  sections            exactly {count} entries, one per slide in deck order, each one of:
+                      {sections}
+                      a section divider takes the section it opens; "other" fits none of them
+  arc                 the deck's arc pattern, one of: {arcs}
+  why_the_flow_works  why the order of the slides works, 20-400 characters
+
+Hard rules for why_the_flow_works. A leak check rejects the flow otherwise:
+  - Describe the design, never the content. No client, competition, team, school, year, person, company,
+    brand, product or place names, and no hint that identifies them.
+  - No digits at all (write "one big number", not "3x").
+  - Never copy three or more consecutive words from the slide's text.
+  - No other fields than the ones above.
+  - The flow is checked against the text of every slide in the deck: a name or phrase from any slide fails it.

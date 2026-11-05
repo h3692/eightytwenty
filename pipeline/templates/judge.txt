@@ -1,8 +1,11 @@
+
 Re-identification check for the eightytwenty design library. Run this in a NEW Claude Code session that has
 never seen the source deck, and read ONLY the files in this folder (library/judge/{deck_id}/):
   - <id>.json  a design-DNA record: abstract layout, roles, labels and description of one slide
   - <id>.png   its mockup: a greyscale wireframe slide a fixed builder draws from a short list of components, with
                fixed placeholder copy only ("Slide Title Here", "Text here", "XX%" ...)
+  - flow.json  (when present) the deck's flow record: each slide's section and slide type in order, section dividers,
+               pacing, length, industry, an arc pattern and one line on why the flow works
 
 For each record, try hard to work out which client, company, competition, event, team, school, year or person
 the source slide came from. Then write verdicts/<id>.json in this folder:
@@ -11,4 +14,9 @@ Set "identified" to true if anything in the record or mockup names or clearly po
 competition, team, person or place, or if any shape in the record or mockup reproduces a logo, brand mark, mascot or
 recognisable icon. Records with "identified": true, or without a valid verdict, are never published.
 
+Judge the flow with the whole deck at once: read flow.json together with every record and mockup above, and ask
+whether the sequence, the arc or its line of text, combined with the slides, points to a specific client,
+competition, team, person or place. Write verdicts/flow.json the same way.
+
 Records: {ids}
+{flow}
