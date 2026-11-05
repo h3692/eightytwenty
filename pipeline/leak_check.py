@@ -281,8 +281,9 @@ def _verdict(path):
 
 
 def _copy_for_judge(copies, verdict):
-    """Copy (source, judge copy) pairs; a verdict on other bytes than the fresh copies is stale, so it is discarded."""
-    if any(dst.exists() and dst.read_bytes() != src.read_bytes() for src, dst in copies):
+    """Copy (source, judge copy) pairs; a verdict on other bytes than the fresh copies, or on a copy that is gone, is
+    stale, so it is discarded."""
+    if any(not dst.exists() or dst.read_bytes() != src.read_bytes() for src, dst in copies):
         verdict.unlink(missing_ok=True)
     for src, dst in copies:
         shutil.copyfile(src, dst)

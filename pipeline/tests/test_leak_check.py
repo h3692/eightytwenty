@@ -39,6 +39,8 @@ def _pipeline(deck, lib, edit=lambda n, labels: None):
 
 def _judge(lib, deck_id, rid, identified):
     v = lib / "judge" / deck_id / "verdicts"
+    if not (v.parent / f"{rid}.json").exists():  # a judge only ever sees copies a leak-check run wrote
+        leak_check.run(deck_id, lib)
     v.mkdir(parents=True, exist_ok=True)
     (v / f"{rid}.json").write_text(json.dumps({"identified": identified, "guess": "none"}))
 
@@ -512,6 +514,21 @@ def test_a_verdict_is_discarded_when_what_it_judged_changed(deck, lib):
     assert (lib / "judge" / deck_id / "flow.json").read_bytes() == rec.read_bytes()
     assert all(report[rid]["published"] for rid in ids[2:])  # the unchanged ones keep theirs
     assert not (lib / "records" / f"{ids[0]}.json").exists() and not (lib / "flows" / f"{deck_id}.json").exists()
+
+
+def test_a_verdict_without_its_judge_copy_is_discarded(deck, lib):
+    deck_id, ids = _six_slide_deck(deck, lib)
+    leak_check.run(deck_id, lib)
+    for rid in [*ids, "flow"]:
+        _judge(lib, deck_id, rid, False)
+    judge = lib / "judge" / deck_id
+    for p in (judge / f"{ids[0]}.json", judge / "flow.json"):  # what was judged is unknown: judge afresh
+        p.unlink()
+    report = leak_check.run(deck_id, lib)
+    for rid in (ids[0], "flow"):
+        assert report[rid]["judge"] == "pending" and not report[rid]["published"], rid
+        assert not (judge / "verdicts" / f"{rid}.json").exists()
+    assert report[ids[1]]["published"]
 
 
 def test_a_verdict_is_discarded_when_its_item_fails_the_automated_check(deck, lib):
