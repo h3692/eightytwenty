@@ -1,6 +1,7 @@
 """Deck flows: an agent looks at a contact sheet of a deck and writes only each slide's section, the arc pattern and
 why the flow works, and may mark impact slides (flow.v2.json; v1 flows stay valid); the rest of the record (steps, section dividers, pacing, length bucket, industry,
-description) is computed from the slides' labels. Only decks with at least MIN_SLIDES visible slides get a flow.
+description) is computed from the slides' labels, and its style is the deck's (work/<deck>/style.json).
+Only decks with at least MIN_SLIDES visible slides get a flow.
 The record is built into work/<deck>/flow-record.json; the leak check publishes it to library/flows/."""
 import collections
 import itertools
@@ -10,7 +11,7 @@ from pathlib import Path
 import jsonschema
 from PIL import Image, ImageDraw, ImageFont
 
-from pipeline import dedupe
+from pipeline import build, dedupe
 
 HERE = Path(__file__).parent
 SCHEMA_PATH = HERE / "schema" / "flow.v2.json"
@@ -40,7 +41,7 @@ def described(record, impact):
     """The text a slide is embedded and searched by: its description, plus what its impact frame is for."""
     return f"{record['description']} {IMPACT_PURPOSE[impact]}" if impact in IMPACT_PURPOSE else record["description"]
 RECORD_KEYS = {"schema_version", "id", "deck_id", "arc", "why_the_flow_works", "steps", "dividers", "pacing",
-               "length_bucket", "industry", "description"}
+               "length_bucket", "industry", "style", "description"}
 STEP_KEYS = {"id", "archetype", "section", "impact", "builds_on"}
 TILE, COLUMNS = (320, 180), 5  # contact sheet: slide thumbnails in px, per row
 
@@ -127,8 +128,9 @@ def prep(deck_id, library, impact_only=False):
 
 
 def build_flow(deck_id, library):
-    """Build work/<deck>/flow.json and the slides' labels into work/<deck>/flow-record.json and return the record,
-    or None for a deck under MIN_SLIDES. Refuses a missing or invalid flow.json or missing labels."""
+    """Build work/<deck>/flow.json, style.json and the slides' labels into work/<deck>/flow-record.json and return
+    the record, or None for a deck under MIN_SLIDES. Refuses a missing or invalid flow.json or style.json, or missing
+    labels."""
     work = Path(library) / "work" / deck_id
     n = _visible(work)
     if n < MIN_SLIDES:
@@ -139,6 +141,10 @@ def build_flow(deck_id, library):
         validate(agent, n)
     except (OSError, ValueError) as e:
         raise SystemExit(f"{work / 'flow.json'}: {e} (run flow-prep and follow flow.prompt.txt)")
+    style = build.deck_style(work)
+    if style is None:
+        raise SystemExit(f'{work / "style.json"}: missing or invalid, write '
+                         f'{{"style": "<one of {", ".join(build.STYLES)}>"}}')
     sections = agent["sections"]
     impact, builds_on = agent.get("impact", ["none"] * n), agent.get("builds_on", [None] * n)
     rec = {"schema_version": "deck-flow/v2", "id": deck_id, "deck_id": deck_id, "arc": agent["arc"],
@@ -149,19 +155,20 @@ def build_flow(deck_id, library):
            "pacing": [{"section": s, "slides": len(list(g))} for s, g in itertools.groupby(sections)],
            "length_bucket": length_bucket(n),
            # ties go to the industry met first in deck order
-           "industry": collections.Counter(lb["industry"] for lb in labels).most_common(1)[0][0]}
+           "industry": collections.Counter(lb["industry"] for lb in labels).most_common(1)[0][0], "style": style}
     rec["description"] = describe(rec)
     (work / "flow-record.json").write_text(json.dumps(rec, indent=1))
     return rec
 
 
 def describe(rec):
-    """Fixed template, words only (counts spelled out, so no digits): length, arc, industry, the section sequence,
-    the slide types (most used first), the impact slides per kind and why the flow works."""
+    """Fixed template, words only (counts spelled out, so no digits): length, arc, industry, style, the section
+    sequence, the slide types (most used first), the impact slides per kind and why the flow works."""
     words = lambda s: s.replace("-", " ").replace("_", " ")
     mix = collections.Counter(s["archetype"] for s in rec["steps"]).most_common()
     impact = collections.Counter(s["impact"] for s in rec["steps"])
     return (f"{rec['length_bucket'].capitalize()} deck, {words(rec['arc'])} arc, {words(rec['industry'])}. "
+            f"Style: {words(rec['style'])}. "
             f"Sections: {', '.join(words(p['section']) for p in rec['pacing'])}. "
             f"Slide types: {', '.join(words(a) for a, _ in mix)}. "
             f"Impact slides: {', '.join(f'{_count(impact[k])} {words(k)}' for k in IMPACTS[1:] if impact[k]) or 'none'}. "

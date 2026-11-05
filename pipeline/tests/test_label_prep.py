@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from pipeline import build, extract, label_prep, layout
-from pipeline.tests.conftest import fixture_labels
+from pipeline.tests.conftest import STYLE, fixture_labels
 
 PLAYBOOK = Path(__file__).resolve().parents[2] / "playbook" / "archetypes.md"
 
@@ -125,7 +125,7 @@ def test_labels_cover_exactly_the_listed_regions_or_every_region(work):
 
 def test_unlisted_regions_build_as_other(work):
     slide = _busy(_slide(work, 2))
-    dna = build.merge(slide, _capped_labels(slide))
+    dna = build.merge(slide, _capped_labels(slide), STYLE)
     build.check_schema(dna)
     listed = {r["i"] for r in label_prep.worksheet_regions(slide)}
     assert {r["role"] for r in dna["regions"] if r["i"] not in listed} == {"other"}
@@ -136,6 +136,13 @@ def test_valid_labels_pass(work):
     label_prep.validate(fixture_labels(_slide(work, 2)), _slide(work, 2))
 
 
+def test_style_notes_are_optional_in_labels_written_before_them(work):
+    labels = fixture_labels(_slide(work, 2))
+    for k in ("when_to_use", "effect", "elements"):
+        labels.pop(k)
+    label_prep.validate(labels, _slide(work, 2))
+
+
 @pytest.mark.parametrize("mutate, message", [
     (lambda l: l.update(archetype="hero-slide"), "archetype"),
     (lambda l: l.update(industry="aerospace-defense-and-space"), "industry"),
@@ -143,6 +150,13 @@ def test_valid_labels_pass(work):
     (lambda l: l["regions"].pop("0"), "region"),
     (lambda l: l["regions"].update({"99": "body"}), "region"),
     (lambda l: l["text_patterns"].append({"region": 99, "pattern": "short claim", "words": 3}), "non-text region"),
+    (lambda l: l.update(when_to_use="x" * 161), "when_to_use"),
+    (lambda l: l.update(effect=""), "effect"),
+    (lambda l: l.update(elements=[]), "elements"),
+    (lambda l: l.update(elements=l["elements"] * 4), "elements"),
+    (lambda l: l["elements"][0].update(component=-1), "elements"),
+    (lambda l: l["elements"][0].update(note="x" * 121), "elements"),
+    (lambda l: l["elements"][0].update(colour="navy"), "elements"),
 ])
 def test_invalid_labels_fail(work, mutate, message):
     labels = fixture_labels(_slide(work, 2))

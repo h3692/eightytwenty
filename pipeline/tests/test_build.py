@@ -10,13 +10,14 @@ from pptx import Presentation
 from pptx.chart.data import CategoryChartData
 
 from pipeline import build, extract, label_prep
-from pipeline.tests.conftest import fixture_labels
+from pipeline.tests.conftest import STYLE, fixture_labels, fixture_style
 
 
 def _label(lib, deck_id):
     work = lib / "work" / deck_id
     for f in sorted(work.glob("slide-??.json")):
         (work / "labels" / f.name).write_text(json.dumps(fixture_labels(json.loads(f.read_text()))))
+    fixture_style(work)
     return work
 
 
@@ -59,6 +60,13 @@ def test_dna_merges_geometry_and_labels(built):
     assert dna["regions"][1]["text"]["pattern"] == "outcome promise as a short noun phrase"
     assert dna["regions"][1]["text"]["pattern_words"] == 6
     assert dna["regions"][0]["box"] == {"x": 0.0, "y": 0.0, "w": 1.0, "h": 0.2667}
+    labels = fixture_labels({"slide": 1, "regions": [{"i": 0, "type": "text"}, {"i": 1, "type": "text"}]})
+    assert dna["style"] == STYLE and all(dna[k] == labels[k] for k in ("when_to_use", "effect", "elements"))
+
+
+def test_style_notes_and_the_deck_style_are_required_so_merge_keeps_them():
+    assert {"style", "when_to_use", "effect", "elements"} <= set(build.SCHEMA["required"])
+    assert build.STYLES == ["consulting-structured", "bold-pitch", "visual-storytelling", "data-led", "minimal-editorial"]
 
 
 def test_description_uses_fixed_template_without_digits(built):
@@ -67,7 +75,8 @@ def test_description_uses_fixed_template_without_digits(built):
     d = dna["description"]
     assert d.startswith("Title slide. Single claim argument, big number device, kpi numbers data, travel hospitality.")
     assert dna["purpose"] in d and dna["why_it_works"] in d and "outcome promise" in d
-    assert not re.search(r"\d", d)
+    assert d.endswith(f"Style: bold pitch. When to use: {dna['when_to_use']}. Effect: {dna['effect']}.")
+    assert not re.search(r"\d", d) and build.DESCRIPTION_VERSION == "desc-v3"
 
 
 def test_build_refuses_missing_or_invalid_labels(deck, lib):
@@ -81,6 +90,23 @@ def test_build_refuses_missing_or_invalid_labels(deck, lib):
     with pytest.raises(SystemExit, match="slide-02"):
         build.run(deck_id, lib)
     assert not list((work / "build").glob("*")) if (work / "build").exists() else True
+
+
+@pytest.mark.parametrize("edit, problem", [
+    (lambda work: (work / "labels" / "slide-02.json").write_text(json.dumps(
+        {k: v for k, v in json.loads((work / "labels" / "slide-02.json").read_text()).items() if k != "effect"})),
+     r"labels/slide-02.json: no style notes: effect"),
+    (lambda work: (work / "style.json").unlink(), r"style.json: missing or invalid"),
+    (lambda work: (work / "style.json").write_text('{"style": "neon-brutalist"}'), r"style.json: missing or invalid"),
+])
+def test_build_refuses_a_publishable_slide_without_style_notes_or_a_deck_without_a_style(deck, lib, edit, problem):
+    deck_id = extract.run(deck, lib, render=False)
+    label_prep.run(deck_id, lib)
+    work = _label(lib, deck_id)
+    edit(work)
+    with pytest.raises(SystemExit, match=problem):
+        build.run(deck_id, lib)
+    assert not (work / "build").exists() or not list((work / "build").glob("*"))
 
 
 def test_wireframe_is_small_greyscale_skeleton(built):
@@ -385,7 +411,7 @@ def test_merge_strips_outlines_from_logos_and_icons(deck, lib):
     pic = next(r for r in slide["regions"] if r["type"] == "picture")
     pic.update(geom="ellipse", path=SQUIGGLE)
     labels["regions"][str(pic["i"])] = "logo"
-    dna = build.merge(slide, labels)
+    dna = build.merge(slide, labels, STYLE)
     build.check_schema(dna)
     assert dna["regions"][pic["i"]]["geom"] is None and "path" not in dna["regions"][pic["i"]]
 
@@ -413,7 +439,7 @@ def _publish(*regions):
                                                                         "arrow": r.get("arrow")} for r in regions]}
     labels = fixture_labels({"slide": 2, "regions": [{"i": 0, "type": "text"}]}) | {"regions": {str(r["i"]): r["role"] for r in regions},
                                                            "text_patterns": []}
-    dna = build.merge(slide, labels)
+    dna = build.merge(slide, labels, STYLE)
     build.check_schema(dna)
     return dna["regions"], dna
 

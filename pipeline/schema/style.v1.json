@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "style.v1.json",
+  "title": "Deck style v1: one look per deck, in work/<deck>/style.json (written in the maintainer's own Claude Code session)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["style"],
+  "properties": {
+    "style": {"enum": ["consulting-structured", "bold-pitch", "visual-storytelling", "data-led", "minimal-editorial"]}
+  }
+}

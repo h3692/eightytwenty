@@ -9,9 +9,9 @@ A deck flow (work/<deck>/flow-record.json, decks of flow.MIN_SLIDES+ slides) is 
 EVERY slide of the deck, judged with the whole deck, and published to library/flows/ only if at least MIN_SHARE of
 its slides are published too (blank and duplicate slides not counted).
 
-Free-text fields (purpose, why_it_works, description, text patterns) must not contain digits, share a 3-word
-sequence with the slide's original text, contain names (spaCy NER, plus any name found in the slide text), or
-name a brand identity (HUES, BRAND_WORDS, BRAND_PHRASES, a web domain), whatever DESIGN_TERMS says.
+Free-text fields (purpose, why_it_works, when_to_use, effect, element notes, description, text patterns) must not
+contain digits, share a 3-word sequence with the slide's original text, contain names (spaCy NER, plus any name
+found in the slide text), or name a brand identity (HUES, BRAND_WORDS, BRAND_PHRASES, a web domain), whatever DESIGN_TERMS says.
 Numeric and enum DNA fields are exempt. The wireframe draws only from the DNA, so it inherits this check.
 
 NER and title-case slides mistake ordinary words for names, so a word only counts as a name when it is rare
@@ -100,13 +100,14 @@ def _words(text):
 
 
 def _fixed_lists():
-    """Our own fixed lists as _words() phrases: label, flow and layout enums, the archetype table's ids and slide jobs."""
+    """Our own fixed lists as _words() phrases: label, flow, layout and style enums, the archetype table's ids and
+    slide jobs."""
     schema = {n: json.loads((Path(__file__).parent / "schema" / f"{n}.json").read_text())
               for n in ("labels.v1", "flow.v1", "layout.v3")}
     labels = schema["labels.v1"]
     lists = [labels["properties"][k]["enum"] for k in ("archetype", "argument_shape", "insight_device", "data_type")]
     lists += [labels["$defs"]["role"]["enum"], schema["flow.v1"]["properties"]["sections"]["items"]["enum"],
-              schema["layout.v3"]["$defs"]["component"]["properties"]["kind"]["enum"]]
+              schema["layout.v3"]["$defs"]["component"]["properties"]["kind"]["enum"], build.STYLES]
     table = (Path(__file__).parent.parent / "playbook" / "archetypes.md").read_text()
     lists += re.findall(r"^\| `([a-z-]+)` \| ([^|]+) \|", table, re.M)
     return [_words(v) for v in chain(*lists)]
@@ -116,7 +117,8 @@ def _template_phrases():
     """The fixed scaffold of build.describe ("Why it works:" ...) as _words() phrases: the text between its fields."""
     blank = "\0"
     dna = dict.fromkeys(("archetype", "argument_shape", "insight_device", "data_type", "industry", "purpose",
-                         "why_it_works"), blank) | {"regions": [{"role": blank, "text": {"pattern": blank}}]}
+                         "why_it_works", "style", "when_to_use", "effect"), blank) | {
+        "regions": [{"role": blank, "text": {"pattern": blank}}]}
     return [_words(part) for part in build.describe(dna).split(blank)]
 
 
@@ -186,7 +188,8 @@ def check(dna, source, deck_names=frozenset()):
     except Exception as e:  # fail closed on any schema problem
         return [f"schema: {e}"]
     names = source_names(source) | deck_names  # a name on any slide of the deck counts
-    fields = {k: dna[k] for k in ("purpose", "why_it_works", "description")}
+    fields = {k: dna[k] for k in ("purpose", "why_it_works", "when_to_use", "effect", "description")}
+    fields |= {f"elements/{i}/note": e["note"] for i, e in enumerate(dna["elements"])}
     fields |= {f"regions/{r['i']}/pattern": r["text"]["pattern"] for r in dna["regions"] if r["text"] and r["text"]["pattern"]}
     for key, text in fields.items():
         problems += [f"{key}: {p}" for p in problems_in(text, source, names)]
@@ -201,6 +204,8 @@ def check_flow(record, source):
             raise ValueError(f"fields {sorted(set(record) ^ flow.RECORD_KEYS)}")
         if any(set(s) != flow.STEP_KEYS for s in record["steps"]):
             raise ValueError(f"step fields other than {sorted(flow.STEP_KEYS)}")
+        if record["style"] not in build.STYLES:
+            raise ValueError(f"style {record['style']!r} is not one of {build.STYLES}")
         flow.validate({"sections": [s["section"] for s in record["steps"]], "arc": record["arc"],
                        "why_the_flow_works": record["why_the_flow_works"],
                        "impact": [s["impact"] for s in record["steps"]],

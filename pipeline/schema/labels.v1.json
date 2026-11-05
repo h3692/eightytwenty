@@ -13,6 +13,22 @@
     "data_type": {"enum": ["none", "quantitative-chart", "kpi-numbers", "table", "timeline", "process", "map", "qualitative", "image-led"]},
     "industry": {"enum": ["consumer-retail", "food-beverage", "financial-services", "technology", "telecom-media", "healthcare-pharma", "energy-utilities", "industrials-manufacturing", "transportation-logistics", "travel-hospitality", "automotive", "real-estate-construction", "public-nonprofit-education", "professional-services", "cross-industry"]},
     "why_it_works": {"type": "string", "minLength": 20, "maxLength": 400},
+    "when_to_use": {"type": "string", "minLength": 1, "maxLength": 160},
+    "effect": {"type": "string", "minLength": 1, "maxLength": 160},
+    "elements": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["component", "note"],
+        "properties": {
+          "component": {"type": "integer", "minimum": 0},
+          "note": {"type": "string", "minLength": 1, "maxLength": 120}
+        }
+      }
+    },
     "regions": {
       "type": "object",
       "additionalProperties": false,
