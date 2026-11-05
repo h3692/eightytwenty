@@ -1,8 +1,8 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import dot from "../src/dot.wasm";
-import { DEFAULT_FLAGS, dense, loadLibrary, mmr, round, rrf, search } from "../src/search";
-import { buffers, fakeAI, floats, library, manifest, near, quantise, rows, seed } from "./fixture";
+import { DEFAULT_FLAGS, dense, loadLibrary, mmr, round, rrf, search, searchFlows } from "../src/search";
+import { buffers, fakeAI, flowFloats, flows, floats, library, manifest, near, quantise, rows, seed } from "./fixture";
 
 const lib = library();
 const ids = manifest.ids;
@@ -107,7 +107,7 @@ describe("dense", () => {
 			vecs.set(new Int8Array(src.vecs, (n % 12) * 1024, 1024), n * 1024);
 			norms[n] = new Float32Array(src.norms)[n % 12];
 		}
-		const big = loadLibrary(dot, vecs.buffer, norms.buffer, { ...manifest, count, ids: Array.from({ length: count }, (_, n) => `r${(n * 53) % count}`) });
+		const big = loadLibrary(dot, vecs.buffer, norms.buffer, { ...manifest, count, ids: Array.from({ length: count }, (_, n) => `r${(n * 53) % count}`) }, src.flowVecs);
 		const q = near(3);
 		const all = (allowed: Set<number> | null) => {
 			const q8 = quantise(q), qn = Math.hypot(...q8);
@@ -139,6 +139,11 @@ describe("library", () => {
 
 	it("refuses vectors that do not match the manifest", () => {
 		expect(() => library({ ...manifest, count: 11 })).toThrow(/vecs/);
+	});
+
+	it("refuses flow vectors that do not match the manifest's flows", () => {
+		expect(() => library({ ...manifest, flows: { count: 5, ids: [...manifest.flows.ids, "x"] } })).toThrow(/flow_vecs\.bin/);
+		expect(() => library(manifest, new ArrayBuffer(1024))).toThrow(/flow_vecs\.bin/);
 	});
 
 	it("refuses an embedding with different pooling", async () => {
@@ -237,5 +242,94 @@ describe("search", () => {
 		const { results } = await env.DB.prepare("SELECT * FROM search_cache").all();
 		expect(results.length).toBe(1);
 		expect(JSON.stringify(results)).not.toContain("secret");
+	});
+});
+
+describe("searchFlows", () => {
+	const nearFlow = (n: number) => near(n, 0.05, flowFloats);
+
+	it("embeds the purpose with the pinned model and returns up to 3 flows by plain cosine, no rerank", async () => {
+		const ai = fakeAI(() => nearFlow(2));
+		const out = await searchFlows(withAI(ai), lib, { purpose: "  Win the JUDGES  over " });
+		expect(out.library_version).toBe(manifest.library_version);
+		expect(ai.calls).toEqual([{ model: "@cf/baai/bge-m3", input: { text: ["win the judges over"] } }]);
+		// expected: cosine of the int8 query against the int8 flow rows, rounded, ties by id
+		const q8 = quantise(nearFlow(2)), qn = Math.hypot(...q8);
+		const expected = flows
+			.map((f) => {
+				const v = quantise(flowFloats[f.n]);
+				let dot = 0;
+				for (let d = 0; d < 1024; d++) dot += v[d] * q8[d];
+				return { id: f.id, score: round(dot / (Math.fround(Math.hypot(...v)) * qn)) };
+			})
+			.sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : 1))
+			.slice(0, 3);
+		expect(out.results.map((r) => ({ id: r.id, score: r.score }))).toEqual(expected);
+		expect(out.results[0]).toEqual({
+			id: flows[2].id, arc: "journey", length: "long", industry: "retail",
+			sections: "hook > customer > closing", why_the_flow_works: flows[2].why_the_flow_works, score: expected[0].score,
+		});
+	});
+
+	it("compresses repeated sections in the sequence", async () => {
+		const out = await searchFlows(withAI(fakeAI(() => nearFlow(0))), lib, { purpose: "x", k: 1 });
+		expect(out.results[0].sections).toBe("cover > problem-analysis x2");
+	});
+
+	it("filters by industry and length bucket", async () => {
+		const s = withAI(fakeAI(() => nearFlow(2)));
+		expect((await searchFlows(s, lib, { purpose: "x", industry: "retail", length: "short" })).results.map((r) => r.id)).toEqual([flows[0].id]);
+		expect((await searchFlows(s, lib, { purpose: "x", industry: "technology" })).results.map((r) => r.id).sort()).toEqual([flows[1].id, flows[3].id]);
+		expect((await searchFlows(s, lib, { purpose: "x", industry: "healthcare" })).results).toEqual([]);
+	});
+
+	it("breaks score ties by id", async () => {
+		const v = new Int8Array(buffers().flowVecs);
+		for (let n = 1; n < flows.length; n++) v.copyWithin(n * 1024, 0, 1024); // every flow the same vector
+		const out = await searchFlows(withAI(fakeAI(() => nearFlow(3))), library(manifest, v.buffer), { purpose: "x" });
+		expect(out.results.map((r) => r.id)).toEqual([flows[0].id, flows[1].id, flows[2].id]);
+		expect(new Set(out.results.map((r) => r.score)).size).toBe(1);
+	});
+
+	it("rejects bad input", async () => {
+		const s = withAI(fakeAI(() => nearFlow(0)));
+		await expect(searchFlows(s, lib, { purpose: " " })).rejects.toThrow(RangeError);
+		await expect(searchFlows(s, lib, { purpose: "x", k: 4 })).rejects.toThrow(RangeError);
+	});
+
+	it("refuses an embedding with different pooling", async () => {
+		await expect(searchFlows(withAI(fakeAI(() => nearFlow(0), undefined, "mean")), lib, { purpose: "x" })).rejects.toThrow(/pooling/);
+	});
+
+	it("refuses D1 flows that do not match the bundled flow vectors, with a clear error", async () => {
+		const s = withAI(fakeAI(() => nearFlow(0)));
+		await env.DB.prepare("DELETE FROM flows WHERE n = 3").run();
+		await expect(searchFlows(s, lib, { purpose: "x" })).rejects.toThrow(/flows.*records\.sql/);
+		await env.DB.prepare("DROP TABLE flows").run();
+		await expect(searchFlows(s, lib, { purpose: "y" })).rejects.toThrow(/flows.*records\.sql/);
+		await seed(env.DB, "bge-m3/desc-v1/other");
+		await expect(searchFlows(s, lib, { purpose: "z" })).rejects.toThrow(/library_version/);
+	});
+
+	it("serves identical output from the cache even when the embedding wobbles", async () => {
+		let call = 0;
+		const ai = fakeAI(() => (call++ === 0 ? nearFlow(0) : nearFlow(1)));
+		const a = await searchFlows(withAI(ai), lib, { purpose: "Win the judges" });
+		const b = await searchFlows(withAI(ai), lib, { purpose: "win  the JUDGES" });
+		expect(b).toEqual(a);
+		expect(ai.calls.length).toBe(1);
+	});
+
+	it("keeps slide and flow searches with identical arguments in separate cache entries", async () => {
+		const ai = fakeAI(() => near(3));
+		const args = { purpose: "revenue mix", industry: "retail", k: 3 };
+		const slides = await search(withAI(ai), lib, args);
+		const deckFlows = await searchFlows(withAI(ai), lib, args);
+		const again = await search(withAI(ai), lib, args);
+		expect(again).toEqual(slides);
+		expect(Object.keys(deckFlows.results[0])).toContain("arc");
+		expect(Object.keys(slides.results[0])).toContain("slide_type");
+		const { results } = await env.DB.prepare("SELECT key FROM search_cache").all();
+		expect(results.length).toBe(2);
 	});
 });

@@ -5,8 +5,8 @@ import labels from "../../pipeline/schema/labels.v1.json";
 import archetypesMd from "../../playbook/archetypes.md";
 import { app, clientKey, prune, STAGES } from "../src/app";
 import type { Limiter } from "../src/limiter";
-import { DEFAULT_FLAGS, EMBED_MODEL, RERANK_MODEL, search } from "../src/search";
-import { fakeAI, floats, library, manifest, rows, seed } from "./fixture";
+import { DEFAULT_FLAGS, EMBED_MODEL, RERANK_MODEL, search, searchFlows } from "../src/search";
+import { fakeAI, flowFloats, flows, floats, library, manifest, rows, seed } from "./fixture";
 
 const lib = library();
 const worker = app(lib);
@@ -59,10 +59,10 @@ describe("MCP endpoint", () => {
 		expect(body.result.serverInfo.name).toBe("eightytwenty");
 	});
 
-	it("lists three read-only, titled tools with enum filters from the label schema", async () => {
+	it("lists four read-only, titled tools with enum filters from the label schema", async () => {
 		const { body } = await rpc("tools/list");
 		const tools = Object.fromEntries(body.result.tools.map((t: any) => [t.name, t]));
-		expect(Object.keys(tools).sort()).toEqual(["find_references", "get_playbook", "get_reference"]);
+		expect(Object.keys(tools).sort()).toEqual(["find_deck_flows", "find_references", "get_playbook", "get_reference"]);
 		for (const t of Object.values<any>(tools)) {
 			expect(t.title).toBeTruthy();
 			expect(t.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false });
@@ -76,6 +76,11 @@ describe("MCP endpoint", () => {
 		expect(tools.find_references.inputSchema.required).toEqual(["purpose"]);
 		expect(tools.get_playbook.inputSchema.properties.stage.enum).toEqual(STAGES);
 		expect(tools.get_playbook.description).toMatch(/before planning a deck/i);
+		const f = tools.find_deck_flows.inputSchema;
+		expect(f.properties.industry.enum).toEqual(labels.properties.industry.enum);
+		expect(f.properties.length.enum).toEqual(["short", "medium", "long"]);
+		expect(f.required).toEqual(["purpose"]);
+		expect(tools.find_deck_flows.description).toMatch(/whole deck/i);
 	});
 
 	it("answers newer MCP methods (server/discover, subscriptions/listen) without a server error", async () => {
@@ -167,6 +172,45 @@ describe("find_references", () => {
 	});
 });
 
+describe("find_deck_flows", () => {
+	it("returns up to 3 flow summaries and the library_version, from the Searcher, cached", async () => {
+		const ai = fakeAI(() => flowFloats[1]);
+		await searcherAI(ai);
+		const noAI = { run: () => { throw new Error("the Worker must not call Workers AI"); } };
+		const { body } = await tool("find_deck_flows", { purpose: "Win over the judges" }, { e: testEnv({ AI: noAI }) });
+		expect(body.result.isError).toBeFalsy();
+		expect(ai.calls.map((c) => c.model)).toEqual([EMBED_MODEL]);
+		const text: string = body.result.content[0].text;
+		const { results } = await searchFlows(testEnv({ AI: fakeAI(() => flowFloats[1]) }), lib, { purpose: "win over the judges" });
+		expect(results).toHaveLength(3);
+		expect(results[0].id).toBe(flows[1].id);
+		expect(text.split("\n").filter((l) => /^\d\. /.test(l))).toEqual(results.map((r, i) => `${i + 1}. ${r.id} | ${r.arc} | ${r.length} deck | ${r.industry} | score ${r.score}`));
+		for (const s of [manifest.library_version, "Sections: cover > solution > financials", `Why the flow works: ${flows[1].why_the_flow_works}`, "get_reference"]) expect(text).toContain(s);
+		const cached = await env.DB.prepare("SELECT results FROM search_cache").all<{ results: string }>();
+		expect(cached.results.map((r) => JSON.parse(r.results))).toEqual([results]);
+	});
+
+	it("rejects an unknown length with the valid values", async () => {
+		const { body } = await tool("find_deck_flows", { purpose: "x", length: "huge" });
+		expect(body.result?.isError ?? !!body.error).toBe(true);
+		expect(JSON.stringify(body)).toContain("medium");
+	});
+
+	it("says what to change when nothing matches", async () => {
+		const { body } = await tool("find_deck_flows", { purpose: "x", industry: "automotive" });
+		expect(body.result.content[0].text).toMatch(/No deck flows match/);
+	});
+
+	it("refuses with a clear error when D1 has no matching flows table, and slide tools keep working", async () => {
+		await env.DB.prepare("DROP TABLE flows").run();
+		const { body } = await tool("find_deck_flows", { purpose: "x" });
+		expect(body.result.isError).toBe(true);
+		expect(body.result.content[0].text).toMatch(/flows.*records\.sql/);
+		expect((await tool("find_references", { purpose: "market share" })).body.result.isError).toBeFalsy();
+		expect((await tool("get_reference", { id: rows[1].id })).body.result.isError).toBeFalsy();
+	});
+});
+
 describe("Searcher Durable Object", () => {
 	const q = { purpose: "Market share of competitors  over time", k: 3 };
 
@@ -222,6 +266,20 @@ describe("get_reference", () => {
 		expect(JSON.parse(body.result.content[0].text).id).toBe(rows[1].id);
 	});
 
+	it("returns a deck flow for a deck id, marking each step's slide as available or not", async () => {
+		const { body } = await tool("get_reference", { id: flows[0].id });
+		expect(body.result.isError).toBeFalsy();
+		expect(body.result.content).toHaveLength(1);
+		const flow = JSON.parse(body.result.content[0].text);
+		expect(flow).toEqual({ ...flows[0].record, steps: flows[0].record.steps.map((s, k) => ({ ...s, available: k < 2 })) });
+	});
+
+	it("rejects an unknown deck id with a hint", async () => {
+		const { body } = await tool("get_reference", { id: "ffffffffffffffff" });
+		expect(body.result.isError).toBe(true);
+		expect(body.result.content[0].text).toMatch(/No deck flow.*find_deck_flows/);
+	});
+
 	it("rejects an unknown id with a hint", async () => {
 		const { body } = await tool("get_reference", { id: "0000000000000000-01" });
 		expect(body.result.isError).toBe(true);
@@ -245,12 +303,15 @@ describe("rate limits", () => {
 		for (let i = 0; i < 3; i++) expect((await rpc("tools/list", {}, { e, from })).res.status).toBe(200);
 	});
 
-	it("only find_references spends the daily search budget", async () => {
+	it("only the two searches spend the daily search budget", async () => {
 		const e = testEnv({ DAILY_SEARCH_BUDGET: 0 });
 		expect((await tool("get_playbook", {}, { e })).res.status).toBe(200);
-		const { res, body } = await tool("find_references", { purpose: "market share" }, { e });
-		expect(res.status).toBe(429);
-		expect(body.error.message).toBe("The shared daily search budget is used up. Try again after 00:00 UTC.");
+		expect((await tool("get_reference", { id: flows[0].id }, { e })).res.status).toBe(200);
+		for (const [name, args] of [["find_references", { purpose: "market share" }], ["find_deck_flows", { purpose: "win" }]] as const) {
+			const { res, body } = await tool(name, args, { e });
+			expect(res.status).toBe(429);
+			expect(body.error.message).toBe("The shared daily search budget is used up. Try again after 00:00 UTC.");
+		}
 	});
 });
 
@@ -338,7 +399,7 @@ describe("pages", () => {
 		expect(res.status).toBe(200);
 		expect(res.headers.get("content-type")).toMatch(/^text\/html/);
 		const html = await res.text();
-		for (const s of ["get_playbook", "find_references", "get_reference", "/mcp", "claude.ai", "Claude Code"]) expect(html).toContain(s);
+		for (const s of ["get_playbook", "find_references", "find_deck_flows", "get_reference", "/mcp", "claude.ai", "Claude Code"]) expect(html).toContain(s);
 	});
 
 	it("/privacy states what is sent and kept", async () => {

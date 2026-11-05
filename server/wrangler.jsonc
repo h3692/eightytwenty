@@ -21,7 +21,7 @@
     "LIMIT_PER_MINUTE": 20,
     // Tool calls per minute for the bucket all of Anthropic's egress IPs share (claude.ai users).
     "LIMIT_PER_MINUTE_SHARED": 300,
-    // find_references calls per UTC day across all clients (protects the Workers AI and D1 free quotas).
+    // find_references + find_deck_flows calls per UTC day across all clients (protects the Workers AI and D1 free quotas).
     "DAILY_SEARCH_BUDGET": 5000
   }
 }

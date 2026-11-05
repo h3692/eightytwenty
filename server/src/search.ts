@@ -1,17 +1,22 @@
 // Search core: bge-m3 query embedding -> exact int8 brute force (WASM SIMD) + D1 FTS5 BM25 with the same filters
 // -> RRF -> bge-reranker-base -> MMR (max 1 per deck). Scores are rounded and ties broken by record id, and results are
 // cached in D1 per (normalised query, library_version), so an identical query always returns identical results.
+// Deck flows (~30) are searched simply: the same bge-m3 query embedding, plain JS cosine over the flow vectors, filters.
 export const EMBED_MODEL = "@cf/baai/bge-m3";
 export const RERANK_MODEL = "@cf/baai/bge-reranker-base";
 export const DIMS = 1024; // dot.wat hard-codes 1024-d rows
-const POOL = 50, RERANK_POOL = 20, RRF_K = 60, MAX_K = 5, MAX_PURPOSE = 1000, MAX_TERMS = 32;
+const POOL = 50, RERANK_POOL = 20, RRF_K = 60, MAX_K = 5, MAX_FLOWS = 3, MAX_PURPOSE = 1000, MAX_TERMS = 32;
+export const LENGTHS = ["short", "medium", "long"]; // pipeline/flow.py length_bucket: up to 10, 11 to 25, more slides
 
-export type Manifest = { library_version: string; model: string; pooling: string; dims: number; count: number; ids: string[] };
-export type Library = { manifest: Manifest; vecs: Int8Array; norms: Float32Array; scan: (q8: Int8Array) => Int32Array };
+export type Manifest = { library_version: string; model: string; pooling: string; dims: number; count: number; ids: string[]; flows: { count: number; ids: string[] } };
+type Vectors = { manifest: Manifest; vecs: Int8Array; norms: Float32Array; scan: (q8: Int8Array) => Int32Array };
+export type Library = Vectors & { flows: Vectors };
 export type Query = { purpose: string; slide_type?: string; industry?: string; data_type?: string; k?: number };
 // Stage switches for the S6 ablation: dense only -> +fts (RRF) -> +rerank -> +mmr.
 export type Flags = { fts: boolean; rerank: boolean; mmr: boolean; cache: boolean; lambda: number };
 export type Result = { id: string; slide_type: string; purpose: string; why_it_works: string; score: number };
+export type FlowQuery = { purpose: string; industry?: string; length?: string; k?: number };
+export type FlowResult = { id: string; arc: string; length: string; industry: string; sections: string; why_the_flow_works: string; score: number };
 type Row = { n: number; id: string; deck_id: string; archetype: string; purpose: string; why_it_works: string; description: string };
 
 export const DEFAULT_FLAGS: Flags = { fts: true, rerank: true, mmr: true, cache: true, lambda: 0.7 };
@@ -20,18 +25,32 @@ export const round = (x: number) => Math.round(x * 1e6) / 1e6;
 const byScore = (ids: string[]) => (a: [number, number], b: [number, number]) =>
 	b[1] - a[1] || (ids[a[0]] < ids[b[0]] ? -1 : ids[a[0]] > ids[b[0]] ? 1 : 0);
 
-export function loadLibrary(dot: WebAssembly.Module, vecs: ArrayBuffer, norms: ArrayBuffer, manifest: Manifest): Library {
-	const { model, pooling, dims, count, ids } = manifest;
+export function loadLibrary(dot: WebAssembly.Module, vecs: ArrayBuffer, norms: ArrayBuffer, manifest: Manifest, flowVecs: ArrayBuffer): Library {
+	const { model, pooling, dims, count, ids, flows } = manifest;
 	if (model !== EMBED_MODEL || pooling !== "cls" || dims !== DIMS)
 		throw new Error(`Library model is ${model} (${pooling}, ${dims}-d) but queries are embedded with ${EMBED_MODEL} (cls, ${DIMS}-d): re-embed the library.`);
 	if (vecs.byteLength !== count * DIMS || norms.byteLength !== count * 4 || ids.length !== count)
 		throw new Error(`library/vecs.bin, norms.bin and manifest.json disagree on the row count (${count}): re-run embed.`);
+	if (flowVecs.byteLength !== flows.count * DIMS || flows.ids.length !== flows.count)
+		throw new Error(`library/flow_vecs.bin and manifest.json flows disagree on the row count (${flows.count}): re-run embed.`);
 	const ex = new WebAssembly.Instance(dot).exports as { mem: WebAssembly.Memory; scan: (v: number, q: number, o: number, n: number) => void };
 	const q = count * DIMS, out = q + DIMS; // wasm memory layout: vectors | query | int32 dot products
 	ex.mem.grow(Math.ceil((out + count * 4) / 65536));
 	new Int8Array(ex.mem.buffer).set(new Int8Array(vecs));
+	const fv = new Int8Array(flowVecs);
 	return {
 		manifest,
+		// a few dozen rows: plain JS, no WASM; norms are computed here (embed.py writes none for flows)
+		flows: {
+			manifest: { ...manifest, count: flows.count, ids: flows.ids },
+			vecs: fv,
+			norms: Float32Array.from({ length: flows.count }, (_, n) => Math.hypot(...fv.subarray(n * DIMS, (n + 1) * DIMS))),
+			scan(q8) {
+				const out = new Int32Array(flows.count);
+				for (let n = 0; n < flows.count; n++) for (let d = 0; d < DIMS; d++) out[n] += fv[n * DIMS + d] * q8[d];
+				return out;
+			},
+		},
 		vecs: new Int8Array(ex.mem.buffer, 0, q),
 		norms: new Float32Array(norms),
 		scan(q8) {
@@ -43,7 +62,7 @@ export function loadLibrary(dot: WebAssembly.Module, vecs: ArrayBuffer, norms: A
 }
 
 // Cosine of the query against every allowed row (same int8 quantisation as pipeline/embed.py), top POOL.
-export function dense(lib: Library, embedding: number[], allowed: Set<number> | null): [number, number][] {
+export function dense(lib: Vectors, embedding: number[], allowed: Set<number> | null): [number, number][] {
 	const m = Math.max(...embedding.map(Math.abs)) || 1;
 	const q8 = Int8Array.from(embedding, (x) => Math.round((x * 127) / m));
 	const qn = Math.hypot(...q8) || 1;
@@ -88,24 +107,40 @@ export function mmr<C extends { n: number; id: string; deck_id: string; score: n
 	return picked;
 }
 
-type Found = { results: Result[]; library_version: string };
+type Found<R = Result> = { results: R[]; library_version: string };
+
+const normalise = (purpose?: string) => (purpose ?? "").normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
+
+// The cache row for a query: hashed, so the query text is never stored; id[0] tags the search ("slides" | "flows").
+async function cached(env: Pick<Env, "DB">, id: unknown[]): Promise<[key: string, hit: string | null]> {
+	const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(id)));
+	const key = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+	return [key, await env.DB.prepare("SELECT results FROM search_cache WHERE key = ?").bind(key).first<string>("results")];
+}
+
+// Writes results under key; if an identical query stored its result first, returns that one so both callers agree.
+async function store<R>(env: Pick<Env, "DB">, key: string, results: R[], library_version: string): Promise<R[]> {
+	const { meta } = await env.DB.prepare("INSERT OR IGNORE INTO search_cache (key, results, library_version) VALUES (?, ?, ?)").bind(key, JSON.stringify(results), library_version).run();
+	if (!meta.changes) {
+		const stored = await env.DB.prepare("SELECT results FROM search_cache WHERE key = ?").bind(key).first<string>("results");
+		if (stored) return JSON.parse(stored);
+	}
+	return results;
+}
 
 // `miss` runs everything after the cache read; the Worker hands it to the Searcher Durable Object (app.ts).
 export async function search(env: Pick<Env, "DB" | "AI">, lib: Library, query: Query, flags: Flags = DEFAULT_FLAGS,
 	miss = (q: Query, key: string) => uncached(env, lib, q, flags, key)): Promise<Found> {
 	const { library_version } = lib.manifest;
-	const purpose = (query.purpose ?? "").normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
+	const purpose = normalise(query.purpose);
 	const k = query.k ?? MAX_K;
 	if (!purpose || purpose.length > MAX_PURPOSE) throw new RangeError(`purpose must be 1 to ${MAX_PURPOSE} characters.`);
 	if (!Number.isInteger(k) || k < 1 || k > MAX_K) throw new RangeError(`k must be a whole number from 1 to ${MAX_K}.`);
 
 	let key = "";
 	if (flags.cache) {
-		// hashed, so the query text is never stored
-		const id = [library_version, purpose, query.slide_type ?? null, query.industry ?? null, query.data_type ?? null, k, flags.fts, flags.rerank, flags.mmr, flags.lambda];
-		const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(id)));
-		key = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
-		const hit = await env.DB.prepare("SELECT results FROM search_cache WHERE key = ?").bind(key).first<string>("results");
+		let hit: string | null;
+		[key, hit] = await cached(env, ["slides", library_version, purpose, query.slide_type ?? null, query.industry ?? null, query.data_type ?? null, k, flags.fts, flags.rerank, flags.mmr, flags.lambda]);
 		if (hit) return { results: JSON.parse(hit), library_version };
 	}
 	return miss({ ...query, purpose, k }, key);
@@ -155,13 +190,53 @@ export async function uncached(env: Pick<Env, "DB" | "AI">, lib: Library, query:
 		results = picked.map((c) => ({ id: c.id, slide_type: c.archetype, purpose: c.purpose, why_it_works: c.why_it_works, score: c.score }));
 	}
 
-	if (key) {
-		const { meta } = await env.DB.prepare("INSERT OR IGNORE INTO search_cache (key, results, library_version) VALUES (?, ?, ?)").bind(key, JSON.stringify(results), library_version).run();
-		if (!meta.changes) {
-			// an identical query stored its result first: serve that one, so both callers see the same output
-			const stored = await env.DB.prepare("SELECT results FROM search_cache WHERE key = ?").bind(key).first<string>("results");
-			if (stored) return { results: JSON.parse(stored), library_version };
-		}
-	}
-	return { results, library_version };
+	return { results: key ? await store(env, key, results, library_version) : results, library_version };
+}
+
+// Deck flow search: validate, then the D1 cache; `miss` is the Searcher Durable Object in app.ts, like slide search.
+export async function searchFlows(env: Pick<Env, "DB" | "AI">, lib: Library, query: FlowQuery,
+	miss = (q: FlowQuery, key: string) => uncachedFlows(env, lib, q, key)): Promise<Found<FlowResult>> {
+	const { library_version } = lib.manifest;
+	const purpose = normalise(query.purpose);
+	const k = query.k ?? MAX_FLOWS;
+	if (!purpose || purpose.length > MAX_PURPOSE) throw new RangeError(`purpose must be 1 to ${MAX_PURPOSE} characters.`);
+	if (!Number.isInteger(k) || k < 1 || k > MAX_FLOWS) throw new RangeError(`k must be a whole number from 1 to ${MAX_FLOWS}.`);
+	const [key, hit] = await cached(env, ["flows", library_version, purpose, query.industry ?? null, query.length ?? null, k]);
+	if (hit) return { results: JSON.parse(hit), library_version };
+	return miss({ ...query, purpose, k }, key);
+}
+
+type FlowRow = { n: number; id: string; arc: string; length_bucket: string; industry: string; why: string; pacing: string };
+
+// The uncached flow search for a validated query. Every flows row is read (a few dozen), so the same query checks that
+// D1 holds exactly the bundled flows; a mismatch fails only this tool, slide search is unaffected.
+export async function uncachedFlows(env: Pick<Env, "DB" | "AI">, lib: Library, query: FlowQuery, key: string): Promise<Found<FlowResult>> {
+	const { library_version, flows } = lib.manifest;
+	const { purpose, k = MAX_FLOWS } = query;
+	const [emb, batch] = await Promise.all([
+		env.AI.run(EMBED_MODEL, { text: [purpose] }) as Promise<{ data?: number[][]; pooling?: string }>,
+		env.DB.batch<Record<string, any>>([
+			env.DB.prepare("SELECT value FROM meta WHERE key = 'library_version'"),
+			env.DB.prepare("SELECT n, id, arc, length_bucket, industry, json_extract(record, '$.why_the_flow_works') AS why, json_extract(record, '$.pacing') AS pacing FROM flows ORDER BY n"),
+		]).catch((e: Error) => {
+			throw new Error(`D1 cannot read the flows table (${e.message}): load the matching records.sql.`);
+		}),
+	]);
+	const version = batch[0].results[0]?.value;
+	if (version !== library_version)
+		throw new Error(`D1 holds library_version ${version} but the bundled vectors are ${library_version}: load the matching records.sql.`);
+	const rows = batch[1].results as FlowRow[];
+	if (rows.map((r) => r.id).join() !== flows.ids.join() || rows.some((r, n) => r.n !== n))
+		throw new Error(`D1 holds ${rows.length} flows but the bundled flow vectors have ${flows.count} (different ids): load the matching records.sql.`);
+	if (emb.pooling !== lib.manifest.pooling || emb.data?.[0]?.length !== DIMS)
+		throw new Error(`${EMBED_MODEL} returned pooling ${emb.pooling}, ${emb.data?.[0]?.length}-d; the library was embedded with ${lib.manifest.pooling}, ${DIMS}-d.`);
+
+	const filtered = query.industry != null || query.length != null;
+	const allowed = new Set(rows.filter((r) => (query.industry ?? r.industry) === r.industry && (query.length ?? r.length_bucket) === r.length_bucket).map((r) => r.n));
+	const results = dense(lib.flows, emb.data[0], filtered ? allowed : null).slice(0, k).map(([n, score]): FlowResult => {
+		const r = rows[n];
+		const sections = (JSON.parse(r.pacing) as { section: string; slides: number }[]).map((p) => (p.slides > 1 ? `${p.section} x${p.slides}` : p.section)).join(" > ");
+		return { id: r.id, arc: r.arc, length: r.length_bucket, industry: r.industry, sections, why_the_flow_works: r.why, score };
+	});
+	return { results: key ? await store(env, key, results, library_version) : results, library_version };
 }

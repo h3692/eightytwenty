@@ -86,6 +86,9 @@ Propose a sharper version. If an answer resolves a later question, drop it and a
 
 ## Step 3: Choose a layout (references)
 
+When planning a whole deck, call `find_deck_flows(purpose, industry?, length?)` first, then `get_reference` on the best
+flow's deck id and on its steps' slide ids (steps marked `available: false` have no record).
+
 As soon as the claim is settled:
 
 1. Call `find_references(purpose, slide_type, industry?, data_type?)`. `purpose` is the slide's job in plain words

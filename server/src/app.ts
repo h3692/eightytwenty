@@ -1,4 +1,4 @@
-// The public connector: three read-only MCP tools at /mcp (stateless Streamable HTTP, default Origin check), the
+// The public connector: four read-only MCP tools at /mcp (stateless Streamable HTTP, default Origin check), the
 // Limiter in front of every tool call, and the /docs + /privacy pages. index.ts binds it to the bundled library.
 import { DurableObject } from "cloudflare:workers";
 import { McpServer } from "@modelcontextprotocol/server";
@@ -16,7 +16,7 @@ import writing from "../../playbook/writing.md";
 import docs from "../pages/index.html";
 import privacy from "../pages/privacy.html";
 import icon from "../pages/icon.svg";
-import { DEFAULT_FLAGS, search, uncached, type Library, type Query } from "./search";
+import { DEFAULT_FLAGS, LENGTHS, search, searchFlows, uncached, uncachedFlows, type FlowQuery, type Library, type Query } from "./search";
 
 export { Limiter } from "./limiter";
 
@@ -47,7 +47,13 @@ const FIND_INPUT = z.object({
 	data_type: enumOf(labels.properties.data_type.enum).optional(),
 	k: z.number().int().min(1).max(5).optional().describe("How many results, 1 to 5 (default 5)."),
 });
-const REFERENCE_INPUT = z.object({ id: z.string().regex(/^[A-Za-z0-9-]{1,64}$/, "Use an id exactly as find_references returned it.") });
+const FLOWS_INPUT = z.object({
+	purpose: z.string().min(1).max(1000).describe("What the whole deck must achieve, in plain words."),
+	industry: enumOf(labels.properties.industry.enum).optional(),
+	length: enumOf(LENGTHS).optional().describe("short: up to 10 slides, medium: 11 to 25, long: more."),
+});
+const REFERENCE_INPUT = z.object({ id: z.string().regex(/^[A-Za-z0-9-]{1,64}$/, "Use an id exactly as find_references or find_deck_flows returned it.") });
+const DECK_ID = /^[0-9a-f]{16}$/; // slide ids are <deck id>-NN
 const PLAYBOOK_INDEX = `Playbook stages (call get_playbook with one of these as \`stage\`):\n${STAGES.map((s) => `- \`${s}\`: ${PLAYBOOK[s].match(/^# (.+)$/m)?.[1] ?? s}`).join("\n")}\n\n${workflow}`;
 
 function createServer(env: Env, lib: Library) {
@@ -87,15 +93,50 @@ function createServer(env: Env, lib: Library) {
 	);
 
 	server.registerTool(
+		"find_deck_flows",
+		{
+			title: "Find reference deck flows",
+			description: "Search the library's deck flows (how strong decks order their sections) by what the whole deck must achieve. " +
+				"Call it first when planning a whole deck. Returns up to 3 summaries (deck id, arc, length, industry, section sequence, " +
+				"why the flow works, score). Call get_reference with a deck id for its steps and their slide ids.",
+			inputSchema: FLOWS_INPUT,
+			annotations: readOnly,
+		},
+		async (args) => {
+			const { results, library_version } = await searchFlows(env, lib, args,
+				(q, key) => env.SEARCHER.get(env.SEARCHER.idFromName("global")).flows(q, key));
+			if (!results.length)
+				return { content: [text(`No deck flows match these filters. Try fewer filters or a broader purpose. (library_version ${library_version})`)] };
+			const lines = results.map((r, i) => `${i + 1}. ${r.id} | ${r.arc} | ${r.length} deck | ${r.industry} | score ${r.score}\n   Sections: ${r.sections}\n   Why the flow works: ${r.why_the_flow_works}`);
+			return { content: [text(`library_version ${library_version}\n\n${lines.join("\n")}\n\nCall get_reference with a deck id for its full flow, then on its steps' slide ids.`)] };
+		},
+	);
+
+	server.registerTool(
 		"get_reference",
 		{
-			title: "Get a reference slide",
+			title: "Get a reference slide or deck flow",
 			description: "The full design-DNA record of one library slide (every region box, colour and type role, text structure) " +
-				"plus its wireframe image. Use an id from find_references. Build your own slide from it; never copy it.",
+				"plus its wireframe image. Use an id from find_references. Build your own slide from it; never copy it. " +
+				"A deck id from find_deck_flows returns that deck's flow instead: its steps in order, each with a slide id and " +
+				"whether that slide is in the library (available).",
 			inputSchema: REFERENCE_INPUT,
 			annotations: readOnly,
 		},
 		async ({ id }) => {
+			if (DECK_ID.test(id)) {
+				const [flow, published] = await env.DB.batch<{ record?: string; id?: string }>([
+					env.DB.prepare("SELECT record FROM flows WHERE id = ?").bind(id),
+					// published flows may name unpublished slides: those are marked available: false
+					env.DB.prepare("SELECT id FROM slides WHERE id IN (SELECT json_extract(value, '$.id') FROM flows, json_each(flows.record, '$.steps') WHERE flows.id = ?)").bind(id),
+				]);
+				const record = flow.results[0]?.record;
+				if (!record) return { content: [text(`No deck flow with id ${id}. Use a deck id returned by find_deck_flows.`)], isError: true };
+				const have = new Set(published.results.map((r) => r.id));
+				const rec = JSON.parse(record);
+				rec.steps = rec.steps.map((s: { id: string }) => ({ ...s, available: have.has(s.id) }));
+				return { content: [text(JSON.stringify(rec))] };
+			}
 			const dna = await env.DB.prepare("SELECT dna FROM slides WHERE id = ?").bind(id).first<string>("dna");
 			if (!dna) return { content: [text(`No reference with id ${id}. Use an id returned by find_references.`)], isError: true };
 			const png = await env.ASSETS.fetch(`https://assets.local/wireframes/${id}.png`);
@@ -124,25 +165,30 @@ export function clientKey(ip: string | null): string {
 	return ANTHROPIC.some(([net, bits]) => ip4(ip) >>> (32 - bits) === ip4(net) >>> (32 - bits)) ? "anthropic" : ip;
 }
 
+const SEARCHES = ["find_references", "find_deck_flows"];
+
 const rpcError = (status: number, id: unknown, message: string, headers: Record<string, string> = {}) =>
 	Response.json({ jsonrpc: "2.0", id: id ?? null, error: { code: -32000, message } }, { status, headers: { "access-control-allow-origin": "*", ...headers } });
 
-// Every tools/call counts toward the caller's per-minute limit; find_references also spends the daily budget.
+// Every tools/call counts toward the caller's per-minute limit; the two searches also spend the daily budget.
 async function limit(request: Request, env: Env, body: any): Promise<Response | null> {
 	const calls = [body].flat().filter((m) => m?.method === "tools/call");
 	if (!calls.length) return null;
 	if (Array.isArray(body)) return rpcError(400, null, "Send one tools/call per request (JSON-RPC batches are not supported).");
 	const limits = { perMinute: env.LIMIT_PER_MINUTE, perMinuteShared: env.LIMIT_PER_MINUTE_SHARED, dailySearchBudget: env.DAILY_SEARCH_BUDGET };
 	const key = clientKey(request.headers.get("cf-connecting-ip"));
-	const v = await env.LIMITER.get(env.LIMITER.idFromName("global")).check(key, body.params?.name === "find_references", limits);
+	const v = await env.LIMITER.get(env.LIMITER.idFromName("global")).check(key, SEARCHES.includes(body.params?.name), limits);
 	return v.ok ? null : rpcError(429, body.id, v.message, { "retry-after": String(v.retryAfter) });
 }
 
-// Uncached searches (embedding, vector scan, FTS, rerank, MMR, cache write) run here: a Durable Object's CPU time is its
+// Uncached searches (embedding, vector scan, FTS, rerank, MMR, cache write; flow searches too) run here: a Durable Object's CPU time is its
 // own, so the Worker stays inside the Free plan's 10 ms per request. The entry exports it bound to the same library.
 export const searcher = (lib: Library) => class Searcher extends DurableObject<Env> {
 	search(query: Query, key: string) {
 		return uncached(this.env, lib, query, DEFAULT_FLAGS, key);
+	}
+	flows(query: FlowQuery, key: string) {
+		return uncachedFlows(this.env, lib, query, key);
 	}
 };
 export type Searcher = InstanceType<ReturnType<typeof searcher>>;
