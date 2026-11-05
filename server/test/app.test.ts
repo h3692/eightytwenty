@@ -79,7 +79,11 @@ describe("MCP endpoint", () => {
 		expect(p.style.description).toBeTruthy();
 		expect(tools.find_references.description).toMatch(/one per deck/i);
 		expect(tools.find_references.description).toMatch(/impact filter returns few/i);
-		for (const t of [tools.find_references, tools.find_deck_flows]) expect(t.description).toMatch(/deck mode.*after the slide-by-slide storyline is confirmed.*get_playbook/i);
+		// when to use them leads each search description; refusal wording stays out of tool descriptions
+		for (const t of [tools.find_references, tools.find_deck_flows]) {
+			expect(t.description.split(". ")[0]).toMatch(/after .*(claim|end belief).* settled.*get_playbook/i);
+			expect(t.description).not.toMatch(/can't be used/i);
+		}
 		expect(tools.find_references.inputSchema.required).toEqual(["purpose"]);
 		expect(tools.get_playbook.inputSchema.properties.stage.enum).toEqual(STAGES);
 		expect(tools.get_playbook.description).toMatch(/before planning a deck/i);
@@ -125,6 +129,36 @@ describe("MCP endpoint", () => {
 	});
 });
 
+describe("server instructions and prompts", () => {
+	it("sends instructions on initialize: scope and the questions, plan, approval, build order up front", async () => {
+		const { body } = await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } });
+		const ins: string = body.result.instructions;
+		expect(ins.length).toBeLessThan(2000);
+		const head = ins.slice(0, 512);
+		for (const s of ["researching and building decks", "get_playbook", "one per message", "approve", "eightytwenty can't be used for that"])
+			expect(head).toContain(s);
+		expect(ins).toMatch(/never as slides/i);
+	});
+
+	it("offers a start prompt that opens the guided flow, with optional context", async () => {
+		const { body: list } = await rpc("prompts/list");
+		const start = list.result.prompts.find((p: { name: string }) => p.name === "start");
+		expect(start.description).toBeTruthy();
+		expect(start.arguments).toEqual([expect.objectContaining({ name: "context", required: false })]);
+		const { body } = await rpc("prompts/get", { name: "start", arguments: { context: "a pitch for a campus food startup" } });
+		const msg = body.result.messages[0];
+		expect(msg.role).toBe("user");
+		for (const s of ["a pitch for a campus food startup", "get_playbook", "one at a time", "approve"]) expect(msg.content.text).toContain(s);
+		const { body: bare } = await rpc("prompts/get", { name: "start", arguments: {} });
+		expect(bare.result.messages[0].content.text).toContain("get_playbook");
+	});
+
+	it("does not count prompts against the tool-call limit", async () => {
+		const e = testEnv({ LIMIT_PER_MINUTE: 1 }), from = nextIp();
+		for (let i = 0; i < 3; i++) expect((await rpc("prompts/get", { name: "start", arguments: {} }, { e, from })).res.status).toBe(200);
+	});
+});
+
 describe("get_playbook", () => {
 	it("bundles one stage per playbook chapter", () => {
 		expect([...STAGES].sort()).toEqual(env.PLAYBOOK_FILES.map((f: string) => f.replace(/\.md$/, "")).sort());
@@ -140,6 +174,17 @@ describe("get_playbook", () => {
 		const text = body.result.content[0].text;
 		for (const s of STAGES) expect(text).toContain(s);
 		expect(text).toContain("# Workflow");
+	});
+
+	it("the workflow puts scope, one question per message, a text plan and approval before any build", async () => {
+		const { body } = await tool("get_playbook");
+		const text = body.result.content[0].text;
+		for (const s of ["eightytwenty can't be used for that.", "One question per message", "Reply **approve**", "Nothing extra in the deck", "Research to-do, in chat"])
+			expect(text).toContain(s);
+		expect(text).not.toMatch(/hidden \*\*Research To-Do\*\* slide|Design Options slide \(hidden\)/);
+		const polish = (await tool("get_playbook", { stage: "polish" })).body.result.content[0].text;
+		expect(polish).toContain("# Density and polish");
+		expect(polish).toMatch(/No arrow characters/);
 	});
 
 	it("returns one chapter", async () => {

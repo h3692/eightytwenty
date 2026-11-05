@@ -16,6 +16,8 @@ tools.
 ## Connect
 
 Add `https://eightytwenty.socratic.workers.dev/mcp` as a remote MCP connector in your client.
+Then ask for help with your deck, or use its `start` prompt. Your assistant asks a few questions one at a
+time, shows you the plan in text, and builds only after you approve it.
 
 ## Tools
 

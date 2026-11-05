@@ -4,11 +4,12 @@
 
 - **Palette**: the client's brand colour as the single primary, plus black/dark grey text, mid and light grey fills,
   white. Red/green only for explicit bad/good (weaknesses vs strengths, check/cross, heat maps). No second accent unless
-  the deck already has one or the approved colour scheme adds one.
-- **Type**: one clean sans family with a light weight for secondary text (e.g. Helvetica Neue + Helvetica Neue Light,
-  Inter, IBM Plex Sans, Montserrat). Titles bold ~18pt, taglines ~11 to 12pt, body 8 to 12pt (most often 10 to 12), card
-  numbers 20 to 30pt (hero numbers larger), footnotes 6 to 7pt. Match the deck's actual values or the approved font
-  option.
+  the deck already has one or the approved palette adds one. Use only the palette's named tokens (`polish`).
+- **Type: one deck font.** Helvetica Neue by default, or the deck's existing font if the user chose to keep it
+  (`workflow`, question 1). Bold for titles, header bars, card titles and big numbers; regular for body; light for
+  taglines and secondary text (if the font has no light weight, regular in the secondary grey). Titles ~18pt, taglines
+  ~11 to 12pt, body size by the density tier (`polish`), card numbers 20 to 30pt (hero numbers larger), footnotes 6 to
+  7pt. Charts, tables and pasted text are converted to the deck font too; no Calibri, Aptos or stray Arial.
 - **Box semantics**: brand-colour filled header bar = label; outlined box = content; light grey fill = context or
   assumptions; brand colour on a single element = "this is the point"; numbered circles = cross-reference between a
   visual and its explanation.
@@ -17,56 +18,52 @@
   matrix for choosing.
 - **Imagery**: see image slots below. Every image carries meaning; no decorative stock.
 
-## Design options -> mock -> apply (after the first finished slide)
+## Palette options -> mock -> apply (after the first finished slide)
 
 Decks that stand out look like they belong to their client and prompt, not to a generic consulting template. A
-healthcare foundation, a youth-focused gifting campaign and an airline's self-service rollout should not share a look. Fonts and
-colours are chosen separately because users often like one option's type and another's palette; a mock of a real slide
-comes before any change because swatches don't show how a full slide feels.
+healthcare foundation, a youth-focused gifting campaign and an airline's self-service rollout should not share a look.
+The font is settled in the first question, so the palette is the main lever on mood. A mock of a real slide comes before
+any change because swatches don't show how a full slide feels.
 
-Three stages, each gated on the user. Nothing on the deck's real slides changes until stage 3.
+Three stages, each gated on the user. Nothing in the deck changes until stage 3, and **none of this goes into the deck
+file**: the options and the mock go to the user in chat.
 
-**Stage 1: Design Options slide (hidden).** Once the first slide has finished Step 6 (`workflow`), create one hidden
-slide titled `Design Options`, directly after the title slide. One per deck; on later runs, read and update it, never
-create a second. Every option renders as a real sample:
+**Stage 1: Palette options, in chat.** Once the first slide is finished (`workflow`), send the options board as an
+**image** if you can render one (an SVG or HTML artifact, or a PNG drawn in your code sandbox), otherwise as **plain
+text**. It holds:
 1. **Prompt read** (one line): 3 to 5 tone words the prompt calls for and why ("Warm, trustworthy, community: nonprofit
-   healthcare donor audience").
-2. **Current**: the deck's existing fonts and colours, labelled `Keep current`.
-3. **Font options F1, F2, F3** side by side: a short name ("Editorial", "Clean Tech", "Friendly"), heading and body font
-   named, a live sample of a real title and tagline from the deck in those fonts, a one-line reason, and a flag if the
-   font must be downloaded or embedded.
-4. **Colour schemes C1, C2, C3** side by side: a short name, swatches with hex codes and roles (primary, accent, dark
-   text, light fill, mid grey), a one-line reason. Every scheme is anchored on the client's brand colour as primary;
-   vary the accent, the neutrals (warm vs cool greys) and how much brand colour is used (bold fills vs restrained
-   lines). Check text contrast on every fill.
-5. **Asset list**: every image and mockup slot in the deck, one row each: `slide title | slot | what's needed | suggested
-   source | status`.
-6. Footer: `Reply with a font and a colour (e.g. "F2 + C1"). Strike through asset rows once added.`
+   healthcare donor audience"), where the brand colour came from ("primary #1F5FA8 sampled from the logo in the case
+   PDF"), and the deck font.
+2. **Six palettes**, each with a short name, swatches with hex codes and roles (primary, primary dark, accent, light
+   fill, mid grey, text), a one-line reason it fits the prompt, and in the image version a mini sample (a header bar, a
+   card and a big number in that palette):
+   - **C0, No change**: the current scheme (the brand-derived default, unless the deck had its own).
+   - **C1, Warm**: a warm-leaning accent (amber, coral, terracotta) with warm greys and creams.
+   - **C2, Cool**: a cool-leaning accent (teal, slate blue, sky) with cool greys.
+   - **C3, Neutral**: restrained greys, charcoal and off-white, the brand colour used sparingly as the only accent.
+   - **C4, Monochrome**: tints and shades of the brand colour only, plus white and near-black; hierarchy from lightness.
+   - **C5, Bold**: high contrast; the brand colour (or its darkest shade) as full backgrounds on title, divider and
+     hero-number slides, one saturated complementary accent; content slides stay on white.
+   Every palette is anchored on the client's brand colour and chosen for this prompt. Check text contrast on every fill;
+   drop or adjust any palette that fails.
+3. **Image and mockup slots**: the open rows of the research to-do list (`workflow`, Step 5).
 
-Ask as one message with two picks: "Which font option (F1 to F3) and colour scheme (C1 to C3)? Say 'keep current' for
-either." Offer it at a natural pause, never mid-interrogation. If you render the options to an image to check them,
-flag any font the renderer substituted.
+Ask one question: "Which palette: C0 no change, C1 warm, C2 cool, C3 neutral, C4 monochrome or C5 bold?" If the user
+picks C0, skip to the next slide.
 
-**Stage 2: Design Mock slide (hidden).** After the picks, duplicate the most recently finished slide (or the most
-representative: one with a header bar, a card, a big number and a chart) and restyle only the copy. Title it `Design
-Mock: F2 + C1`, hide it, place it directly after `Design Options`. Also apply the shape language and image treatment
-that fit the combination (corner radius, line weight, dashed vs solid callouts, icon style, photo treatment) and state
-those choices in one line on the mock. In chat: one line on what changed, then "Apply this look to the whole deck?" The
-user can approve, swap a pick ("try C3") or ask for a tweak ("accent less orange"); rebuild and ask again, still one ask
-per round.
+**Stage 2: Mock, in chat.** Restyle a copy of the most representative finished slide (a header bar, a card, a big number
+and a chart is ideal) in the chosen palette, with the shape language and image treatment that fit it (corner radius,
+line weight, dashed vs solid callouts, icon style, photo treatment). Show it as a **rendered preview image**, or as a
+separate one-slide file if you cannot render; never as a slide in the user's deck. One line on what changed, then
+"Apply this palette to the whole deck?" The user can approve, switch ("try C4") or tweak ("accent less orange"); rebuild
+the mock and ask again, one ask per round.
 
-**Stage 3: Apply deck-wide.** Only after the mock is approved; approval also confirms changing the theme fonts and
-colours on the master. Restyle every content slide's text runs, fills, lines and chart colours to match, keep all
-content and positions, then re-run the QA style checks. Mark the choice on the Design Options slide (`Chosen: F2 + C1`)
-and delete the mock (unless the user wants it kept). Report in one line how many slides were restyled and anything that
-needs a human eye (e.g. text now overflowing because the new font runs wider).
+**Stage 3: Apply deck-wide.** Only after the mock is approved; approval also confirms changing the theme colours on the
+master. Restyle every content slide's fills, lines, text colours and chart colours, keep all content and positions,
+make sure every text run is in the deck font, then re-run the QA style checks. Report in one line how many slides
+changed and anything that needs a human eye.
 
-**Choosing fonts**: the deck will usually be presented on a machine you do not control. At least two of the three font
-options should ship with PowerPoint on both Mac and Windows. Flag any downloaded font (e.g. a Google Font) on the slide
-and in chat: it must be embedded in the file or the deck falls back to a default. Always recommend a PDF backup for
-presentation day.
-
-**Later changes**: a different look after applying goes back to stage 2 with new picks; never restyle without a fresh
+**Later changes**: a different palette after applying goes back to stage 2; never restyle the deck without a freshly
 approved mock.
 
 ## Image and mockup slots

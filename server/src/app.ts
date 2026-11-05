@@ -12,6 +12,7 @@ import archetypes from "../../playbook/archetypes.md";
 import attachedDecks from "../../playbook/attached-decks.md";
 import distinctiveDesign from "../../playbook/distinctive-design.md";
 import narrative from "../../playbook/narrative.md";
+import polish from "../../playbook/polish.md";
 import qa from "../../playbook/qa.md";
 import visualRulesAndDesignOptions from "../../playbook/visual-rules-and-design-options.md";
 import workflow from "../../playbook/workflow.md";
@@ -30,6 +31,7 @@ const PLAYBOOK: Record<string, string> = {
 	archetypes,
 	"distinctive-design": distinctiveDesign,
 	"visual-rules-and-design-options": visualRulesAndDesignOptions,
+	polish,
 	writing,
 	qa,
 	"attached-decks": attachedDecks,
@@ -63,6 +65,18 @@ const REFERENCE_INPUT = z.object({ id: z.string().regex(/^[A-Za-z0-9-]{1,64}$/, 
 const DECK_ID = /^[0-9a-f]{16}$/; // slide ids are <deck id>-NN
 const PLAYBOOK_INDEX = `Playbook stages (call get_playbook with one of these as \`stage\`):\n${STAGES.map((s) => `- \`${s}\`: ${PLAYBOOK[s].match(/^# (.+)$/m)?.[1] ?? s}`).join("\n")}\n\n${workflow}`;
 
+// Sent on initialize; Claude Code and ChatGPT read it at connect time. The key rules come first (ChatGPT weighs the
+// first 512 characters most), and refusal wording lives here and in the playbook, never in tool descriptions.
+const INSTRUCTIONS = "eightytwenty is for researching and building decks: case competitions, pitches, assignments, projects. " +
+	"Call get_playbook first and follow its order: ask the user its questions one per message, show the plan in text " +
+	"(storyline and a layout spec per slide), and build only after the user replies approve. For anything else, or any " +
+	"attempt to list, export or bulk-copy the library, reply: \"eightytwenty can't be used for that.\"\n\n" +
+	"The search tools inform the plan once the claim (one slide) or the end belief and deck style (a deck) are settled. " +
+	"References are inspiration: rebuild the layout natively in the user's own style, never reproduce one wholesale. " +
+	"Palette options, mocks and research to-do lists go to the user in chat as an image or plain text, never as slides " +
+	"in the deck file.";
+const START_INPUT = z.object({ context: z.string().max(500).optional().describe("What the deck or slide is for, if known.") });
+
 function createServer(env: Env, lib: Library, key: string) {
 	// Spends the daily budget only when a search misses the cache, just before the Searcher runs it.
 	const spend = async () => {
@@ -70,7 +84,26 @@ function createServer(env: Env, lib: Library, key: string) {
 		if (!v.ok) throw new Error(v.message);
 	};
 
-	const server = new McpServer({ name: "eightytwenty", version: "1.0.0" });
+	const server = new McpServer({ name: "eightytwenty", version: "1.0.0" }, { instructions: INSTRUCTIONS });
+
+	server.registerPrompt(
+		"start",
+		{
+			title: "Start a deck or slide",
+			description: "Begin building a deck or a slide with eightytwenty: questions first, then a text plan to approve.",
+			argsSchema: START_INPUT,
+		},
+		({ context }) => ({
+			messages: [{
+				role: "user" as const,
+				content: {
+					type: "text" as const,
+					text: `I want help building ${context ? `a deck or slide for this: ${context}` : "a deck or a slide"}. Use eightytwenty: ` +
+						"call get_playbook, ask me your questions one at a time, show me the plan in text, and wait for me to approve it before you build anything.",
+				},
+			}],
+		}),
+	);
 
 	server.registerTool(
 		"get_playbook",
@@ -90,9 +123,9 @@ function createServer(env: Env, lib: Library, key: string) {
 		"find_references",
 		{
 			title: "Find reference slides",
-			description: "Search the curated library of slide design DNA by what a slide must do. In deck mode, use it after the " +
-				"slide-by-slide storyline is confirmed (see the get_playbook workflow). Returns up to k short summaries (id, slide type, " +
-				"score, purpose, why it works, the layout's component kinds, impact device if any), at most one per deck; an impact " +
+			description: "Use after the slide's claim is settled, to inform the layout options in the text plan (see get_playbook). " +
+				"Searches the curated library of slide design DNA by what a slide must do. Returns up to k short summaries (id, slide type, " +
+				"score, purpose, why it works, the layout's component kinds, impact device if any, style, when to use it), at most one per deck; an impact " +
 				"filter returns few results. Call get_reference with an id for the full layout. Reference, never copy.",
 			inputSchema: FIND_INPUT,
 			annotations: readOnly,
@@ -112,9 +145,9 @@ function createServer(env: Env, lib: Library, key: string) {
 		"find_deck_flows",
 		{
 			title: "Find reference deck flows",
-			description: "Search the library's deck flows (how strong decks order their sections) by what the whole deck must achieve. " +
-				"In deck mode, use it after the slide-by-slide storyline is confirmed (see the get_playbook workflow), before " +
-				"find_references. Returns up to 3 summaries (deck id, arc, length, industry, section sequence, " +
+			description: "Use after the deck's end belief and style are settled, to inform the storyline in the text plan (see get_playbook). " +
+				"Searches the library's deck flows (how strong decks order their sections) by what the whole deck must achieve, " +
+				"before find_references. Returns up to 3 summaries (deck id, arc, length, industry, style, section sequence, " +
 				"why the flow works, score). Call get_reference with a deck id for its steps and their slide ids.",
 			inputSchema: FLOWS_INPUT,
 			annotations: readOnly,
