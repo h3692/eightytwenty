@@ -10,7 +10,7 @@ import jsonschema
 from PIL import Image, ImageDraw, ImageFont
 from referencing import Registry, Resource
 
-from pipeline import dedupe, label_prep
+from pipeline import dedupe, label_prep, layout
 
 HERE = Path(__file__).parent
 SCHEMA = json.loads((HERE / "schema" / "design-dna.v1.json").read_text())
@@ -60,19 +60,21 @@ def deck_style(work):
         return None
 
 
-def run(deck_id, library):
-    """Build every labelled slide of a deck into work/<deck_id>/build/. Refuses if any label is missing or invalid,
-    or a slide that may be published (not blank or a duplicate, pipeline.dedupe) has no style notes or its deck no
-    style."""
+def check(deck_id, library):
+    """The deck's (slide, labels) pairs and one line per problem that stops it building: a label missing or invalid,
+    or a slide that may be published (not blank or a duplicate, pipeline.dedupe) without style notes, or with style
+    elements that do not name distinct components of its v3 layout (when it has one), or its deck without a style."""
     work = Path(library) / "work" / deck_id
     skip, style = dedupe.excluded(deck_id, library), deck_style(work)
     kept = lambda f: f"{deck_id}-{f.stem[-2:]}" not in skip
     pairs, errors = [], []
     for f in sorted(work.glob("slide-??.json")):
         slide, lf = json.loads(f.read_text()), work / "labels" / f.name
+        lay = Path(library) / "layouts" / deck_id / f"{f.stem}.v3.json"
         try:
             labels = json.loads(lf.read_text())
-            label_prep.validate(labels, slide)
+            comps = layout.validate(json.loads(lay.read_text()))["components"] if kept(f) and lay.exists() else None
+            label_prep.validate(labels, slide, comps)
             missing = [k for k in NOTES if k not in labels]
             if missing and kept(f):
                 raise ValueError(f"no style notes: {', '.join(missing)}")
@@ -81,6 +83,14 @@ def run(deck_id, library):
             errors.append(f"{lf.relative_to(work)}: {e}")
     if style is None and any(map(kept, work.glob("slide-??.json"))):
         errors.append(f'style.json: missing or invalid, write {{"style": "<one of {", ".join(STYLES)}>"}}')
+    return pairs, errors
+
+
+def run(deck_id, library):
+    """Build every labelled slide of a deck into work/<deck_id>/build/. Refuses on any problem check finds."""
+    work = Path(library) / "work" / deck_id
+    pairs, errors = check(deck_id, library)
+    skip, style = dedupe.excluded(deck_id, library), deck_style(work)
     if errors:
         raise SystemExit("Labels or deck style missing or invalid, nothing built:\n" + "\n".join(errors))
     out = work / "build"

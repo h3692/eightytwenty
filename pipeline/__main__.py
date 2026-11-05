@@ -19,6 +19,10 @@ def main(argv=None):
                         ("flow-prep", "write the deck-flow worksheet and contact sheet"),
                         ("flow-build", "flow.json + labels -> deck-flow record")):
         sub.add_parser(name, help=help_).add_argument("deck_id")
+    sub.choices["label-prep"].add_argument("--style", action="store_true",
+                                           help="one worksheet for the deck's style.json and its slides' style notes")
+    sub.choices["label-prep"].add_argument("--style-check", action="store_true",
+                                           help="one line per problem in the deck's style notes or style; exit 1 if any")
     sub.choices["flow-prep"].add_argument("--impact-only", action="store_true",
                                           help="worksheet to add impact marks to an existing flow.json, nothing else")
     p = sub.add_parser("embed", help="embed published descriptions via the local Worker")
@@ -40,6 +44,14 @@ def main(argv=None):
     elif a.stage == "reextract":
         print(f"deck_id {extract.run(a.deck, a.library, render=False, deck_id=a.deck_id)}")
         print("\n".join(label_prep.reconcile(a.deck_id, a.library)) or "labels: all regions still match")
+    elif a.stage == "label-prep" and a.style_check:
+        problems = build.check(a.deck_id, a.library)[1]
+        print("\n".join(problems) or f"{a.deck_id}: style notes and deck style clean")
+        if problems:
+            sys.exit(1)
+    elif a.stage == "label-prep" and a.style:
+        print(f"Write the deck style and style notes: in Claude Code, ask it to follow "
+              f"{label_prep.run(a.deck_id, a.library, style=True)}")
     elif a.stage == "label-prep":
         work = label_prep.run(a.deck_id, a.library)
         print(f"Label and draw each slide: in Claude Code, ask it to follow every {work}/slide-NN.prompt.txt")

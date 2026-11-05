@@ -5,7 +5,8 @@ from pathlib import Path
 import pytest
 
 from pipeline import build, extract, label_prep, layout
-from pipeline.tests.conftest import STYLE, fixture_labels
+from pipeline.__main__ import main
+from pipeline.tests.conftest import STYLE, fixture_labels, fixture_style
 
 PLAYBOOK = Path(__file__).resolve().parents[2] / "playbook" / "archetypes.md"
 
@@ -163,3 +164,101 @@ def test_invalid_labels_fail(work, mutate, message):
     mutate(labels)
     with pytest.raises(ValueError, match=message):
         label_prep.validate(labels, _slide(work, 2))
+
+
+# --- style notes worksheet and check ------------------------------------------------------------------------------
+
+BLANK = {"version": 3, "blank": True, "components": []}
+TWO = {"version": 3, "components": [{"kind": "card_row", "box": [0, 0, 1, 0.5], "n": 3},
+                                    {"kind": "table", "box": [0, 0.5, 1, 0.5], "rows": 4, "cols": 3}]}
+
+
+@pytest.fixture
+def styled(work):
+    """The fixture deck labelled with style notes and drawn: slide 1 blank (never published), slide 2 two components."""
+    layouts = work.parents[1] / "layouts" / work.name
+    for n, lay in ((1, BLANK), (2, TWO)):
+        (work / "labels" / f"slide-{n:02d}.json").write_text(json.dumps(fixture_labels(_slide(work, n))))
+        (layouts / f"slide-{n:02d}.v3.json").write_text(json.dumps(lay))
+    fixture_style(work)
+    return work
+
+
+def _style_check(work, capsys):
+    try:
+        main(["label-prep", work.name, "--style-check", "--library", str(work.parents[1])])
+        code = 0
+    except SystemExit as e:
+        code = e.code
+    return code, capsys.readouterr().out
+
+
+def _set_elements(work, n, elements):
+    lf = work / "labels" / f"slide-{n:02d}.json"
+    lf.write_text(json.dumps(dict(json.loads(lf.read_text()), elements=elements)))
+
+
+def test_style_worksheet_lists_publishable_slides_and_asks_for_the_deck_style(styled, capsys):
+    lib = styled.parents[1]
+    main(["label-prep", styled.name, "--style", "--library", str(lib)])
+    out = styled.absolute() / "style.prompt.txt"
+    assert str(out) in capsys.readouterr().out
+    text = out.read_text()
+    for needed in (str(styled.absolute() / "slide-02.png"), str(styled.absolute() / "labels" / "slide-02.json"),
+                   str(styled.absolute() / "style.json"), "situational-analysis", fixture_labels(_slide(styled, 2))["purpose"],
+                   "0 card_row", "1 table", "when_to_use", "effect", "elements", "160", "120", "changing nothing else",
+                   "--style-check", "action titles, labelled rows, dense logic, tight grids",
+                   "big type, one idea per slide, high contrast", "imagery-led, emotional, customer moments",
+                   "charts and numbers carry each slide", "generous white space, restrained colour, typographic hierarchy",
+                   *build.STYLES, *LEAK_RULES[1:4], *LEAK_RULES[5:8]):
+        assert needed in text, needed
+    assert "slide-01" not in text  # blank: never published, so no notes
+    assert "contact-sheet" not in text
+    (styled / "flow-contact-sheet.png").write_bytes(b"")
+    label_prep.run(styled.name, lib, style=True)
+    assert str(styled.absolute() / "flow-contact-sheet.png") in out.read_text()
+
+
+def test_style_worksheet_refuses_a_publishable_slide_without_a_layout(styled):
+    (styled.parents[1] / "layouts" / styled.name / "slide-02.v3.json").unlink()
+    with pytest.raises(SystemExit, match="slide-02"):
+        label_prep.run(styled.name, styled.parents[1], style=True)
+
+
+def test_elements_must_name_distinct_components_of_the_layout(work):
+    labels, slide = fixture_labels(_slide(work, 2)), _slide(work, 2)
+    labels["elements"] = [{"component": 1, "note": "The table"}, {"component": 0, "note": "The cards"}]
+    label_prep.validate(labels, slide, TWO["components"])
+    for elements, message in (([{"component": 2, "note": "Past the last"}], "outside"),
+                              ([{"component": 1, "note": "One"}, {"component": 1, "note": "Again"}], "once")):
+        with pytest.raises(ValueError, match=message):
+            label_prep.validate(dict(labels, elements=elements), slide, TWO["components"])
+
+
+def test_style_check_passes_a_clean_deck(styled, capsys):
+    code, out = _style_check(styled, capsys)
+    assert code == 0 and "clean" in out
+
+
+@pytest.mark.parametrize("elements, message", [
+    ([{"component": 2, "note": "Past the last component"}], "outside"),
+    ([{"component": 0, "note": "Cards"}, {"component": 0, "note": "Cards again"}], "once"),
+])
+def test_style_check_reports_bad_elements_one_line_each(styled, capsys, elements, message):
+    _set_elements(styled, 2, elements)
+    code, out = _style_check(styled, capsys)
+    assert code == 1 and len(out.splitlines()) == 1 and "slide-02" in out and message in out
+    with pytest.raises(SystemExit, match=message):  # build refuses it too
+        build.run(styled.name, styled.parents[1])
+
+
+def test_style_check_skips_excluded_slides(styled, capsys):
+    _set_elements(styled, 1, [{"component": 5, "note": "A blank slide has no components"}])
+    code, out = _style_check(styled, capsys)
+    assert code == 0 and "clean" in out
+
+
+def test_style_check_reports_a_missing_deck_style(styled, capsys):
+    (styled / "style.json").unlink()
+    code, out = _style_check(styled, capsys)
+    assert code == 1 and "style.json" in out and "slide-" not in out
