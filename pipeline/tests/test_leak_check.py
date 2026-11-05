@@ -155,6 +155,32 @@ def test_common_words_from_slide_entities_are_not_names():
     assert leak_check.problems_in(text, "", names) == []
 
 
+CASE_TERMS = ["financials", "Financials", "deliverables", "storyboard", "Storyboard", "FAQ", "KPI", "KPIs", "roadmap",
+              "Gantt", "persona", "agenda", "appendix", "takeaway", "benchmark", "playbook", "scorecard", "dashboard",
+              "wireframe", "mockup", "timeline", "pillar", "pillars", "workstream", "workstreams", "milestone",
+              "milestones", "synergy", "synergies", "CAGR", "ROI", "NPV", "EBITDA", "TAM", "SAM", "SOM", "B2B", "B2C",
+              "D2C", "SKU", "SKUs", "go-to-market", "Go-to-Market", "GTM"]
+
+
+def _schema_values():
+    s = {n: json.loads((leak_check.Path(leak_check.__file__).parent / "schema" / f"{n}.json").read_text())
+         for n in ("labels.v1", "flow.v1", "layout.v3")}
+    p = s["labels.v1"]["properties"]
+    return sorted({v for vs in [*(p[k]["enum"] for k in ("archetype", "argument_shape", "insight_device", "data_type")),
+                                s["labels.v1"]["$defs"]["role"]["enum"],
+                                s["flow.v1"]["properties"]["sections"]["items"]["enum"],
+                                s["layout.v3"]["$defs"]["component"]["properties"]["kind"]["enum"]] for v in vs})
+
+
+@pytest.mark.parametrize("word", CASE_TERMS + _schema_values()
+                         + ["Situational / company analysis", "KPIs, Risks & Mitigations", "Hook / opener"])
+def test_our_own_vocabulary_is_never_a_name_even_when_the_slide_uses_it(word):
+    plain = word.replace("_", " ") if "_" in word else word  # component kinds are snake_case ids
+    source = f"Quillmoor {plain} review\n{plain.upper()}"
+    names = leak_check.source_names(source) | set(leak_check._words(plain))
+    assert leak_check.problems_in(f"A calm {plain} band carries one promise", source, names) == []
+
+
 @pytest.mark.parametrize("text, source", [
     ("a four-column strengths, weaknesses, opportunities and threats band", "STRENGTHS\nWEAKNESSES\nOPPORTUNITIES\nTHREATS"),
     ("a political, economic, social, technological, legal, environmental grid", "Political Economic Social Technological Legal Environmental"),
@@ -172,6 +198,11 @@ def test_standard_framework_phrases_are_not_copied_text(text, source):
     ("A loyalty band in the Ontario style", "Quillmoor Analytics grew loyalty in Ontario", "name"),
     ("A LOYALTY band", "Quillmoor Analytics grew LOYALTY in Ontario", "name"),
     ("A band in 2 tones", "", "digit"),
+    ("A B2B band in 2 tones", "", "digit"),
+    ("A calm FAQ band in the Quillmoor style", "Quillmoor Analytics FAQ", "name"),
+    ("A roadmap that Priya Raman sketched", "", "name"),
+    ("A Toronto storyboard with one band", "Toronto storyboard", "name"),
+    ("bands for financials storyboard deliverables", "Financials storyboard deliverables", "shared words"),
     ("bands for secondary research, primary research and objective", "Secondary research and objective", "shared words"),
     ("headline urging a focus on untapped segments", "Focus on untapped segments", "shared words"),
 ])

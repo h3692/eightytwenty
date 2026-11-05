@@ -25,6 +25,7 @@ import shutil
 import unicodedata
 import zipfile
 from functools import cache
+from itertools import chain
 from pathlib import Path
 
 import spacy
@@ -39,15 +40,20 @@ DESIGN_TERMS = {"kpi", "kpis", "swot", "gantt", "harvey", "roi", "cagr", "mece",
                 "screenshot", "screenshots", "label", "labels", "callout", "callouts", "icon", "icons", "tile", "tiles",
                 "card", "cards", "banner", "banners", "timeline", "timelines", "funnel", "funnels", "matrix",
                 "waterfall", "swimlane", "swimlanes", "donut", "doughnut", "italic", "breakeven", "infographic",
-                "summarise", "summarises", "summarize", "summarizes"}
+                "summarise", "summarises", "summarize", "summarizes",
+                # common case-competition terms
+                "financials", "deliverables", "storyboard", "faq", "roadmap", "persona", "agenda", "appendix",
+                "takeaway", "benchmark", "playbook", "scorecard", "dashboard", "wireframe", "mockup", "pillar",
+                "pillars", "workstream", "workstreams", "milestone", "milestones", "synergy", "synergies", "npv",
+                "ebitda", "tam", "sam", "som", "b2b", "b2c", "d2c", "sku", "skus", "go", "to", "market", "gtm"}
 COMMON_ZIPF = 3.5  # wordfreq zipf: 3.5 is about once per 300k words; below it a word may be a name
 FRAMEWORKS = sorted((p.split() for p in (  # standard framework names, as _words() sees them; exact phrases only
     "strengths weaknesses opportunities threats", "strengths weaknesses opportunities and threats",
     "porter s five forces", "porters five forces", "threat of new entrants", "threat of substitutes",
     "bargaining power of suppliers", "bargaining power of buyers", "bargaining power of customers",
     "value chain analysis", "product price place promotion", "product price place and promotion",
-    "tam sam som", "total addressable market", "serviceable addressable market", "serviceable available market",
-    "serviceable obtainable market", "stars cash cows question marks dogs", "stars cash cows dogs",
+    "tam sam som", "go to market", "total addressable market", "serviceable addressable market",
+    "serviceable available market", "serviceable obtainable market", "stars cash cows question marks dogs", "stars cash cows dogs",
     "growth share matrix", "market penetration market development product development diversification",
     "market penetration market development product development and diversification",
     "political economic social technological legal environmental",
@@ -66,6 +72,24 @@ def _nlp():
 def _words(text):
     text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().lower()
     return re.findall(r"[a-z0-9]+", text)
+
+
+def _fixed_lists():
+    """Our own fixed lists as _words() phrases: label, flow and layout enums, the archetype table's ids and slide jobs."""
+    schema = {n: json.loads((Path(__file__).parent / "schema" / f"{n}.json").read_text())
+              for n in ("labels.v1", "flow.v1", "layout.v3")}
+    labels = schema["labels.v1"]
+    lists = [labels["properties"][k]["enum"] for k in ("archetype", "argument_shape", "insight_device", "data_type")]
+    lists += [labels["$defs"]["role"]["enum"], schema["flow.v1"]["properties"]["sections"]["items"]["enum"],
+              schema["layout.v3"]["$defs"]["component"]["properties"]["kind"]["enum"]]
+    table = (Path(__file__).parent.parent / "playbook" / "archetypes.md").read_text()
+    lists += re.findall(r"^\| `([a-z-]+)` \| ([^|]+) \|", table, re.M)
+    return [_words(v) for v in chain(*lists)]
+
+
+DESIGN_TERMS |= {w for p in _fixed_lists() for w in p}
+# our own multi-word ids ("how it works") are not slide copy; shorter ones would mask single ordinary words
+FRAMEWORKS = sorted(FRAMEWORKS + [p for p in _fixed_lists() if len(p) >= 3], key=len, reverse=True)
 
 
 def _common(word):
@@ -96,7 +120,7 @@ def source_names(source):
 
 def problems_in(text, source, names):
     found = []
-    if re.search(r"\d", text):
+    if re.search(r"\d", re.sub(r"\w+", lambda m: "" if m[0].lower() in DESIGN_TERMS else m[0], text)):  # B2B
         found.append("digit")
     src, words = _words(source), _words(text)
     grams = {tuple(src[i:i + 3]) for i in range(len(src) - 2)}
