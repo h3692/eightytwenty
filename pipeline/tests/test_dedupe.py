@@ -83,6 +83,14 @@ def test_spotlight_sets_and_exact_copies_keep_the_fullest_slide(lib):
                                           _rid(4): f"duplicate_of {_rid(5)}"}
 
 
+def test_a_repeated_cover_keeps_its_first_copy(lib):
+    _slide(lib, 1, archetype="title", png=_picture(1, spotlight=0))
+    _slide(lib, 2, png=_picture(4), text=["Another deck section"])
+    _slide(lib, 3, archetype="title", png=_picture(1))  # more ink and later: kept under the usual rule
+    _slide(lib, 4, archetype="title", png=_picture(1))
+    assert dedupe.excluded(DECK, lib) == {_rid(3): f"duplicate_of {_rid(1)}", _rid(4): f"duplicate_of {_rid(1)}"}
+
+
 @pytest.mark.parametrize("change", ["other copy", "other layout", "no picture", "other picture", "bad layout"])
 def test_when_unsure_both_are_kept(lib, change):
     _slide(lib, 1, png=_picture(1))

@@ -6,7 +6,7 @@ must pass the placeholder whitelist. Blank and near-duplicate slides (pipeline.d
 
 A deck flow (work/<deck>/flow-record.json, decks of flow.MIN_SLIDES+ slides) is checked the same way against the text of
 EVERY slide of the deck, judged with the whole deck, and published to library/flows/ only if at least MIN_SHARE of
-its slides are published too.
+its slides are published too (blank and duplicate slides not counted).
 
 Free-text fields (purpose, why_it_works, description, text patterns) must not contain digits, share a 3-word
 sequence with the slide's original text, or contain names (spaCy NER, plus any name found in the slide text).
@@ -308,9 +308,10 @@ def run(deck_id, library):
         if not problems:
             shutil.copyfile(record, judge / "flow.json")
             r["judge"] = _verdict(judge / "verdicts" / "flow.json")
-        r["published"] = r["auto"] == "pass" and r["judge"] == "pass" and shown / len(visible) >= MIN_SHARE
+        kept = max(len(visible) - len(skip), 1)  # blank and duplicate slides are never published, so never counted
+        r["published"] = r["auto"] == "pass" and r["judge"] == "pass" and shown / kept >= MIN_SHARE
         if r["auto"] == "pass" and r["judge"] == "pass" and not r["published"]:
-            problems.append(f"withheld: {shown} of {len(visible)} slides published, a flow needs {MIN_SHARE:.0%}")
+            problems.append(f"withheld: {shown} of {kept} slides published, a flow needs {MIN_SHARE:.0%}")
     if report.get("flow", {}).get("published"):
         published.parent.mkdir(exist_ok=True)
         shutil.copyfile(record, published)

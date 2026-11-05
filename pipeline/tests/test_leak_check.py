@@ -390,6 +390,21 @@ def test_flow_is_withheld_unless_sixty_percent_of_its_slides_are_published(deck,
         assert any("60%" in p for p in report["flow"]["problems"])
 
 
+@pytest.mark.parametrize("withheld, published", [(1, True), (2, False)])
+def test_the_sixty_percent_rule_counts_only_slides_not_excluded(deck, lib, withheld, published):
+    deck_id, ids = _six_slide_deck(deck, lib)
+    (lib / "layouts" / deck_id / "slide-01.v3.json").write_text(json.dumps({"version": 3, "blank": True, "components": []}))
+    for n in (3, 4):  # slide 3 duplicates slide 4: four slides left, of which the first `withheld` are identified
+        Image.new("L", (64, 36), 128).save(lib / "work" / deck_id / f"slide-{n:02d}.png")
+    for k, rid in enumerate((ids[1], *ids[3:])):
+        _judge(lib, deck_id, rid, k < withheld)
+    _judge(lib, deck_id, "flow", False)
+    report = leak_check.run(deck_id, lib)
+    assert report["flow"]["published"] is published, report["flow"]
+    if not published:
+        assert any("of 4 slides" in p for p in report["flow"]["problems"])
+
+
 def test_a_long_deck_without_a_flow_record_is_reported_and_short_decks_have_none(deck, lib):
     deck_id, ids = _six_slide_deck(deck, lib, with_flow=False)
     report = leak_check.run(deck_id, lib)

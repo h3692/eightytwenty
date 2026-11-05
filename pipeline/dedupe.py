@@ -6,7 +6,8 @@ Two slides of one deck are duplicates only with the same v3 layout (component ki
   - renders NEAR-identical (difference hash, 16 x 16 bits), or
   - renders within LOOSE bits and the same copy (CONTAINS of the shorter slide's text lines appear in the other).
 Same-template slides with other content measured 28-45 bits apart but share at most ~80% of their lines.
-Of each set the slide with the most ink is kept (the neutral one of a spotlight set, the last build), ties the later.
+Of each set the slide with the most ink is kept (the neutral one of a spotlight set, the last build), ties the later;
+a repeated cover (labelled title) keeps its first copy.
 """
 import json
 from pathlib import Path
@@ -48,8 +49,9 @@ def _slides(deck_id, library):
         except ValueError:
             continue
         lf, tf, png = work / "labels" / f"{nn}.json", work / "text" / f"{nn}.txt", work / f"{nn}.png"
+        labels = json.loads(lf.read_text()) if lf.exists() else None
         s = out[f"{deck_id}-{nn[-2:]}"] = {
-            "blank": blank(json.loads(lf.read_text()) if lf.exists() else None, lay),
+            "blank": blank(labels, lay), "title": bool(labels and labels.get("archetype") == "title"),
             "layout": sorted((c["kind"], tuple(c.get("box", ()))) for c in lay["components"]),
             "text": {t.strip() for t in tf.read_text().splitlines() if t.strip()} if tf.exists() else set(),
             "hash": None}
@@ -75,7 +77,8 @@ def duplicates(deck_id, library, slides=None):
     """{dropped id: (kept id, why)}: each dropped slide matches its kept one directly (no chains)."""
     slides = slides or _slides(deck_id, library)
     order = sorted((rid for rid, s in slides.items() if s["hash"] is not None and not s["blank"]),
-                   key=lambda rid: (-slides[rid]["ink"], -int(rid[-2:])))
+                   key=lambda rid: (0, int(rid[-2:])) if slides[rid]["title"] else (1, -slides[rid]["ink"],
+                                                                                    -int(rid[-2:])))
     kept, out = [], {}
     for rid in order:
         hit = next(((k, w) for k in kept if (w := _why(slides[k], slides[rid]))), None)
