@@ -53,7 +53,7 @@ VALUES = ("XX%", "$X.XM")
 VOCAB = {"Slide Title Here", "Subtitle text here", "Logo", "Header here", "Text here", *VALUES, "Chart here",
          "Image here", "Product mockup here", "Map here", "Icon", "Step Header", "Phase Header", "Key takeaway:",
          "Section Title Here", "Section overview text here", "Deck Title Here", "Thank You", "Before", "After", "QX",
-         "Year X", "Milestones", "“Text here”", "Name here", *SECTIONS,
+         "Year X", "Milestones", "“Text here”", "Name here", "Key message here", *SECTIONS,
          *(str(k) for k in range(1, 13)), *(f"{k:02}" for k in range(1, 10))}
 
 
@@ -803,6 +803,16 @@ def _closing(shapes, c, rng):
     _add(shapes, 7.6, 0.8, 4.96, 5.9, LIGHT, text="Image here", size=14, color=GREYS[0])
     _add(shapes, 0.78, 2.9, 6.4, 1.0, text="Thank You", size=44, bold=True, align=LEFT)
     _add(shapes, 0.78, 3.9, 6.4, 0.45, text="Subtitle text here", size=17, color=GREYS[0], align=LEFT)
+
+
+def _impact_overlay(shapes, c, rng):
+    """The slide drawn so far shaded dark, and a full-width ribbon across the content area carrying the so-what."""
+    shade = _add(shapes, 0, 0, W / IN, H / IN, DARK)
+    # python-pptx has no transparency API: a fixed alpha on the fill colour (70% opaque)
+    shade.fill.fore_color._color._xClr.append(parse_xml(f'<a:alpha {nsdecls("a")} val="70000"/>'))
+    rh = 1.4
+    ry = {"top": AREA[1], "middle": AREA[1] + (AREA[3] - rh) / 2, "bottom": AREA[1] + AREA[3] - rh}[c["position"]]
+    _add(shapes, 0, ry, W / IN, rh, DARK, text="Key message here", size=28, color=WHITE)
 
 
 DRAW = {k: globals()[f"_{k}"] for k in lay.KINDS}

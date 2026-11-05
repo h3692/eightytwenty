@@ -55,7 +55,8 @@ MAXED = {  # every count at its upper limit, on the whole content area
 NEW_KINDS = ("card_stack", "swimlane", "journey", "flow_diagram", "device_row", "stage_strip", "gauge_row", "network",
              "map_callouts", "bar_list")
 NEW_BUSY = _lay(*(dict(EXAMPLES[k], box=[(i % 2) / 2, (i // 2) / 4, 0.5, 0.25]) for i, k in enumerate(NEW_KINDS[:8])))
-SLIDES = {kind: _lay(EXAMPLES[kind]) for kind in EXAMPLES} | {"busy": BUSY, "new_busy": NEW_BUSY} | \
+RIBBON = _lay(*BUSY["components"][:7], {"kind": "impact_overlay", "position": "bottom"})  # BUSY shaded, 8 in all
+SLIDES = {kind: _lay(EXAMPLES[kind]) for kind in EXAMPLES} | {"busy": BUSY, "new_busy": NEW_BUSY, "ribbon": RIBBON} | \
     {name: _lay(c) for name, c in MAXED.items()}
 
 
@@ -461,6 +462,23 @@ def test_link_list_draws_n_entries_down_its_columns_numbered_or_bulleted(n, cols
     assert len([o for o in _auto(body, MSO_SHAPE.OVAL) if not _texts([o])]) == n * (not numbered)  # bullet dots
 
 
+def _alpha(shape):
+    return [a.get("val") for a in shape._element.iter("{http://schemas.openxmlformats.org/drawingml/2006/main}alpha")]
+
+
+@pytest.mark.parametrize("position, band", [("top", (0.18, 0.5)), ("middle", (0.35, 0.75)), ("bottom", (0.6, 0.98))])
+def test_impact_overlay_shades_the_slide_and_draws_a_ribbon_over_what_precedes_it(position, band):
+    shapes = _shapes(_lay(*BUSY["components"][:7], {"kind": "impact_overlay", "position": position}))
+    parent = _shapes(_lay(*BUSY["components"][:7]))
+    *under, shade, ribbon = shapes
+    assert len(under) == len(parent)  # the parent's drawing, unchanged, below the overlay
+    assert (shade.left, shade.top, shade.width, shade.height) == (0, 0, W, H) and not _texts([shade])
+    assert _fill(shade) == "2B2F36" and _alpha(shade) == ["70000"]  # dark, 70% opaque
+    assert _texts([ribbon]) == ["Key message here"] and _fill(ribbon) == "2B2F36" and _alpha(ribbon) == []
+    assert ribbon.left == 0 and ribbon.width == W and ribbon.height < H * 0.35
+    assert band[0] * H <= ribbon.top and ribbon.top + ribbon.height <= band[1] * H
+
+
 def test_section_divider_shows_its_number():
     texts = _texts(_shapes(_lay({"kind": "section_divider", "number": 3})))
     assert "03" in texts and "Section overview text here" in texts
@@ -516,13 +534,13 @@ def test_vocabulary_is_placeholder_copy_only():
     assert words <= {"Slide", "Title", "Here", "here", "Subtitle", "text", "Logo", "Header", "Text", "XX%", "$X.XM",
                      "Chart", "Image", "Product", "mockup", "Map", "Icon", "Step", "Phase", "Key", "takeaway",
                      "Section", "overview", "Deck", "Thank", "You", "Before", "After", "QX", "Year", "X",
-                     "Milestones", "Name", "“Text", "here”", *" ".join(mockup.SECTIONS).split()} | \
+                     "Milestones", "Name", "“Text", "here”", "message", *" ".join(mockup.SECTIONS).split()} | \
         {str(k) for k in range(1, 13)} | {f"{k:02}" for k in range(1, 10)}
 
 
 def test_saved_mockups_are_byte_identical(tmp_path):
     a, b = tmp_path / "a.pptx", tmp_path / "b.pptx"
-    for lay in (NEW_BUSY, *(_lay(c) for c in MAXED.values())):
+    for lay in (NEW_BUSY, RIBBON, *(_lay(c) for c in MAXED.values())):
         mockup.save(mockup.build_mockup_v3(lay), a)
         mockup.save(mockup.build_mockup_v3(lay), b)
         assert a.read_bytes() == b.read_bytes()

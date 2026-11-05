@@ -16,7 +16,7 @@
   "$defs": {
     "component": {
       "type": "object", "required": ["kind"],
-      "properties": {"kind": {"enum": ["tracker", "logo", "text", "kpi_row", "card_row", "label_rows", "table", "chart_area", "image_area", "steps", "timeline", "roadmap", "matrix", "tree", "funnel", "hub", "before_after", "takeaway", "quote", "hero_number", "section_divider", "cover", "closing", "card_stack", "swimlane", "journey", "flow_diagram", "device_row", "stage_strip", "gauge_row", "network", "map_callouts", "bar_list", "nested_circles", "link_list"]}},
+      "properties": {"kind": {"enum": ["tracker", "logo", "text", "kpi_row", "card_row", "label_rows", "table", "chart_area", "image_area", "steps", "timeline", "roadmap", "matrix", "tree", "funnel", "hub", "before_after", "takeaway", "quote", "hero_number", "section_divider", "cover", "closing", "card_stack", "swimlane", "journey", "flow_diagram", "device_row", "stage_strip", "gauge_row", "network", "map_callouts", "bar_list", "nested_circles", "link_list", "impact_overlay"]}},
       "allOf": [
         {"if": {"required": ["kind"], "properties": {"kind": {"const": "tracker"}}}, "then": {"$ref": "#/$defs/tracker"}},
         {"if": {"required": ["kind"], "properties": {"kind": {"const": "logo"}}}, "then": {"$ref": "#/$defs/logo"}},
@@ -52,7 +52,8 @@
         {"if": {"required": ["kind"], "properties": {"kind": {"const": "map_callouts"}}}, "then": {"$ref": "#/$defs/map_callouts"}},
         {"if": {"required": ["kind"], "properties": {"kind": {"const": "bar_list"}}}, "then": {"$ref": "#/$defs/bar_list"}},
         {"if": {"required": ["kind"], "properties": {"kind": {"const": "nested_circles"}}}, "then": {"$ref": "#/$defs/nested_circles"}},
-        {"if": {"required": ["kind"], "properties": {"kind": {"const": "link_list"}}}, "then": {"$ref": "#/$defs/link_list"}}
+        {"if": {"required": ["kind"], "properties": {"kind": {"const": "link_list"}}}, "then": {"$ref": "#/$defs/link_list"}},
+        {"if": {"required": ["kind"], "properties": {"kind": {"const": "impact_overlay"}}}, "then": {"$ref": "#/$defs/impact_overlay"}}
       ]
     },
     "box": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "number", "minimum": 0, "maximum": 1}},
@@ -90,6 +91,7 @@
     "map_callouts": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "n"], "properties": {"kind": {"const": "map_callouts"}, "box": {"$ref": "#/$defs/box"}, "n": {"type": "integer", "minimum": 1, "maximum": 8}}},
     "bar_list": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "n"], "properties": {"kind": {"const": "bar_list"}, "box": {"$ref": "#/$defs/box"}, "n": {"type": "integer", "minimum": 2, "maximum": 12}, "groups": {"type": "integer", "minimum": 1, "maximum": 4}}},
     "nested_circles": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "n", "arrangement"], "properties": {"kind": {"const": "nested_circles"}, "box": {"$ref": "#/$defs/box"}, "n": {"type": "integer", "minimum": 2, "maximum": 4}, "arrangement": {"enum": ["nested", "concentric"]}}},
-    "link_list": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "n"], "properties": {"kind": {"const": "link_list"}, "box": {"$ref": "#/$defs/box"}, "n": {"type": "integer", "minimum": 2, "maximum": 12}, "cols": {"type": "integer", "minimum": 1, "maximum": 3}, "numbered": {"type": "boolean"}}}
+    "link_list": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "n"], "properties": {"kind": {"const": "link_list"}, "box": {"$ref": "#/$defs/box"}, "n": {"type": "integer", "minimum": 2, "maximum": 12}, "cols": {"type": "integer", "minimum": 1, "maximum": 3}, "numbered": {"type": "boolean"}}},
+    "impact_overlay": {"type": "object", "additionalProperties": false, "required": ["kind", "position"], "properties": {"kind": {"const": "impact_overlay"}, "position": {"enum": ["top", "middle", "bottom"]}}}
   }
 }

@@ -109,6 +109,14 @@ def test_when_unsure_both_are_kept(lib, change):
     assert dedupe.excluded(DECK, lib) == {}
 
 
+def test_a_ribbon_slide_is_never_a_duplicate_of_its_identical_parent(lib):
+    ribbon = {"version": 3, "components": [*CARDS["components"], {"kind": "impact_overlay", "position": "middle"}]}
+    _slide(lib, 1, png=_picture(1))
+    _slide(lib, 2, layout=ribbon, png=_picture(1))  # same render and copy: only the overlay tells them apart
+    assert set(dedupe._slides(DECK, lib)) == {_rid(1), _rid(2)}  # the ribbon layout is read, not skipped
+    assert dedupe.excluded(DECK, lib) == {}
+
+
 def test_blank_slides_are_excluded_and_never_count_as_duplicates(lib):
     blank = {"version": 3, "blank": True, "components": []}
     _slide(lib, 1, layout=blank, png=_picture(1), text=[])

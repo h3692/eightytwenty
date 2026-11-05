@@ -45,6 +45,7 @@ EXAMPLES = {
     "bar_list": {"kind": "bar_list", "box": B, "n": 6, "groups": 2},
     "nested_circles": {"kind": "nested_circles", "box": B, "n": 3, "arrangement": "nested"},
     "link_list": {"kind": "link_list", "box": B, "n": 6, "cols": 2, "numbered": True},
+    "impact_overlay": {"kind": "impact_overlay", "position": "middle"},
 }
 
 SAMPLE = {"version": 3, "components": [
@@ -85,6 +86,15 @@ def test_upper_limits_of_the_extended_kinds():
               {**EXAMPLES["nested_circles"], "n": 2}, {**EXAMPLES["link_list"], "n": 12, "cols": 3},
               {**EXAMPLES["link_list"], "n": 2, "cols": 1, "numbered": False}):
         assert layout.validate(_lay(c))["components"][0] == c
+
+
+def test_impact_overlay_comes_last_and_counts_toward_the_cap():
+    parent = [EXAMPLES["tracker"], EXAMPLES["logo"], *[EXAMPLES["quote"]] * 5]
+    for position in ("top", "middle", "bottom"):
+        overlay = {"kind": "impact_overlay", "position": position}
+        assert layout.validate(_lay(*parent, overlay))["components"][-1] == overlay
+    with pytest.raises(ValueError, match="components"):
+        layout.validate(_lay(*parent, EXAMPLES["quote"], EXAMPLES["impact_overlay"]))  # nine with the overlay
 
 
 def test_blank_slides_have_no_components_and_only_blank_slides_may():
@@ -202,6 +212,11 @@ def test_schema_has_no_free_text_fields():
     (_lay({**EXAMPLES["before_after"], "rows": 5}), "rows"),
     (_lay({**EXAMPLES["section_divider"], "number": 10}), "number"),
     (_lay({**EXAMPLES["matrix"], "harvey": True}), "harvey"),  # a field of another kind
+    (_lay(EXAMPLES["impact_overlay"], EXAMPLES["quote"]), "impact_overlay"),  # drawn over what precedes it
+    (_lay(EXAMPLES["quote"], EXAMPLES["impact_overlay"], EXAMPLES["impact_overlay"]), "impact_overlay"),
+    (_lay({**EXAMPLES["impact_overlay"], "position": "left"}), "left"),
+    (_lay({"kind": "impact_overlay"}), "position"),
+    (_lay({**EXAMPLES["impact_overlay"], "box": B}), "box"),
 ])
 def test_invalid_layouts_fail(bad, message):
     with pytest.raises(ValueError, match=message):

@@ -28,8 +28,8 @@ def _snap(v, w, cells):
 
 def validate(layout):
     """Return a copy with every box snapped to the grid; raise ValueError unless it matches the schema, boxes stay
-    on the slide, active pills, highlighted columns and groups exist, trees stay readable and tracker, logo and the
-    whole-slide kinds appear at most once."""
+    on the slide, active pills, highlighted columns and groups exist, trees stay readable, tracker, logo and the
+    whole-slide kinds appear at most once and an impact_overlay comes last (it shades what precedes it)."""
     _check(layout, SCHEMA)
     out = copy.deepcopy(layout)
     comps, bad = out["components"], []
@@ -48,7 +48,9 @@ def validate(layout):
         if c["kind"] == "tree" and c["branching"] ** (c["levels"] - 1) > MAX_LEAVES:
             bad.append(f"components/{k}: more than {MAX_LEAVES} leaves, zoom out")
     kinds = [c["kind"] for c in comps]
-    bad += [f"components: more than one {k}" for k in ("tracker", "logo") if kinds.count(k) > 1]
+    bad += [f"components: more than one {k}" for k in ("tracker", "logo", "impact_overlay") if kinds.count(k) > 1]
+    if "impact_overlay" in kinds[:-1]:
+        bad.append("components: impact_overlay must come last")
     if sum(k in FULL for k in kinds) > 1:
         bad.append("components: more than one full-slide component (cover, section_divider, closing)")
     if bad:

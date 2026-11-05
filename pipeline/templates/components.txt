@@ -63,6 +63,9 @@ Components (kind and its only fields; integers are counts you read off the pictu
   section_divider  number 1-9: a section opener slide. No box.
   cover            the deck's title slide. No box.
   closing          a thank-you / questions slide. No box.
+  impact_overlay   position top|middle|bottom: use for a slide that repeats the previous slide shaded with a ribbon
+                   carrying the so-what: copy the parent slide's components, then add impact_overlay last (it counts
+                   toward the 8; position = where the ribbon crosses the content area). No box.
 
 A blank or spacer slide (nothing on it, or only a stray placeholder text box) is {{"version": 3, "blank": true,
 "components": []}}: blank slides are never published.
