@@ -95,7 +95,7 @@ the claim; the device points at the proof. Never repeat the tagline's words in t
 | 7. Numbered callouts | Brand-colour numbered circles on the chart, map or mockup, each linked to a short note beside it. | Mockups, maps, annotated artifacts, busy charts. |
 | 8. Pull quote | One oversized italic quote, key phrase bold, with attribution. | Customer or expert voice as proof. |
 | 9. Verdict marks | Checks vs crosses, traffic lights, Harvey ball totals, winner row or column in brand colour. | Options, pros and cons, scoring. |
-| 10. Spotlight | Fade everything but one element (`archetypes`), on its own slide or within the slide. | Transitions, reveals. |
+| 10. Spotlight | Fade everything but one element (`narrative`), on its own slide or within the slide. | Transitions, reveals. |
 | 11. Tagline only | No extra element; the exhibit is self-evident. | Clean exhibits; gives the eye a rest. |
 | 12. So-what bar | Full-width bar or dashed box at the bottom. | Only where several panels must be tied together, e.g. a section-closing synthesis. |
 

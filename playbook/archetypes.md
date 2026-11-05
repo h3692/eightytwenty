@@ -30,15 +30,4 @@ Recommendation / Outcome). A distinctive concept may reshape those parts, never 
 | `kpis-risks` | KPIs, Risks & Mitigations | Left KPI tiles stacked; centre risk matrix (impact vs likelihood or difficulty) with numbered dots; right numbered risk headers (brand colour) with mitigation text. |
 | `other` | Anything else | No baseline; derive the composition from the shape of the argument (`distinctive-design`, concept C). |
 
-## Spotlight build slides
-
-A signature technique: duplicate a prior slide (exec summary, issue tree, recommendation overview, map) and fade
-everything except the element about to be discussed, with a white overlay at ~70% transparency over the rest and the
-focus element at full colour, often wrapped in a dashed box. Use it to:
-
-- transition into each recommendation pillar from the exec summary;
-- point from the issue tree to the root cause a pillar fixes;
-- reveal a chart's key region before the explanation.
-
-When building a recommendation section, offer a spotlight slide as the opener. Name it `<parent> - spotlight
-<element>`. One per transition; three builds in a row drags in a 10-minute presentation.
+Spotlight, build, shade + ribbon and recap slides: see `narrative` (impact slides).

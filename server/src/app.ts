@@ -9,6 +9,7 @@ import anatomyAndTaglines from "../../playbook/anatomy-and-taglines.md";
 import archetypes from "../../playbook/archetypes.md";
 import attachedDecks from "../../playbook/attached-decks.md";
 import distinctiveDesign from "../../playbook/distinctive-design.md";
+import narrative from "../../playbook/narrative.md";
 import qa from "../../playbook/qa.md";
 import visualRulesAndDesignOptions from "../../playbook/visual-rules-and-design-options.md";
 import workflow from "../../playbook/workflow.md";
@@ -22,6 +23,7 @@ export { Limiter } from "./limiter";
 
 const PLAYBOOK: Record<string, string> = {
 	workflow,
+	narrative,
 	"anatomy-and-taglines": anatomyAndTaglines,
 	archetypes,
 	"distinctive-design": distinctiveDesign,

@@ -29,3 +29,14 @@ Run on every finished slide. Fix what you can without asking; report only what n
 - [ ] No `[ ]` placeholders remain unless the user knowingly left them, and each remaining one is logged on the hidden
       Research To-Do slide or the asset list.
 - [ ] Built natively in the deck's style from any references used; nothing copied wholesale from a reference.
+
+**Narrative checks** (on every slide against its neighbours; across the whole deck in deck mode):
+
+- [ ] Chain of proof: the slide uses nothing a later slide establishes; every fact, segment and option it relies on was
+      proven earlier or is stated in the case prompt.
+- [ ] Every recommendation is preceded by proof of the need, the target market and the failure of the alternatives
+      for that market; the alternatives judges will think of are addressed before the recommendation.
+- [ ] No orphan analysis: every analysis slide sets up a later decision, or it moves to the appendix.
+- [ ] Tagline story test: the taglines read in order tell the whole argument, with no gaps and no repeats.
+- [ ] Impact slides only at turning points, each built on the slide just shown, about one per section, never three in a
+      row; every ribbon or spotlight carries a claim, not a topic.
