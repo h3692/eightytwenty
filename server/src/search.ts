@@ -5,19 +5,19 @@
 export const EMBED_MODEL = "@cf/baai/bge-m3";
 export const RERANK_MODEL = "@cf/baai/bge-reranker-base";
 export const DIMS = 1024; // dot.wat hard-codes 1024-d rows
-const POOL = 50, RERANK_POOL = 20, RRF_K = 60, MAX_K = 5, MAX_FLOWS = 3, MAX_PURPOSE = 1000, MAX_TERMS = 32;
+const POOL = 50, RERANK_POOL = 20, RRF_K = 60, MAX_K = 8, MAX_FLOWS = 3, MAX_PURPOSE = 1000, MAX_TERMS = 32;
 export const LENGTHS = ["short", "medium", "long"]; // pipeline/flow.py length_bucket: up to 10, 11 to 25, more slides
 
 export type Manifest = { library_version: string; model: string; pooling: string; dims: number; count: number; ids: string[]; flows: { count: number; ids: string[] } };
 type Vectors = { manifest: Manifest; vecs: Int8Array; norms: Float32Array; scan: (q8: Int8Array) => Int32Array };
 export type Library = Vectors & { flows: Vectors };
-export type Query = { purpose: string; slide_type?: string; industry?: string; data_type?: string; k?: number };
+export type Query = { purpose: string; slide_type?: string; industry?: string; data_type?: string; impact?: string; k?: number };
 // Stage switches for the S6 ablation: dense only -> +fts (RRF) -> +rerank -> +mmr.
 export type Flags = { fts: boolean; rerank: boolean; mmr: boolean; cache: boolean; lambda: number };
-export type Result = { id: string; slide_type: string; purpose: string; why_it_works: string; score: number };
+export type Result = { id: string; slide_type: string; purpose: string; why_it_works: string; kinds: string; impact: string; score: number };
 export type FlowQuery = { purpose: string; industry?: string; length?: string; k?: number };
 export type FlowResult = { id: string; arc: string; length: string; industry: string; sections: string; why_the_flow_works: string; score: number };
-type Row = { n: number; id: string; deck_id: string; archetype: string; purpose: string; why_it_works: string; description: string };
+type Row = { n: number; id: string; deck_id: string; archetype: string; purpose: string; why_it_works: string; description: string; impact: string; layout: string };
 
 export const DEFAULT_FLAGS: Flags = { fts: true, rerank: true, mmr: true, cache: true, lambda: 0.7 };
 
@@ -140,7 +140,7 @@ export async function search(env: Pick<Env, "DB" | "AI">, lib: Library, query: Q
 	let key = "";
 	if (flags.cache) {
 		let hit: string | null;
-		[key, hit] = await cached(env, ["slides", library_version, purpose, query.slide_type ?? null, query.industry ?? null, query.data_type ?? null, k, flags.fts, flags.rerank, flags.mmr, flags.lambda]);
+		[key, hit] = await cached(env, ["slides", library_version, purpose, query.slide_type ?? null, query.industry ?? null, query.data_type ?? null, query.impact ?? null, k, flags.fts, flags.rerank, flags.mmr, flags.lambda]);
 		if (hit) return { results: JSON.parse(hit), library_version };
 	}
 	return miss({ ...query, purpose, k }, key);
@@ -150,7 +150,7 @@ export async function search(env: Pick<Env, "DB" | "AI">, lib: Library, query: Q
 export async function uncached(env: Pick<Env, "DB" | "AI">, lib: Library, query: Query, flags: Flags, key: string): Promise<Found> {
 	const { library_version, ids } = lib.manifest;
 	const { purpose, k = MAX_K } = query;
-	const filters = ([["archetype", query.slide_type], ["industry", query.industry], ["data_type", query.data_type]] as const).filter(([, v]) => v != null);
+	const filters = ([["archetype", query.slide_type], ["industry", query.industry], ["data_type", query.data_type], ["impact", query.impact]] as const).filter(([, v]) => v != null);
 
 	// One D1 round trip, in parallel with the embedding: build check, filter set for the vector branch, FTS branch.
 	const where = filters.map(([col]) => ` AND s.${col} = ?`).join(""), args = filters.map(([, v]) => v);
@@ -176,7 +176,7 @@ export async function uncached(env: Pick<Env, "DB" | "AI">, lib: Library, query:
 
 	let results: Result[] = [];
 	if (pool.length) {
-		const { results: found } = await env.DB.prepare(`SELECT n, id, deck_id, archetype, purpose, why_it_works, description FROM slides WHERE n IN (${pool.map(() => "?").join(", ")})`)
+		const { results: found } = await env.DB.prepare(`SELECT n, id, deck_id, archetype, purpose, why_it_works, description, impact, layout FROM slides WHERE n IN (${pool.map(() => "?").join(", ")})`)
 			.bind(...pool.map(([n]) => n)).all<Row>();
 		const byN = new Map(found.map((r) => [r.n, r]));
 		const cands = pool.map(([n, score]) => ({ ...byN.get(n)!, score }));
@@ -187,7 +187,9 @@ export async function uncached(env: Pick<Env, "DB" | "AI">, lib: Library, query:
 			cands.sort((a, b) => b.score - a.score || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 		}
 		const picked = flags.mmr ? mmr(cands, lib, k, flags.lambda) : cands.slice(0, k);
-		results = picked.map((c) => ({ id: c.id, slide_type: c.archetype, purpose: c.purpose, why_it_works: c.why_it_works, score: c.score }));
+		// kinds: the layout's components in order, with their counts ("kpi_row×3"), so results compare without get_reference
+		const kinds = (layout: string) => (JSON.parse(layout).components as { kind: string; n?: number }[]).map((c) => (c.n ? `${c.kind}×${c.n}` : c.kind)).join(", ");
+		results = picked.map((c) => ({ id: c.id, slide_type: c.archetype, purpose: c.purpose, why_it_works: c.why_it_works, kinds: kinds(c.layout), impact: c.impact, score: c.score }));
 	}
 
 	return { results: key ? await store(env, key, results, library_version) : results, library_version };

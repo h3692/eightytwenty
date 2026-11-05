@@ -2,7 +2,7 @@ import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import dot from "../src/dot.wasm";
 import { DEFAULT_FLAGS, dense, loadLibrary, mmr, round, rrf, search, searchFlows } from "../src/search";
-import { buffers, fakeAI, flowFloats, flows, floats, library, manifest, near, quantise, rows, seed } from "./fixture";
+import { buffers, fakeAI, flowFloats, flows, floats, impacts, library, manifest, near, quantise, rows, seed } from "./fixture";
 
 const lib = library();
 const ids = manifest.ids;
@@ -164,13 +164,42 @@ describe("search", () => {
 		expect(out.library_version).toBe(manifest.library_version);
 		expect(out.results.length).toBe(3);
 		expect(ai.calls[0]).toEqual({ model: "@cf/baai/bge-m3", input: { text: ["market share"] } });
-		expect(Object.keys(out.results[0]).sort()).toEqual(["id", "purpose", "score", "slide_type", "why_it_works"]);
+		expect(Object.keys(out.results[0]).sort()).toEqual(["id", "impact", "kinds", "purpose", "score", "slide_type", "why_it_works"]);
 	});
 
 	it("rejects bad input", async () => {
 		const s = withAI(fakeAI(() => near(3)));
 		await expect(search(s, lib, { purpose: "   " })).rejects.toThrow(RangeError);
-		await expect(search(s, lib, { purpose: "x", k: 6 })).rejects.toThrow(RangeError);
+		await expect(search(s, lib, { purpose: "x", k: 9 })).rejects.toThrow(RangeError);
+		expect((await search(s, lib, { purpose: "x", k: 8 })).results.length).toBe(6); // 6 decks, one slide each
+	});
+
+	it("filters by impact in the vector and FTS branches", async () => {
+		const flags = { ...DEFAULT_FLAGS, cache: false, rerank: false, mmr: false };
+		const s = withAI(fakeAI(() => near(3)));
+		for (const f of [flags, { ...flags, fts: false }]) {
+			expect((await search(s, lib, { purpose: "market share of competitors", impact: "spotlight" }, f)).results.map((r) => r.id)).toEqual([rows[6].id]);
+			expect((await search(s, lib, { purpose: "market share of competitors", impact: "repeat" }, f)).results).toEqual([]);
+		}
+	});
+
+	it("gives each result its layout's component kinds (with counts) and its impact", async () => {
+		const out = await search(withAI(fakeAI(() => near(9))), lib, { purpose: "market share", k: 8 }, { ...DEFAULT_FLAGS, cache: false, rerank: false, mmr: false });
+		for (const r of out.results) {
+			const n = rows.find((x) => x.id === r.id)!.n;
+			expect(r.kinds).toBe(`tracker×5, kpi_row×${(n % 3) + 2}, takeaway`);
+			expect(r.impact).toBe(impacts[n]);
+		}
+		expect(out.results.map((r) => r.impact)).toContain("shade_ribbon");
+	});
+
+	it("keeps an impact-filtered query apart from the unfiltered one in the cache", async () => {
+		const ai = fakeAI(() => near(3));
+		const all = await search(withAI(ai), lib, { purpose: "market share" });
+		const spot = await search(withAI(ai), lib, { purpose: "market share", impact: "spotlight" });
+		expect(spot.results.map((r) => r.id)).toEqual([rows[6].id]);
+		expect(spot).not.toEqual(all);
+		expect(ai.calls.filter((c) => c.model === "@cf/baai/bge-m3").length).toBe(2);
 	});
 
 	it("applies the same filters to the vector and FTS branches", async () => {

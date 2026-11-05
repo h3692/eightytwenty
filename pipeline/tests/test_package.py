@@ -9,6 +9,9 @@ from pipeline.tests.conftest import CLIENT, EXCLUDED, fixture_labels
 from pipeline.tests.test_embed import server  # noqa: F401  (fixture)
 from pipeline.tests.test_leak_check import mockups
 
+LAYOUT = {"version": 3, "components": [{"kind": "tracker", "n": 5, "active": 2},
+                                       {"kind": "kpi_row", "box": [0, 0.25, 1, 0.5], "n": 3}]}
+
 
 def _library(lib, purposes):
     (lib / "records").mkdir(parents=True)
@@ -16,11 +19,13 @@ def _library(lib, purposes):
     ids = []
     for k, purpose in enumerate(purposes):
         rid = f"{k:016x}-01"
-        dna = {"id": rid, "deck_id": f"{k:016x}", "archetype": "options", "industry": "technology",
+        dna = {"id": rid, "deck_id": f"{k:016x}", "slide": 1, "archetype": "options", "industry": "technology",
                "data_type": "table", "purpose": purpose, "why_it_works": "Rows make the trade-off obvious",
                "description": f"Options slide. Purpose: {purpose}."}
         (lib / "records" / f"{rid}.json").write_text(json.dumps(dna))
         (lib / "wireframes" / f"{rid}.png").write_bytes(b"\x89PNG fake")
+        (lib / "layouts" / f"{k:016x}").mkdir(parents=True)
+        (lib / "layouts" / f"{k:016x}" / "slide-01.v3.json").write_text(json.dumps(LAYOUT))
         ids.append(rid)
     (lib / "manifest.json").write_text(json.dumps({"library_version": "bge-m3/desc-v1/abc", "ids": ids,
                                                    "flows": {"count": 0, "ids": []}}))
@@ -145,3 +150,28 @@ def test_slides_get_the_impact_of_their_step_in_a_published_flow(lib):
     assert db.execute("SELECT id, impact FROM slides ORDER BY n").fetchall() == [
         (ids[0], "none"), (ids[1], "spotlight"), (ids[2], "none")]  # a slide in no flow is not an impact slide
     assert "impact" not in json.loads(db.execute("SELECT dna FROM slides WHERE n = 1").fetchone()[0])  # records unchanged
+
+
+def test_slides_carry_their_v3_layout(lib):
+    ids = _library(lib, ["Compare the options side by side", "Pick a winner"])
+    (lib / "layouts" / ids[1][:16] / "slide-01.v3.json").write_text(json.dumps({"version": 3, "components": [
+        {"kind": "chart_area", "box": [0.01, 0.2, 0.98, 0.6], "chart_type": "bar"}]}))
+    package.run(lib)
+    rows = _load(lib).execute("SELECT layout FROM slides ORDER BY n").fetchall()
+    assert json.loads(rows[0][0]) == LAYOUT
+    # stored grid-snapped, exactly as the mockup was drawn
+    assert json.loads(rows[1][0])["components"][0]["box"] == [0, 0.25, 1, 0.5]
+
+
+@pytest.mark.parametrize("layout", [None, {"version": 3, "components": [{"kind": "text", "box": [0, 0, 1, 1],
+                                                                          "lines": 2, "note": "Acme pitch"}]}])
+def test_refuses_a_missing_or_invalid_layout(lib, layout):
+    ids = _library(lib, ["Compare the options side by side"])
+    f = lib / "layouts" / ids[0][:16] / "slide-01.v3.json"
+    if layout is None:
+        f.unlink()
+    else:
+        f.write_text(json.dumps(layout))
+    with pytest.raises(SystemExit, match="layout"):
+        package.run(lib)
+    assert not (lib / "records.sql").exists()

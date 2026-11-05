@@ -4,6 +4,7 @@ import { DurableObject } from "cloudflare:workers";
 import { McpServer } from "@modelcontextprotocol/server";
 import { createMcpHandler } from "agents/mcp/server";
 import { z } from "zod";
+import flow from "../../pipeline/schema/flow.v2.json";
 import labels from "../../pipeline/schema/labels.v1.json";
 import anatomyAndTaglines from "../../playbook/anatomy-and-taglines.md";
 import archetypes from "../../playbook/archetypes.md";
@@ -34,6 +35,7 @@ const PLAYBOOK: Record<string, string> = {
 };
 export const STAGES = Object.keys(PLAYBOOK);
 const MAX_IMAGE = 30 * 1024;
+const MAX_REGIONS = 40; // busy records reach ~39k tokens with every region, over what clients accept in one tool result
 const MAX_BODY = 4 * 1024 * 1024; // the MCP SDK's default maxRequestBodySize
 const enumOf = (values: string[]) => z.enum(values as [string, ...string[]]);
 const readOnly = { readOnlyHint: true, destructiveHint: false };
@@ -47,7 +49,8 @@ const FIND_INPUT = z.object({
 	slide_type: enumOf(labels.properties.archetype.enum).optional().describe("Archetype id (see the archetypes stage of get_playbook)."),
 	industry: enumOf(labels.properties.industry.enum).optional(),
 	data_type: enumOf(labels.properties.data_type.enum).optional(),
-	k: z.number().int().min(1).max(5).optional().describe("How many results, 1 to 5 (default 5)."),
+	impact: enumOf(flow.properties.impact.items.enum).optional().describe("Only impact slides of this kind (how reference decks repeat a slide for effect); few exist."),
+	k: z.number().int().min(1).max(8).optional().describe("How many results, 1 to 8 (default 8)."),
 });
 const FLOWS_INPUT = z.object({
 	purpose: z.string().min(1).max(1000).describe("What the whole deck must achieve, in plain words."),
@@ -79,8 +82,10 @@ function createServer(env: Env, lib: Library) {
 		"find_references",
 		{
 			title: "Find reference slides",
-			description: "Search the curated library of slide design DNA by what a slide must do. Returns up to k short summaries " +
-				"(id, slide type, purpose, why it works, score). Call get_reference with an id for the full layout. Reference, never copy.",
+			description: "Search the curated library of slide design DNA by what a slide must do. In deck mode, use it after the " +
+				"slide-by-slide storyline is confirmed (see the get_playbook workflow). Returns up to k short summaries (id, slide type, " +
+				"score, purpose, why it works, the layout's component kinds, impact device if any), at most one per deck; an impact " +
+				"filter returns few results. Call get_reference with an id for the full layout. Reference, never copy.",
 			inputSchema: FIND_INPUT,
 			annotations: readOnly,
 		},
@@ -89,8 +94,9 @@ function createServer(env: Env, lib: Library) {
 				(q, key) => env.SEARCHER.get(env.SEARCHER.idFromName("global")).search(q, key));
 			if (!results.length)
 				return { content: [text(`No references match these filters. Try fewer filters or a broader purpose. (library_version ${library_version})`)] };
-			const lines = results.map((r, i) => `${i + 1}. ${r.id} | ${r.slide_type} | score ${r.score}\n   Purpose: ${r.purpose}\n   Why it works: ${r.why_it_works}`);
-			return { content: [text(`library_version ${library_version}\n\n${lines.join("\n")}\n\nCall get_reference with an id for its full design DNA and wireframe.`)] };
+			const lines = results.map((r, i) => `${i + 1}. ${r.id} | ${r.slide_type} | score ${r.score}\n   Purpose: ${r.purpose}\n   Why it works: ${r.why_it_works}` +
+				`\n   Kinds: ${r.kinds}${r.impact === "none" ? "" : ` | impact: ${r.impact}`}`);
+			return { content: [text(`library_version ${library_version}\n\n${lines.join("\n")}\n\nCall get_reference with an id for its layout, mockup and design DNA.`)] };
 		},
 	);
 
@@ -99,7 +105,8 @@ function createServer(env: Env, lib: Library) {
 		{
 			title: "Find reference deck flows",
 			description: "Search the library's deck flows (how strong decks order their sections) by what the whole deck must achieve. " +
-				"Call it first when planning a whole deck. Returns up to 3 summaries (deck id, arc, length, industry, section sequence, " +
+				"In deck mode, use it after the slide-by-slide storyline is confirmed (see the get_playbook workflow), before " +
+				"find_references. Returns up to 3 summaries (deck id, arc, length, industry, section sequence, " +
 				"why the flow works, score). Call get_reference with a deck id for its steps and their slide ids.",
 			inputSchema: FLOWS_INPUT,
 			annotations: readOnly,
@@ -118,8 +125,9 @@ function createServer(env: Env, lib: Library) {
 		"get_reference",
 		{
 			title: "Get a reference slide or deck flow",
-			description: "The full design-DNA record of one library slide (every region box, colour and type role, text structure) " +
-				"plus its wireframe image. Use an id from find_references. Build your own slide from it; never copy it. " +
+			description: "One library slide: its labels (purpose, why it works, archetype, insight device, impact), its component " +
+				"layout (v3), its design DNA (the 40 largest region boxes with colour and type roles, text structure) and its mockup " +
+				"image. Use an id from find_references. Build your own slide from it; never copy it. " +
 				"A deck id from find_deck_flows returns that deck's flow instead: its steps in order, each with a slide id and " +
 				"whether that slide is in the library (available).",
 			inputSchema: REFERENCE_INPUT,
@@ -139,8 +147,15 @@ function createServer(env: Env, lib: Library) {
 				rec.steps = rec.steps.map((s: { id: string }) => ({ ...s, available: have.has(s.id) }));
 				return { content: [text(JSON.stringify(rec))] };
 			}
-			const dna = await env.DB.prepare("SELECT dna FROM slides WHERE id = ?").bind(id).first<string>("dna");
-			if (!dna) return { content: [text(`No reference with id ${id}. Use an id returned by find_references.`)], isError: true };
+			const row = await env.DB.prepare("SELECT dna, impact, layout FROM slides WHERE id = ?").bind(id).first<{ dna: string; impact: string; layout: string }>();
+			if (!row) return { content: [text(`No reference with id ${id}. Use an id returned by find_references.`)], isError: true };
+			const rec = JSON.parse(row.dna) as { regions: { box: { w: number; h: number } }[] };
+			const total = rec.regions.length;
+			if (total > MAX_REGIONS) {
+				const keep = new Set([...rec.regions].sort((a, b) => b.box.w * b.box.h - a.box.w * a.box.h).slice(0, MAX_REGIONS)); // stable: ties keep order
+				Object.assign(rec, { regions: rec.regions.filter((r) => keep.has(r)), regions_shown: `the ${MAX_REGIONS} largest of ${total}, by area` });
+			}
+			const dna = JSON.stringify({ ...rec, impact: row.impact, layout: JSON.parse(row.layout) });
 			const png = await env.ASSETS.fetch(`https://assets.local/wireframes/${id}.png`);
 			const bytes = png.ok ? new Uint8Array(await png.arrayBuffer()) : null;
 			if (!bytes || bytes.length > MAX_IMAGE) return { content: [text(dna)] };

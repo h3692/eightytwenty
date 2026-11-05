@@ -6,7 +6,7 @@ import archetypesMd from "../../playbook/archetypes.md";
 import { app, clientKey, prune, STAGES } from "../src/app";
 import type { Limiter } from "../src/limiter";
 import { DEFAULT_FLAGS, EMBED_MODEL, RERANK_MODEL, search, searchFlows } from "../src/search";
-import { fakeAI, flowFloats, flows, floats, library, manifest, rows, seed } from "./fixture";
+import { fakeAI, flowFloats, flows, floats, impacts, layouts, library, manifest, rows, seed } from "./fixture";
 
 const lib = library();
 const worker = app(lib);
@@ -72,7 +72,11 @@ describe("MCP endpoint", () => {
 		expect(p.slide_type.enum).toHaveLength(17);
 		expect(p.industry.enum).toEqual(labels.properties.industry.enum);
 		expect(p.data_type.enum).toEqual(labels.properties.data_type.enum);
-		expect(p.k.maximum).toBe(5);
+		expect(p.k.maximum).toBe(8);
+		expect(p.impact.enum).toEqual(["none", "build", "spotlight", "shade_ribbon", "repeat"]);
+		expect(tools.find_references.description).toMatch(/one per deck/i);
+		expect(tools.find_references.description).toMatch(/impact filter returns few/i);
+		for (const t of [tools.find_references, tools.find_deck_flows]) expect(t.description).toMatch(/deck mode.*after the slide-by-slide storyline is confirmed.*get_playbook/i);
 		expect(tools.find_references.inputSchema.required).toEqual(["purpose"]);
 		expect(tools.get_playbook.inputSchema.properties.stage.enum).toEqual(STAGES);
 		expect(tools.get_playbook.description).toMatch(/before planning a deck/i);
@@ -158,6 +162,25 @@ describe("find_references", () => {
 		expect(text).toContain(manifest.library_version);
 		expect(text).toContain("get_reference");
 		expect(text).not.toMatch(/-?\d+(,-?\d+){50}/);
+	});
+
+	it("shows each result's component kinds and its impact when it is an impact slide", async () => {
+		await searcherAI(fakeAI(() => floats[0], (_, t) => t.map((x) => (x.includes("customer journey") ? 0.9 : 0.1)))); // row 9 over row 8 in deck4
+		const { body } = await tool("find_references", { purpose: "market share", k: 8 });
+		const text: string = body.result.content[0].text;
+		expect(text).toContain(`${rows[9].id} | ${rows[9].archetype} | score`);
+		expect(text).toContain("   Kinds: tracker×5, kpi_row×2, takeaway\n");
+		expect(text).toContain(`   Kinds: tracker×5, kpi_row×${(9 % 3) + 2}, takeaway | impact: shade_ribbon\n`);
+		expect(text).not.toContain("impact: none");
+		const spot = await tool("find_references", { purpose: "market share", impact: "spotlight" });
+		expect(spot.body.result.content[0].text.split("\n").filter((l: string) => /^\d\. /.test(l))).toEqual([expect.stringContaining(rows[6].id)]);
+	});
+
+	it("accepts k up to 8 and rejects an unknown impact", async () => {
+		expect((await tool("find_references", { purpose: "x", k: 9 })).body.result?.isError ?? true).toBe(true);
+		const { body } = await tool("find_references", { purpose: "x", impact: "glow" });
+		expect(body.result?.isError ?? !!body.error).toBe(true);
+		expect(JSON.stringify(body)).toContain("shade_ribbon");
 	});
 
 	it("rejects an unknown slide_type with the valid values", async () => {
@@ -252,10 +275,10 @@ describe("Searcher Durable Object", () => {
 });
 
 describe("get_reference", () => {
-	it("returns the design-DNA JSON and the wireframe image", async () => {
+	it("returns the labels, v3 layout and design DNA as JSON, and the mockup image", async () => {
 		const { body } = await tool("get_reference", { id: rows[0].id });
 		const [text, image] = body.result.content;
-		expect(JSON.parse(text.text)).toEqual(rows[0]);
+		expect(JSON.parse(text.text)).toEqual({ ...rows[0], impact: impacts[0], layout: layouts[0] });
 		expect(image).toMatchObject({ type: "image", mimeType: "image/png" });
 		expect(Uint8Array.from(atob(image.data), (c) => c.charCodeAt(0))).toEqual(PNG);
 	});
@@ -264,6 +287,22 @@ describe("get_reference", () => {
 		const { body } = await tool("get_reference", { id: rows[1].id });
 		expect(body.result.content).toHaveLength(1);
 		expect(JSON.parse(body.result.content[0].text).id).toBe(rows[1].id);
+	});
+
+	it("caps a busy record at its 40 largest regions, in their original order, well under 20k tokens", async () => {
+		const id = "ffffffffffffffff-01";
+		const regions = Array.from({ length: 1000 }, (_, i) => ({ i, parent: null, type: "shape", role: "card", box: { x: 0, y: 0, w: ((i * 389) % 1000) / 1000, h: 0.5 }, fill: "accent", line: null, dashed: false, text: { words: 3, paragraphs: 1, lines: 1, bullets: 0, align: "left", weight: "regular", color: "neutral-dark", number: null, size: "body", pattern: null, pattern_words: null }, chart: null, table: null }));
+		const dna = { ...rows[0], id, deck_id: "ffffffffffffffff", regions };
+		await env.DB.prepare("INSERT INTO slides VALUES (99, ?, ?, 'chart', 'retail', 'time-series', 'p', 'w', 'd', ?, 'build', ?)").bind(id, dna.deck_id, JSON.stringify(dna), JSON.stringify(layouts[0])).run();
+		expect(JSON.stringify(dna).length).toBeGreaterThan(200_000);
+		const { body } = await tool("get_reference", { id });
+		const out = JSON.parse(body.result.content[0].text);
+		const largest = [...regions].sort((a, b) => b.box.w - a.box.w).slice(0, 40).map((r) => r.i).sort((a, b) => a - b);
+		expect(out.regions.map((r: { i: number }) => r.i)).toEqual(largest);
+		expect(out.regions[0]).toEqual(regions[largest[0]]);
+		expect(out).toMatchObject({ purpose: rows[0].purpose, why_it_works: rows[0].why_it_works, archetype: rows[0].archetype, insight_device: "highlight", impact: "build", layout: layouts[0] });
+		expect(out.regions_shown).toMatch(/40 largest of 1000/);
+		expect(body.result.content[0].text.length).toBeLessThan(40_000); // ~4 characters per token
 	});
 
 	it("returns a deck flow for a deck id, marking each step's slide as available or not", async () => {

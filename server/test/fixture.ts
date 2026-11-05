@@ -10,7 +10,7 @@ const SCHEMA = [
 	"DROP TABLE IF EXISTS meta",
 	`CREATE TABLE slides (n INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE, deck_id TEXT NOT NULL, archetype TEXT NOT NULL,
   industry TEXT NOT NULL, data_type TEXT NOT NULL, purpose TEXT NOT NULL, why_it_works TEXT NOT NULL,
-  description TEXT NOT NULL, dna TEXT NOT NULL, impact TEXT NOT NULL)`,
+  description TEXT NOT NULL, dna TEXT NOT NULL, impact TEXT NOT NULL, layout TEXT NOT NULL)`,
 	"CREATE INDEX slides_filters ON slides (archetype, industry, data_type)",
 	"CREATE VIRTUAL TABLE slides_fts USING fts5(purpose, why_it_works, description, tokenize='porter')",
 	`CREATE TABLE flows (n INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE, deck_id TEXT NOT NULL, arc TEXT NOT NULL,
@@ -30,7 +30,7 @@ const TOPICS = [
 const ARCHETYPES = ["chart", "timeline", "comparison"];
 const INDUSTRIES = ["retail", "technology"];
 
-export type Row = { n: number; id: string; deck_id: string; archetype: string; industry: string; data_type: string; purpose: string; why_it_works: string; description: string };
+export type Row = { n: number; id: string; deck_id: string; archetype: string; industry: string; data_type: string; purpose: string; why_it_works: string; description: string; insight_device: string; regions: { i: number; box: { x: number; y: number; w: number; h: number } }[] };
 
 function rng(seed: number) {
 	return () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648) * 2 - 1;
@@ -52,6 +52,14 @@ export const rows: Row[] = Array.from({ length: 12 }, (_, n) => ({
 	purpose: `Show the ${TOPICS[n % 6]}`,
 	why_it_works: `One highlighted element carries the ${TOPICS[(n + 1) % 6]} story`,
 	description: `${ARCHETYPES[n % 3]} slide about ${TOPICS[n % 6]}`,
+	insight_device: "highlight",
+	regions: [{ i: 0, box: { x: 0, y: 0, w: 1, h: 0.2 } }, { i: 1, box: { x: 0, y: 0.25, w: 1, h: 0.6 } }],
+}));
+// Not in the records (package.py adds them as columns): rows 6 and 9 are impact slides; kpi rows hold n % 3 + 2 tiles.
+export const impacts = rows.map((r) => (r.n === 6 ? "spotlight" : r.n === 9 ? "shade_ribbon" : "none"));
+export const layouts = rows.map((r) => ({
+	version: 3,
+	components: [{ kind: "tracker", n: 5, active: 1 }, { kind: "kpi_row", box: [0, 0.25, 1, 0.25], n: (r.n % 3) + 2 }, { kind: "takeaway", box: [0, 0.75, 1, 0.25] }],
 }));
 export const floats: number[][] = rows.map((r) => {
 	const next = rng(r.n + 1);
@@ -111,7 +119,7 @@ export async function seed(db: D1Database, version = manifest.library_version) {
 	await db.batch([
 		...SCHEMA.map((s) => db.prepare(s)),
 		...rows.flatMap((r) => [
-			db.prepare("INSERT INTO slides VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(r.n, r.id, r.deck_id, r.archetype, r.industry, r.data_type, r.purpose, r.why_it_works, r.description, JSON.stringify(r), "none"),
+			db.prepare("INSERT INTO slides VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(r.n, r.id, r.deck_id, r.archetype, r.industry, r.data_type, r.purpose, r.why_it_works, r.description, JSON.stringify(r), impacts[r.n], JSON.stringify(layouts[r.n])),
 			db.prepare("INSERT INTO slides_fts (rowid, purpose, why_it_works, description) VALUES (?, ?, ?, ?)").bind(r.n, r.purpose, r.why_it_works, r.description),
 		]),
 		...flows.map((f) => db.prepare("INSERT INTO flows VALUES (?, ?, ?, ?, ?, ?, ?, ?)").bind(f.n, f.id, f.deck_id, f.arc, f.length_bucket, f.industry, JSON.stringify(f.record), f.description)),

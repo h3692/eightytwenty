@@ -58,12 +58,12 @@ footer { margin-top: 3rem; color: var(--muted); font-size: .9rem; }
 <dl>
 <dt><code>get_playbook(stage?)</code></dt>
 <dd>The methodology: workflow, slide archetypes, anatomy and taglines, distinctive design, visual rules and design options, writing, a QA checklist, and how to audit the style of a deck you attach in chat. With no stage it returns the index and the workflow. Your assistant should call it before planning a deck.</dd>
-<dt><code>find_references(purpose, slide_type?, industry?, data_type?, k?)</code></dt>
-<dd>Searches the library by what a slide must do, with optional filters. Returns up to five short summaries: id, slide type, purpose, why it works, and a score, plus the library version.</dd>
+<dt><code>find_references(purpose, slide_type?, industry?, data_type?, impact?, k?)</code></dt>
+<dd>Searches the library by what a slide must do, with optional filters; <code>impact</code> (none, build, spotlight, shade_ribbon, repeat) finds slides that reference decks repeat for effect, and few exist. Returns up to eight short summaries (<code>k</code>, default 8), at most one per deck: id, slide type, a score, purpose, why it works, the layout's component kinds and its impact device if any, plus the library version. When planning a whole deck, use it after the slide-by-slide storyline is confirmed.</dd>
 <dt><code>find_deck_flows(purpose, industry?, length?)</code></dt>
-<dd>Searches the library's deck flows (how strong decks order their sections) by what a whole deck must achieve, optionally by industry and length (short, medium, long). Returns up to three summaries: deck id, arc, length, industry, section sequence, why the flow works, and a score.</dd>
+<dd>Searches the library's deck flows (how strong decks order their sections) by what a whole deck must achieve, optionally by industry and length (short, medium, long). Returns up to three summaries: deck id, arc, length, industry, section sequence, why the flow works, and a score. Use it after the slide-by-slide storyline is confirmed.</dd>
 <dt><code>get_reference(id)</code></dt>
-<dd>The full design-DNA record for one result, plus its wireframe image where the client shows images. Given a deck id, it returns that deck's flow: its steps in order, each with a slide id and whether that slide is in the library.</dd>
+<dd>One slide: its labels (purpose, why it works, archetype, insight device, impact), its component layout, its design-DNA record (the 40 largest regions), and its wireframe image where the client shows images. Given a deck id, it returns that deck's flow: its steps in order, each with a slide id, its impact device, and whether that slide is in the library.</dd>
 </dl>
 
 <h2>Try asking</h2>
