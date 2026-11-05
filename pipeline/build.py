@@ -1,4 +1,5 @@
 """Stage 3: merge geometry + labels into design-DNA records, draw each wireframe from the record alone, write descriptions."""
+import collections
 import io
 import itertools
 import json
@@ -34,6 +35,11 @@ MIN_AREA, BAND_AREA, SAME_BOX = 0.004, 0.15, 0.8  # fractions of the slide; SAME
 STACK_GAP = 0.01  # of slide height: line boxes of one paragraph touch, separate blocks sit a blank line apart
 INK, BAND = 110, 242
 SKIP_ROLES = {"group", "decoration", "other"}
+SHAPES = {"shape", "picture", "group"}
+CLUSTER_AREA, CLUSTER_SPAN, CLUSTER_MIN = 0.01, 0.1, 5  # a small shape: < 1% of the slide and no side over 10%
+MAX_HOLDER, TOUCH_GAP, MARK_GAP = 0.5, 0.002, 0.05  # fractions of the slide
+CLUSTER_ROLES = {"logo", "icon", "chart", "image"}  # a cluster keeps its majority role if it is one of these, else image
+LOOSE_ROLES = {"other", "decoration", "image", "icon", "logo"}  # what a cluster takes in; cards, callouts... stay
 
 
 def check_schema(dna):
@@ -71,12 +77,14 @@ def merge(slide, labels):
     regions = []
     for r in slide["regions"]:
         r = dict(r, role=labels["regions"].get(str(r["i"]), "other"))  # beyond the worksheet's largest regions
+        r.pop("path", None)  # no freeform outline reaches a record: it could trace a map or a wordmark
         if r["role"] in NEVER_TRACED:
-            r.update(geom=None, path=None)  # a brand mark's outline never reaches a record
+            r["geom"] = None  # nor a brand mark's preset
         if r["text"]:
             p = patterns.get(r["i"])
             r["text"] = dict(r["text"], pattern=p and p["pattern"], pattern_words=p and p["words"])
         regions.append(r)
+    regions = _collapse(regions)
     dna = {"schema_version": "design-dna/v1", "id": f"{slide['deck_id']}-{slide['slide']:02d}",
            "deck_id": slide["deck_id"], "slide": slide["slide"],
            **{k: labels[k] for k in ("archetype", "purpose", "argument_shape", "insight_device", "data_type",
@@ -84,6 +92,81 @@ def merge(slide, labels):
            "background": slide["background"], "regions": regions}
     dna["description"] = describe(dna)
     return {k: dna[k] for k in SCHEMA["required"]}
+
+
+def _collapse(regions):
+    """Geometry that could trace a brand or a market collapses into plain, unshaded boxes:
+    - >= CLUSTER_MIN small shapes (lines and long thin rules aside) in one connected area (boxes touching, or inside
+      one image or logo region) become one box with every smaller loose shape centred in it: a map with its shading
+      and pins, a wordmark; clusters whose boxes then touch join, until none do;
+    - logos and icons within MARK_GAP of each other become one box."""
+    weight = {}  # small shapes folded into a cluster so far, by the cluster's index
+    small = lambda r: r["type"] in SHAPES and not r["text"] and not _is_line(r) and (
+        r["box"]["w"] * r["box"]["h"] < CLUSTER_AREA and max(r["box"]["w"], r["box"]["h"]) < CLUSTER_SPAN)
+    count = lambda r: weight.get(r["i"], int(small(r)))
+    holder = lambda r: r["type"] in SHAPES and r["role"] in ("image", "logo") and (
+        CLUSTER_AREA <= r["box"]["w"] * r["box"]["h"] <= MAX_HOLDER)  # a full-bleed photo holds nothing
+    linked = lambda a, b: _gap(a, b) <= TOUCH_GAP if count(a) and count(b) else bool(count(a)) != bool(count(b)) and (
+        _inside(_xywh(a), _xywh(b)) if count(a) else _inside(_xywh(b), _xywh(a)))
+    majority = lambda c: collections.Counter(r["role"] for r in sorted(c, key=lambda r: r["i"])).most_common(1)[0][0]
+    folded = True
+    while folded:
+        folded = False
+        for c in _components([r for r in regions if count(r) or holder(r)], linked):
+            ids = {r["i"] for r in c}
+            c = [r for r in regions if r["i"] in ids]  # what an earlier cluster has not taken in
+            if sum(map(count, c)) >= CLUSTER_MIN and len(c) > 1:
+                x0, y0, x1, y1 = _bounds(c)
+                box = (x0, y0, x1 - x0, y1 - y0)  # takes in smaller shapes centred in it: shading, pins, big countries
+                c += [r for r in regions if r["type"] in SHAPES and r["role"] in LOOSE_ROLES and not r["text"]
+                      and r["i"] not in ids and _inside(_xywh(r), box) and r["box"]["w"] * r["box"]["h"] < box[2] * box[3]]
+                role = majority(c) if majority(c) in CLUSTER_ROLES else "image"
+                regions = _fold(regions, c, role, "picture" if role == "image" else None)
+                weight[min(r["i"] for r in c)], folded = sum(map(count, c)), True
+    for c in _components([r for r in regions if r["role"] in NEVER_TRACED], lambda a, b: _gap(a, b) <= MARK_GAP):
+        if len(c) > 1:
+            regions = _fold(regions, c, majority(c), None)
+    return regions
+
+
+def _components(items, linked):
+    """Connected sets of items (in item order); deterministic for a given order."""
+    comps = []
+    for r in items:
+        hit = [c for c in comps if any(linked(r, o) for o in c)]
+        comps = [c for c in comps if all(c is not h for h in hit)] + [[o for h in hit for o in h] + [r]]
+    return sorted(comps, key=lambda c: min(r["i"] for r in c))
+
+
+def _fold(regions, members, role, type_):
+    """Replace members by one box at the first member: the union box, role, no fill, outline, text or data."""
+    ids, base = {r["i"] for r in members}, min(members, key=lambda r: r["i"])
+    x0, y0, x1, y1 = _bounds(members)
+    rep = dict(base, type=type_ or base["type"], role=role, parent=None if base["parent"] in ids else base["parent"],
+               box={"x": x0, "y": y0, "w": round(x1 - x0, 4), "h": round(y1 - y0, 4)}, fill=None, line=None,
+               dashed=False, text=None, chart=None, table=None, **{k: None for k in ("geom", "arrow") if k in base})
+    return [rep if r["i"] == base["i"] else dict(r, parent=base["i"] if r["parent"] in ids else r["parent"])
+            for r in regions if r["i"] == base["i"] or r["i"] not in ids]
+
+
+def _is_line(r):
+    geom = r.get("geom") or ""
+    return r["type"] == "line" or r["role"] in ("divider", "connector") or geom == "line" or "Connector" in geom
+
+
+def _bounds(regions):
+    return (min(r["box"]["x"] for r in regions), min(r["box"]["y"] for r in regions),
+            max(r["box"]["x"] + r["box"]["w"] for r in regions), max(r["box"]["y"] + r["box"]["h"] for r in regions))
+
+
+def _xywh(r):
+    return r["box"]["x"], r["box"]["y"], r["box"]["w"], r["box"]["h"]
+
+
+def _gap(a, b):
+    """The wider of the horizontal and vertical gaps between two boxes; negative when they overlap."""
+    (ax0, ay0, ax1, ay1), (bx0, by0, bx1, by1) = _bounds([a]), _bounds([b])
+    return max(max(ax0, bx0) - min(ax1, bx1), max(ay0, by0) - min(ay1, by1))
 
 
 def describe(dna):
@@ -138,7 +221,7 @@ def _plan(dna):
         x, y, w, h = (b["x"], b["y"], b["w"], b["h"])
         if r["type"] == "group" or role == "group":
             continue
-        if r["type"] == "line" or role in ("divider", "connector") or geom == "line" or "Connector" in geom:
+        if _is_line(r):
             if role != "decoration" or path_like:
                 pts = [(x + px * w, y + py * h) for px, py in path[0]] if path else (
                     [(x, y), (x + w, y + h)] if r["type"] == "line" else

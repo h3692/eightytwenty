@@ -73,11 +73,11 @@ def test_writes_one_combined_worksheet_per_slide(work):
 
 
 def _busy(slide, n=60):
-    """The slide with n regions whose areas repeat every 25 indices (ties), alternating shape and text."""
+    """The slide with n regions whose areas repeat every 25 indices (ties), alternating shape and text, apart (no cluster)."""
     text = next(r for r in slide["regions"] if r["type"] == "text")
     shape = next(r for r in slide["regions"] if r["type"] == "shape")
     return dict(slide, regions=[dict(text if i % 2 else shape, i=i, parent=None,
-                                     box={"x": 0, "y": 0, "w": 0.01 * (1 + i % 25), "h": 0.01}) for i in range(n)])
+                                     box={"x": 0, "y": 0.016 * i, "w": 0.01 * (1 + i % 25), "h": 0.01}) for i in range(n)])
 
 
 def _capped_labels(slide):

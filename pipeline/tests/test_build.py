@@ -387,7 +387,7 @@ def test_merge_strips_outlines_from_logos_and_icons(deck, lib):
     labels["regions"][str(pic["i"])] = "logo"
     dna = build.merge(slide, labels)
     build.check_schema(dna)
-    assert (dna["regions"][pic["i"]]["geom"], dna["regions"][pic["i"]]["path"]) == (None, None)
+    assert dna["regions"][pic["i"]]["geom"] is None and "path" not in dna["regions"][pic["i"]]
 
 
 def test_small_complex_freeforms_are_never_traced():
@@ -396,14 +396,137 @@ def test_small_complex_freeforms_are_never_traced():
     assert plan and all(p["path"] is None for p in plan)
 
 
-def test_schema_accepts_normalised_outlines_only(built):
+def test_schema_forbids_outlines(built):
     out, ids = built
     dna = _dna(out, ids[1])
-    dna["regions"][0].update(path=[[[0.0, 0.5], [1.0, 0.25]]], arrow="end")
+    dna["regions"][0].update(arrow="end")
     build.check_schema(dna)
-    for bad in ([[["Zorblax", 0.5], [1.0, 0.25]]], [[[0.0, 0.5, 0.1]]], [[[0.0, 5.0], [1.0, 0.0]]]):
+    for path in (None, [[[0.0, 0.5], [1.0, 0.25]]]):
         with pytest.raises(jsonschema.ValidationError):
-            build.check_schema(copy.deepcopy(dna) | {"regions": [dict(dna["regions"][0], path=bad)]})
+            build.check_schema(copy.deepcopy(dna) | {"regions": [dict(dna["regions"][0], path=path)]})
+
+
+def _publish(*regions):
+    """merge() over a synthetic slide: the published regions and the record."""
+    slide = {"deck_id": "0" * 16, "slide": 1, "background": "white",
+             "regions": [{k: v for k, v in r.items() if k != "role"} | {"geom": r.get("geom"), "path": r.get("path"),
+                                                                        "arrow": r.get("arrow")} for r in regions]}
+    labels = fixture_labels({"slide": 2, "regions": [{"i": 0, "type": "text"}]}) | {"regions": {str(r["i"]): r["role"] for r in regions},
+                                                           "text_patterns": []}
+    dna = build.merge(slide, labels)
+    build.check_schema(dna)
+    return dna["regions"], dna
+
+
+def _union(regions):
+    x0, y0 = min(r["box"]["x"] for r in regions), min(r["box"]["y"] for r in regions)
+    return (x0, y0, max(r["box"]["x"] + r["box"]["w"] for r in regions) - x0,
+            max(r["box"]["y"] + r["box"]["h"] for r in regions) - y0)
+
+
+def _box(r):
+    return tuple(r["box"][k] for k in "xywh")
+
+
+TITLE = _r(0, "title", "text", box=(0.3, 0.4, 0.6, 0.1), text=_txt())
+
+
+def test_a_wordmark_of_letter_shapes_publishes_as_one_logo_box():
+    glyphs = [_r(1 + k, "logo", fill="white", path=SQUIGGLE, box=(0.035 + 0.016 * (k % 9), 0.064 + 0.048 * (k // 9), 0.012, 0.027))
+              for k in range(18)]
+    regions, _ = _publish(TITLE, *glyphs)
+    (logo,) = [r for r in regions if r["role"] == "logo"]
+    assert len(regions) == 2 and logo["i"] == 1 and logo["fill"] is None
+    assert _box(logo) == pytest.approx(_union(glyphs))
+
+
+def test_logos_and_icons_within_five_percent_merge_into_one_box_per_cluster():
+    mark = [_r(1, "logo", "picture", box=(0.8, 0.05, 0.08, 0.06)), _r(2, "icon", box=(0.9, 0.05, 0.05, 0.06))]
+    row = [_r(3 + k, "icon", fill="accent", box=(0.1 + 0.2 * k, 0.7, 0.05, 0.08)) for k in range(3)]  # 15% apart
+    regions, _ = _publish(TITLE, *mark, *row)
+    assert [(r["i"], r["role"]) for r in regions] == [(0, "title"), (1, "logo"), (3, "icon"), (4, "icon"), (5, "icon")]
+    assert _box(regions[1]) == pytest.approx(_union(mark))
+    assert [_box(r) for r in regions[2:]] == [_box(r) for r in row]
+
+
+def test_a_map_of_many_small_shapes_publishes_as_one_unshaded_map_box():
+    group = _r(1, "image", "group", box=(0.05, 0.2, 0.5, 0.6))
+    shaded = {17, 88, 150}
+    countries = [_r(2 + k, "other", fill="accent" if k in shaded else "neutral-light", line="white", parent=1, path=SQUIGGLE,
+                    box=(0.06 + 0.024 * (k % 20) + 0.004 * (k % 3), 0.22 + 0.055 * (k // 20), 0.024, 0.05)) for k in range(200)]
+    pin = _r(202, "other", geom="ellipse", fill="accent", line="accent", parent=1, box=(0.3, 0.4, 0.011, 0.019))
+    big = _r(203, "decoration", fill="accent", parent=1, box=(0.1, 0.5, 0.12, 0.1))  # a large shaded country
+    caption = _r(204, "label", "text", box=(0.1, 0.85, 0.3, 0.05), text=_txt())
+    edge = _r(205, "decoration", fill="accent", box=(0.47, 0.3, 0.12, 0.08))  # a shaded country sticking out of the map
+    regions, dna = _publish(TITLE, group, *countries, pin, big, caption, edge)
+    assert [(r["i"], r["role"]) for r in regions] == [(0, "title"), (1, "image"), (204, "label")]
+    assert _box(regions[1]) == pytest.approx(_union([group, *countries, pin, big, edge]))
+    assert (regions[1]["fill"], regions[1]["line"], regions[1]["type"]) == (None, None, "picture")
+    assert "accent" not in json.dumps(dna)
+
+
+def test_paths_never_reach_the_record_and_normal_slides_only_lose_them():
+    regions = [TITLE,
+               _r(1, "body", "text", box=(0.05, 0.55, 0.4, 0.3), text=_txt(bullets=2), geom="rect"),
+               *[_r(2 + k, "card", fill="accent", geom="chevron", path=SQUIGGLE, box=(0.05 + 0.3 * k, 0.2, 0.25, 0.15)) for k in range(3)],
+               _r(5, "connector", "line", line="primary", geom="bentConnector3", path=[[[0, 0], [0.5, 0], [0.5, 1], [1, 1]]],
+                  arrow="end", box=(0.3, 0.36, 0.3, 0.1)),
+               _r(6, "image", "picture", box=(0.55, 0.55, 0.4, 0.35), geom="rect"),
+               _r(7, "icon", fill="primary", box=(0.1, 0.05, 0.03, 0.05)),
+               _r(8, "icon", fill="primary", box=(0.5, 0.05, 0.03, 0.05)),
+               *[_r(9 + k, "decoration", geom="ellipse", fill="neutral-light", box=(0.05 + 0.07 * k, 0.92, 0.012, 0.022)) for k in range(5)]]
+    published, _ = _publish(*regions)
+    assert all("path" not in r for r in published)
+    expect = [{k: v for k, v in r.items() if k != "path"} | {"geom": r.get("geom") if r["role"] not in ("logo", "icon") else None,
+                                                            "arrow": r.get("arrow")} for r in regions]
+    assert published == expect
+
+
+def test_every_cluster_and_mark_on_a_slide_collapses_on_its_own():
+    dots = lambda i, x: [_r(i + k, "other", fill="accent", box=(x + 0.01 * k, 0.6, 0.012, 0.02)) for k in range(6)]
+    marks = lambda i, x: [_r(i + k, "logo", box=(x + 0.016 * k, 0.05, 0.012, 0.027)) for k in range(3)]
+    regions, _ = _publish(TITLE, *dots(1, 0.1), *dots(10, 0.6), *marks(20, 0.05), *marks(30, 0.7))
+    assert [(r["i"], r["role"]) for r in regions] == [(0, "title"), (1, "image"), (10, "image"), (20, "logo"), (30, "logo")]
+    for r, members in zip(regions[1:], (dots(1, 0.1), dots(10, 0.6), marks(20, 0.05), marks(30, 0.7))):
+        assert _box(r) == pytest.approx(_union(members))
+
+
+def test_clusters_whose_boxes_overlap_join_into_one_box():
+    sq = lambda i, x, y: _r(i, "other", fill="neutral-light", box=(x, y, 0.02, 0.02))
+    ell = [sq(1 + k, 0.1 + 0.02 * k, 0.3) for k in range(6)] + [sq(7 + k, 0.1, 0.32 + 0.02 * k) for k in range(6)]
+    row = [sq(20 + k, 0.15 + 0.02 * k, 0.38) for k in range(6)]  # inside the L's box, touching none of its shapes
+    regions, _ = _publish(TITLE, *ell, *row)
+    assert [(r["i"], r["role"]) for r in regions] == [(0, "title"), (1, "image")]
+    assert _box(regions[1]) == pytest.approx(_union(ell + row))
+
+
+def test_cards_and_callouts_inside_a_cluster_box_keep_their_place():
+    photo = _r(1, "image", "picture", box=(0.1, 0.1, 0.6, 0.6))
+    bits = [_r(2 + k, "other", fill="accent", box=(0.12 + 0.11 * k, 0.12 + 0.1 * k, 0.02, 0.02)) for k in range(6)]  # icons on it
+    card = _r(10, "card", fill="neutral-light", box=(0.3, 0.3, 0.2, 0.1))
+    note = _r(11, "callout", line="accent", dashed=True, box=(0.2, 0.5, 0.2, 0.1))
+    regions, _ = _publish(TITLE, photo, *bits, card, note)
+    assert [(r["i"], r["role"]) for r in regions] == [(0, "title"), (1, "image"), (10, "card"), (11, "callout")]
+    assert regions[2:] == [r | {"geom": None, "arrow": None} for r in (card, note)]
+
+
+def test_lines_and_the_dots_on_them_are_no_cluster():
+    timeline = [_r(1, "other", geom="line", line="neutral-light", box=(0.9, 0.17, 0.0, 0.67)),
+                _r(2, "other", geom="line", line="accent", box=(0.9, 0.17, 0.0, 0.43)),
+                *[_r(3 + k, "other", geom="ellipse", fill="accent", box=(0.895, 0.2 + 0.19 * k, 0.011, 0.019)) for k in range(4)]]
+    regions, _ = _publish(TITLE, *timeline)
+    assert [r["i"] for r in regions] == [0, 1, 2, 3, 4, 5, 6]
+    stripe = _r(2, "decoration", fill="accent", box=(0.898, 0.1, 0.0044, 0.9))  # a rule drawn as a thin freeform
+    regions, _ = _publish(TITLE, timeline[0], stripe, *timeline[2:])
+    assert [r["i"] for r in regions] == [0, 1, 2, 3, 4, 5, 6]
+
+
+def test_published_regions_are_deterministic():
+    glyphs = [_r(1 + k, "logo", box=(0.035 + 0.016 * (k % 9), 0.064 + 0.048 * (k // 9), 0.012, 0.027)) for k in range(18)]
+    dots = [_r(20 + k, "other", fill="accent", box=(0.5 + 0.01 * k, 0.6, 0.012, 0.02)) for k in range(6)]
+    first = _publish(TITLE, *glyphs, *dots)[1]
+    assert json.dumps(first) == json.dumps(_publish(TITLE, *copy.deepcopy(glyphs), *copy.deepcopy(dots))[1])
+    assert [(r["i"], r["role"]) for r in first["regions"]] == [(0, "title"), (1, "logo"), (20, "image")]
 
 
 def test_text_and_logo_labels_are_unframed_and_keep_their_alignment(built, monkeypatch):
