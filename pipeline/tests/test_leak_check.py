@@ -404,3 +404,24 @@ def test_flow_record_with_extra_free_text_fails_closed(deck, lib):
     rec.write_text(json.dumps(dict(json.loads(rec.read_text()), notes=f"{CLIENT} deck")))
     report = leak_check.run(deck_id, lib)
     assert report["flow"]["auto"] == "fail" and report["flow"]["problems"][0].startswith("schema")
+
+
+def test_blank_and_duplicate_slides_are_withdrawn_and_never_judged(deck, lib, capsys):
+    from pipeline.__main__ import main
+    deck_id, ids = _six_slide_deck(deck, lib)
+    for rid in [*ids, "flow"]:
+        _judge(lib, deck_id, rid, False)
+    assert all(r["published"] for r in leak_check.run(deck_id, lib).values())
+    (lib / "layouts" / deck_id / "slide-01.v3.json").write_text(json.dumps({"version": 3, "blank": True, "components": []}))
+    for n in (3, 4):  # slide 4 repeats slide 3 exactly: the later one is kept
+        Image.new("L", (64, 36), 128).save(lib / "work" / deck_id / f"slide-{n:02d}.png")
+    report = leak_check.run(deck_id, lib)
+    for rid, reason in ((ids[0], "blank"), (ids[2], f"duplicate_of {ids[3]}")):
+        assert report[rid] == {"auto": "excluded", "problems": [reason], "judge": "excluded", "published": False,
+                               "excluded": reason}
+        assert not any((lib / d / f"{rid}{ext}").exists() for d in ("records", "wireframes", f"judge/{deck_id}")
+                       for ext in (".json", ".png"))
+        assert rid not in (lib / "judge" / deck_id / "JUDGE.txt").read_text()
+    assert all(report[rid]["published"] for rid in (ids[1], *ids[3:])) and report["flow"]["published"]
+    main(["leak-check", deck_id, "--library", str(lib)])  # exclusions are not failures: no exit 1
+    assert f"{ids[0]}  auto=excluded  judge=excluded  blank" in capsys.readouterr().out

@@ -52,6 +52,31 @@ def run(deck_id, library, slides=None, layouts_only=False):
     return layouts if layouts_only else work
 
 
+def reconcile(deck_id, library):
+    """After a re-extract: drop labels (and text patterns) of regions that no longer exist and label regions newly
+    listed on the worksheet "other" (what build gives unlisted regions). Returns one report line per changed slide."""
+    work, report = Path(library) / "work" / deck_id, []
+    for lf in sorted((work / "labels").glob("slide-??.json")):
+        labels = json.loads(lf.read_text())
+        if not isinstance(labels.get("regions"), dict):
+            continue
+        slide = json.loads((work / lf.name).read_text())
+        have = {str(r["i"]) for r in slide["regions"]}
+        gone = [k for k in labels["regions"] if k not in have]
+        new = [str(r["i"]) for r in worksheet_regions(slide) if str(r["i"]) not in labels["regions"]]
+        patterns = [t for t in labels.get("text_patterns", []) if str(t["region"]) not in have]
+        if not (gone or new or patterns):
+            continue
+        lists = (", ".join(f"{k} ({labels['regions'][k]})" for k in gone), ", ".join(str(t["region"]) for t in patterns),
+                 ", ".join(f"{k} (other)" for k in new))
+        report.append("{}: removed labels of regions no longer extracted: {}; removed text patterns of: {}; "
+                      "newly listed regions labelled: {}".format(lf.stem, *(s or "none" for s in lists)))
+        labels["regions"] = {k: v for k, v in labels["regions"].items() if k in have} | dict.fromkeys(new, "other")
+        labels["text_patterns"] = [t for t in labels.get("text_patterns", []) if t not in patterns]
+        lf.write_text(json.dumps(labels, indent=1))
+    return report
+
+
 def validate(labels, slide):
     """Raise ValueError unless labels match the schema and cover exactly the worksheet's regions (or, for slides
     labelled before the cap, exactly every extracted region)."""

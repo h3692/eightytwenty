@@ -2,7 +2,7 @@
 are promoted to library/records/ + library/wireframes/; anything else is withheld (and removed if promoted before).
 A record's picture is its slide's mockup (library/mockups/<deck>/slide-NN.png, built from layouts/<deck>/slide-NN.v3.json);
 a slide without a v3 layout or mockup, or with a mockup older than its layout, is never published, and its mockup .pptx
-must pass the placeholder whitelist.
+must pass the placeholder whitelist. Blank and near-duplicate slides (pipeline.dedupe) are withdrawn, never judged.
 
 A deck flow (work/<deck>/flow-record.json, decks of flow.MIN_SLIDES+ slides) is checked the same way against the text of
 EVERY slide of the deck, judged with the whole deck, and published to library/flows/ only if at least MIN_SHARE of
@@ -33,7 +33,7 @@ import spacy
 from pptx import Presentation
 from wordfreq import zipf_frequency
 
-from pipeline import build, flow, mockup
+from pipeline import build, dedupe, flow, mockup
 
 NAME_LABELS = {"PERSON", "ORG", "GPE", "LOC", "NORP", "FAC", "PRODUCT", "EVENT", "WORK_OF_ART", "LAW"}
 # design and labelling vocabulary that NER mislabels and the frequency list rates rare
@@ -254,9 +254,16 @@ def run(deck_id, library):
     (judge / "verdicts").mkdir(parents=True, exist_ok=True)
     (lib / "records").mkdir(exist_ok=True)
     (lib / "wireframes").mkdir(exist_ok=True)
-    report = {}
+    report, skip = {}, dedupe.excluded(deck_id, lib)
     for f in sorted((work / "build").glob("*.json")):
         dna, rid = json.loads(f.read_text()), f.stem
+        if rid in skip:  # blank or a near-duplicate: withdrawn, never judged
+            report[rid] = {"auto": "excluded", "problems": [skip[rid]], "judge": "excluded", "published": False,
+                           "excluded": skip[rid]}
+            for p in (judge / f"{rid}.json", judge / f"{rid}.png", lib / "records" / f"{rid}.json",
+                      lib / "wireframes" / f"{rid}.png"):
+                p.unlink(missing_ok=True)
+            continue
         nn = f"slide-{dna['slide']:02d}"
         source = (work / "text" / f"{nn}.txt").read_text()
         pic, pptx = (lib / "mockups" / deck_id / f"{nn}{ext}" for ext in (".png", ".pptx"))

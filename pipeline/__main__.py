@@ -2,7 +2,7 @@
 import argparse
 import sys
 
-from pipeline import build, embed, extract, flow, label_prep, leak_check, mockup, package
+from pipeline import build, dedupe, embed, extract, flow, label_prep, leak_check, mockup, package
 
 
 def main(argv=None):
@@ -22,6 +22,7 @@ def main(argv=None):
     p = sub.add_parser("embed", help="embed published descriptions via the local Worker")
     p.add_argument("--url", default=f"http://127.0.0.1:{embed.PORT}")
     sub.add_parser("package", help="write records.sql and copy wireframes for deploy")
+    sub.add_parser("exclusions", help="write work/dedupe-report.txt and work/blank-report.txt (never published)")
     p = sub.add_parser("layout-prep", help="write component layout worksheets only, for slides labelled before")
     p.add_argument("deck_id")
     p.add_argument("--slides", help="comma-separated slide numbers, e.g. 05,08 (default: all)")
@@ -36,6 +37,7 @@ def main(argv=None):
         print(f"deck_id {extract.run(a.deck, a.library, render=not a.skip_render)}")
     elif a.stage == "reextract":
         print(f"deck_id {extract.run(a.deck, a.library, render=False, deck_id=a.deck_id)}")
+        print("\n".join(label_prep.reconcile(a.deck_id, a.library)) or "labels: all regions still match")
     elif a.stage == "label-prep":
         work = label_prep.run(a.deck_id, a.library)
         print(f"Label and draw each slide: in Claude Code, ask it to follow every {work}/slide-NN.prompt.txt")
@@ -45,7 +47,7 @@ def main(argv=None):
         report = leak_check.run(a.deck_id, a.library)
         for rid, r in report.items():
             print(rid, f"auto={r['auto']}", f"judge={r['judge']}", *r["problems"], sep="  ")
-        if not all(r["published"] for r in report.values()):
+        if not all(r["published"] or r.get("excluded") for r in report.values()):
             print(f"Not published: fix labels and rebuild, or judge in a fresh session (library/judge/{a.deck_id}/JUDGE.txt).")
             sys.exit(1)
     elif a.stage in ("flow-prep", "flow-build"):
@@ -60,6 +62,10 @@ def main(argv=None):
         embed.run(a.library, a.url)
     elif a.stage == "package":
         package.run(a.library)
+    elif a.stage == "exclusions":
+        dropped, blanks = dedupe.report(a.library)
+        print(f"{dropped} duplicate slide(s), {blanks} blank slide(s): see {a.library}/work/dedupe-report.txt and "
+              "blank-report.txt")
     elif a.stage in ("layout-prep", "mockup"):
         slides = a.slides and {n.strip().zfill(2) for n in a.slides.split(",")}
         if a.stage == "mockup":

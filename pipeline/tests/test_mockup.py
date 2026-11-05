@@ -38,7 +38,7 @@ B, FULL_BOX = [0, 0, 0.5, 0.5], [0, 0, 1, 1]
 MAXED = {  # every count at its upper limit, on the whole content area
     "table_check": {**EXAMPLES["table"], "box": FULL_BOX, "rows": 12, "cols": 12, "harvey": False, "marks": "check",
                     "highlight_col": 12},
-    "timeline_24": {**EXAMPLES["timeline"], "box": FULL_BOX, "workstreams": 6, "periods": 24, "groups": 6},
+    "timeline_24": {**EXAMPLES["timeline"], "box": FULL_BOX, "workstreams": 10, "periods": 24, "groups": 6},
     "kpi_square_v": {**EXAMPLES["kpi_row"], "box": FULL_BOX, "n": 6, "tile": "square"},
     "card_stack_8": {**EXAMPLES["card_stack"], "box": FULL_BOX, "n": 8},
     "swimlane_max": {**EXAMPLES["swimlane"], "box": FULL_BOX, "lanes": 6, "stages": 8},
@@ -49,6 +49,8 @@ MAXED = {  # every count at its upper limit, on the whole content area
     "network_12": {**EXAMPLES["network"], "box": FULL_BOX, "n": 12},
     "map_8": {**EXAMPLES["map_callouts"], "box": FULL_BOX, "n": 8},
     "bar_list_12": {**EXAMPLES["bar_list"], "box": FULL_BOX, "n": 12, "groups": 4},
+    "circles_4": {**EXAMPLES["nested_circles"], "box": FULL_BOX, "n": 4, "arrangement": "concentric"},
+    "link_list_12": {**EXAMPLES["link_list"], "box": FULL_BOX, "n": 12, "cols": 3},
 }
 NEW_KINDS = ("card_stack", "swimlane", "journey", "flow_diagram", "device_row", "stage_strip", "gauge_row", "network",
              "map_callouts", "bar_list")
@@ -240,7 +242,7 @@ def _body(layout):
     return [s for s in _shapes(layout) if s.top > H * 0.2]
 
 
-@pytest.mark.parametrize("kind", NEW_KINDS + ("kpi_row", "table", "timeline"))
+@pytest.mark.parametrize("kind", NEW_KINDS + ("kpi_row", "table", "timeline", "nested_circles", "link_list"))
 def test_new_and_extended_kinds_stay_inside_their_box(kind):
     box = [0.5, 0.25, 0.5, 0.5]
     for c in [EXAMPLES[kind]] + [m for m in MAXED.values() if m["kind"] == kind]:
@@ -427,6 +429,38 @@ def test_bar_list_draws_n_rounded_bars_under_optional_group_headers(groups):
     assert len(_auto(body, MSO_SHAPE.ROUNDED_RECTANGLE)) == 8 + heads
 
 
+def test_timeline_takes_ten_workstreams():
+    texts = _texts(_body(_lay({"kind": "timeline", "box": FULL_BOX, "workstreams": 10, "periods": 6})))
+    assert texts.count("Header here") == 10
+
+
+@pytest.mark.parametrize("n", [2, 3, 4])
+@pytest.mark.parametrize("arrangement", ["nested", "concentric"])
+def test_nested_circles_draw_n_shrinking_circles_each_with_a_header_and_a_share(n, arrangement):
+    body = _body(_lay({"kind": "nested_circles", "box": FULL_BOX, "n": n, "arrangement": arrangement}))
+    rings = _auto(body, MSO_SHAPE.OVAL)
+    assert len(rings) == n and [r.width for r in rings] == sorted((r.width for r in rings), reverse=True)
+    assert all(r.width == r.height for r in rings)
+    centre = {round(r.left + r.width / 2, -3) for r in rings}
+    middle, bottom = {round(r.top + r.height / 2, -3) for r in rings}, {round(r.top + r.height, -3) for r in rings}
+    assert len(centre) == 1 and len(middle if arrangement == "concentric" else bottom) == 1
+    texts = _texts(body)
+    assert texts.count("Header here") == n and texts.count("XX%") == n
+
+
+@pytest.mark.parametrize("n, cols", [(2, 1), (7, 2), (12, 3)])
+@pytest.mark.parametrize("numbered", [True, False])
+def test_link_list_draws_n_entries_down_its_columns_numbered_or_bulleted(n, cols, numbered):
+    body = _body(_lay({"kind": "link_list", "box": FULL_BOX, "n": n, "cols": cols, "numbered": numbered}))
+    heads = [s for s in body if _texts([s]) == ["Header here"]]
+    assert len(heads) == n and len({h.left for h in heads}) == cols
+    first = [h for h in heads if h.left == heads[0].left]
+    assert len(first) == -(-n // cols) and [h.top for h in first] == sorted(h.top for h in first)
+    digits = [t for t in _texts(body) if t.isdigit()]
+    assert digits == ([str(k) for k in range(1, n + 1)] if numbered else [])
+    assert len([o for o in _auto(body, MSO_SHAPE.OVAL) if not _texts([o])]) == n * (not numbered)  # bullet dots
+
+
 def test_section_divider_shows_its_number():
     texts = _texts(_shapes(_lay({"kind": "section_divider", "number": 3})))
     assert "03" in texts and "Section overview text here" in texts
@@ -483,7 +517,7 @@ def test_vocabulary_is_placeholder_copy_only():
                      "Chart", "Image", "Product", "mockup", "Map", "Icon", "Step", "Phase", "Key", "takeaway",
                      "Section", "overview", "Deck", "Thank", "You", "Before", "After", "QX", "Year", "X",
                      "Milestones", "Name", "“Text", "here”", *" ".join(mockup.SECTIONS).split()} | \
-        {str(k) for k in range(1, 9)} | {f"{k:02}" for k in range(1, 10)}
+        {str(k) for k in range(1, 13)} | {f"{k:02}" for k in range(1, 10)}
 
 
 def test_saved_mockups_are_byte_identical(tmp_path):

@@ -271,6 +271,24 @@ def test_custom_dash_patterns_count_as_dashed(tmp_path, lib):
     assert _regions(_freeform_deck(tmp_path, build), lib)[0]["dashed"] is True
 
 
+def test_off_slide_shapes_are_dropped_and_overhanging_boxes_clamped_into_the_schema_range(tmp_path, lib):
+    from pptx.enum.shapes import MSO_SHAPE
+    W, H = 12192000, 6858000
+    def build(slide):
+        add = lambda x, y, w, h: slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, x, y, w, h)
+        add(0, 0, W // 4, H // 4)                                  # 0 on the slide
+        add(W // 4, -2 * H, W // 4, H)                             # 1 entirely above it
+        add(W // 2, round(-1.23 * H), W // 4, round(1.5 * H))      # 2 hangs in from far above
+        grp = slide.shapes.add_group_shape()                       # 3 entirely right of it, with children 4 and 5
+        for k in range(2):
+            grp.shapes.add_shape(MSO_SHAPE.OVAL, W + 100 + k * 1000, 0, 500, 500)
+        add(0, H // 2, W, H // 4)                                  # 6 on the slide
+    regions = _regions(_freeform_deck(tmp_path, build), lib)
+    assert [r["i"] for r in regions] == [0, 2, 6]  # numbering stays the walk order, so older labels still line up
+    assert regions[1]["box"] == {"x": 0.5, "y": -1.0, "w": 0.25, "h": 1.27}  # bottom edge kept at 0.27
+    assert all(-1 <= r["box"][k] <= 2 for r in regions for k in "xywh")
+
+
 def test_reextract_keeps_the_deck_id_and_its_labels(deck, lib):
     from pipeline.__main__ import main
     deck_id = extract.run(deck, lib, render=False)
@@ -285,3 +303,32 @@ def test_reextract_keeps_the_deck_id_and_its_labels(deck, lib):
     assert '"path"' in slide.read_text() and json.loads(slide.read_text())["deck_id"] == deck_id
     with pytest.raises(SystemExit):
         main(["reextract", "0" * 16, str(deck), "--library", str(lib)])  # only an existing deck can be re-extracted
+
+
+def test_reextract_reports_labels_of_regions_that_are_gone_and_lists_newly_listed_ones(deck, lib, monkeypatch, capsys):
+    from pipeline import label_prep
+    from pipeline.__main__ import main
+    from pipeline.tests.conftest import fixture_labels
+    monkeypatch.setattr(label_prep, "MAX_REGIONS", 3)
+    deck_id = extract.run(deck, lib, render=False)
+    work = lib / "work" / deck_id
+    (work / "labels").mkdir()
+    slide = json.loads((work / "slide-02.json").read_text())  # as an older extraction saw it: a shape parked off-slide
+    slide["regions"].append(dict(slide["regions"][0], i=99, parent=None, box={"x": 1.5, "y": 0, "w": 1, "h": 1}))
+    (work / "slide-02.json").write_text(json.dumps(slide))
+    labels = fixture_labels(slide)
+    labels["regions"] = {str(r["i"]): labels["regions"][str(r["i"])] for r in label_prep.worksheet_regions(slide)}
+    labels["regions"]["99"] = "decoration"
+    labels["text_patterns"] = [t for t in labels["text_patterns"] if str(t["region"]) in labels["regions"]]
+    (work / "labels" / "slide-02.json").write_text(json.dumps(labels))
+    main(["reextract", deck_id, str(deck), "--library", str(lib)])
+    out = capsys.readouterr().out
+    new = json.loads((work / "slide-02.json").read_text())
+    added = [str(r["i"]) for r in label_prep.worksheet_regions(new) if str(r["i"]) not in labels["regions"]]
+    kept = json.loads((work / "labels" / "slide-02.json").read_text())
+    assert "slide-02" in out and "99 (decoration)" in out and all(f"{i} (other)" in out for i in added) and added
+    assert "99" not in kept["regions"] and {i: kept["regions"][i] for i in added} == dict.fromkeys(added, "other")
+    assert {k: v for k, v in kept["regions"].items() if k not in added} == {k: v for k, v in labels["regions"].items()
+                                                                            if k != "99"}
+    label_prep.validate(kept, new)  # builds again
+    assert "slide-01" not in out  # nothing to report: its labels are untouched (none were written)

@@ -91,7 +91,18 @@ def _slide(slide, width, height):
         bg = None
     xf = lambda x, y, w, h: (x, y, w, h)
     _walk(slide.shapes, xf, None, regions, text, width, height)
-    return regions, bg, text
+    # Shapes parked entirely off the slide are dropped (with anything inside them); the rest keep their walk-order
+    # "i", so labels written before still line up. Overhangs are clamped into the record schema's -1..2 range.
+    # shortcut: a clamped freeform's path still spans its original box; fine for the rare far overhang.
+    kept = {None}
+    for r in regions:  # parents come before their children
+        b = r["box"]
+        if r["parent"] in kept and b["x"] < 1 and b["y"] < 1 and b["x"] + b["w"] >= 0 and b["y"] + b["h"] >= 0:
+            kept.add(r["i"])
+            x, y = max(b["x"], -1.0), max(b["y"], -1.0)
+            r["box"] = {"x": x, "y": y, "w": round(min(b["x"] + b["w"] - x, 2), 4),
+                        "h": round(min(b["y"] + b["h"] - y, 2), 4)}
+    return [r for r in regions if r["i"] in kept], bg, text
 
 
 def _walk(shapes, xf, parent, regions, text, width, height):

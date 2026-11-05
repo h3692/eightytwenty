@@ -54,7 +54,7 @@ VOCAB = {"Slide Title Here", "Subtitle text here", "Logo", "Header here", "Text 
          "Image here", "Product mockup here", "Map here", "Icon", "Step Header", "Phase Header", "Key takeaway:",
          "Section Title Here", "Section overview text here", "Deck Title Here", "Thank You", "Before", "After", "QX",
          "Year X", "Milestones", "“Text here”", "Name here", *SECTIONS,
-         *(str(k) for k in range(1, 9)), *(f"{k:02}" for k in range(1, 10))}
+         *(str(k) for k in range(1, 13)), *(f"{k:02}" for k in range(1, 10))}
 
 
 def build_mockup_v3(layout):
@@ -747,6 +747,40 @@ def _bar_list(shapes, c, x, y, w, h, rng):
             _add(shapes, x + lw, ry + rh * 0.2, bl, rh * 0.6, DARK if head else GREYS[2],
                  preset=MSO_SHAPE.ROUNDED_RECTANGLE)
             _add(shapes, x + lw + bl + 0.06, ry, vw, rh, text="$X.XM", size=12, bold=head, align=LEFT)
+
+
+def _nested_circles(shapes, c, x, y, w, h, rng):
+    """n circles shrinking inwards (TAM/SAM/SOM): resting on one bottom point, or sharing a centre (concentric);
+    each labelled in the band between its top and the next circle's top."""
+    n, d = c["n"], min(w, h)
+    ds = [d * (n - k) / n for k in range(n)]
+    cx, cy = x + w / 2, y + (h - d) / 2
+    tops = [cy + ((d - dk) / 2 if c["arrangement"] == "concentric" else d - dk) for dk in ds]
+    for k, (dk, top) in enumerate(zip(ds, tops)):
+        _add(shapes, cx - dk / 2, top, dk, dk, (LIGHT, MID, GREYS[3], GREYS[2])[k], GREYS[2], preset=MSO_SHAPE.OVAL)
+    for k, (dk, top) in enumerate(zip(ds, tops)):
+        band = (tops[k + 1] if k + 1 < n else top + dk) - top
+        t = band / 2 if k + 1 < n else dk / 2  # chord at the middle of the band
+        _add(shapes, cx - math.sqrt(t * (dk - t)) * 0.8, top, 2 * math.sqrt(t * (dk - t)) * 0.8, band,
+             text=["XX%", "Header here"], size=13, bold=True)
+
+
+def _link_list(shapes, c, x, y, w, h, rng):
+    """n entries (appendix or contents) down 1-3 columns, each a number or bullet dot, a header and a hairline."""
+    n, cols, numbered = c["n"], c.get("cols", 1), c.get("numbered", True)
+    xs, cw = _split(x, w, cols, 0.3)
+    rows = -(-n // cols)
+    ys, rh = _split(y, h, rows, 0.06)
+    rh, d = min(rh, 0.6), min(0.32, rh * 0.8)
+    for k in range(n):
+        ex, ey = xs[k // rows], ys[k % rows]
+        if numbered:
+            _add(shapes, ex, ey + (rh - d) / 2, d, d, DARK, text=str(k + 1), size=11, color=WHITE, bold=True,
+                 preset=MSO_SHAPE.OVAL)
+        else:
+            _add(shapes, ex + d / 3, ey + rh / 2 - d / 6, d / 3, d / 3, DARK, preset=MSO_SHAPE.OVAL)
+        _add(shapes, ex + d + 0.12, ey, cw - d - 0.12, rh, text="Header here", size=14, bold=True, align=LEFT)
+        _add(shapes, ex, ey + rh - 0.02, cw, 0.02, GREYS[3])
 
 
 # --- whole-slide components (slide inches) --------------------------------------------------------------------

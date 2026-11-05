@@ -43,6 +43,8 @@ EXAMPLES = {
     "network": {"kind": "network", "box": B, "n": 6},
     "map_callouts": {"kind": "map_callouts", "box": B, "n": 4},
     "bar_list": {"kind": "bar_list", "box": B, "n": 6, "groups": 2},
+    "nested_circles": {"kind": "nested_circles", "box": B, "n": 3, "arrangement": "nested"},
+    "link_list": {"kind": "link_list", "box": B, "n": 6, "cols": 2, "numbered": True},
 }
 
 SAMPLE = {"version": 3, "components": [
@@ -77,8 +79,20 @@ def test_upper_limits_of_the_extended_kinds():
               {**EXAMPLES["timeline"], "periods": 24, "groups": 6}, {**EXAMPLES["stage_strip"], "n": 6, "active": 6},
               {**EXAMPLES["card_stack"], "n": 8}, {**EXAMPLES["flow_diagram"], "n": 10},
               {**EXAMPLES["network"], "n": 12}, {**EXAMPLES["bar_list"], "n": 12, "groups": 4},
-              {**EXAMPLES["swimlane"], "lanes": 6, "stages": 8}, {**EXAMPLES["map_callouts"], "n": 8}):
+              {**EXAMPLES["swimlane"], "lanes": 6, "stages": 8}, {**EXAMPLES["map_callouts"], "n": 8},
+              {**EXAMPLES["timeline"], "workstreams": 10}, {**EXAMPLES["nested_circles"], "n": 4,
+                                                             "arrangement": "concentric"},
+              {**EXAMPLES["nested_circles"], "n": 2}, {**EXAMPLES["link_list"], "n": 12, "cols": 3},
+              {**EXAMPLES["link_list"], "n": 2, "cols": 1, "numbered": False}):
         assert layout.validate(_lay(c))["components"][0] == c
+
+
+def test_blank_slides_have_no_components_and_only_blank_slides_may():
+    assert layout.validate({"version": 3, "blank": True, "components": []})["components"] == []
+    for bad in ({"version": 3, "components": []}, {"version": 3, "blank": True, "components": [EXAMPLES["logo"]]},
+                {"version": 3, "blank": False, "components": [EXAMPLES["logo"]]}):
+        with pytest.raises(ValueError):
+            layout.validate(bad)
 
 
 def test_sample_on_grid_validates_unchanged():
@@ -170,7 +184,13 @@ def test_schema_has_no_free_text_fields():
     (_lay({**EXAMPLES["map_callouts"], "n": 9}), "n"),
     (_lay({**EXAMPLES["bar_list"], "n": 13}), "n"),
     (_lay({**EXAMPLES["bar_list"], "n": 2, "groups": 3}), "groups"),
-    (_lay({**EXAMPLES["timeline"], "workstreams": 7}), "workstreams"),
+    (_lay({**EXAMPLES["timeline"], "workstreams": 11}), "workstreams"),
+    (_lay({**EXAMPLES["nested_circles"], "n": 1}), "n"),
+    (_lay({**EXAMPLES["nested_circles"], "n": 5}), "n"),
+    (_lay({**EXAMPLES["nested_circles"], "arrangement": "spiral"}), "spiral"),
+    (_lay({**EXAMPLES["link_list"], "n": 1}), "n"),
+    (_lay({**EXAMPLES["link_list"], "n": 13}), "n"),
+    (_lay({**EXAMPLES["link_list"], "cols": 4}), "cols"),
     (_lay({**EXAMPLES["roadmap"], "phases": 7}), "phases"),
     (_lay({**EXAMPLES["matrix"], "dots": 9}), "dots"),
     (_lay({**EXAMPLES["tree"], "levels": 5}), "levels"),
@@ -202,7 +222,7 @@ def test_worksheet_shows_the_picture_and_the_components(deck_id, lib):
     text = (out / "slide-02.prompt.txt").read_text()
     for needed in ("slide-02.png", '{"i": 0', str(out.absolute() / "slide-02.v3.json"), "do not write or change",
                    "layout.v3.json", '"version": 3', "8 components", "12 x 8", "zoomed out", "optional", *EXAMPLES,
-                   "stacked_bar", "photo", "device"):
+                   "stacked_bar", "photo", "device", '"blank": true'):
         assert needed in text, needed
     assert "labels/slide-02.json" not in text and "archetype" not in text  # layouts only: labels stay as they are
 

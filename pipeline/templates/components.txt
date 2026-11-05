@@ -28,12 +28,14 @@ Components (kind and its only fields; integers are counts you read off the pictu
                    balls, check = tick/cross grid), highlight_col 1-cols (one emphasised column, heat-map style)
   bar_list         box, n 2-12, groups 1-4: a list of labelled horizontal bars (budget or ranking list); groups
                    = header bars that the items sit under
+  link_list        box, n 2-12, cols 1-3, numbered true|false: an appendix or contents list of n entries down
+                   1-3 columns, each numbered (true) or bulleted (false)
   chart_area       box, chart_type one of: {chart_types} (other = map, sankey, anything else)
   image_area       box, variant one of: {variants} (device = product mockup or screenshot)
   device_row       box, n 1-6, device phone|laptop: a row of phone or laptop screens (app screenshots)
   gauge_row        box, n 1-6, direction h|v: donut gauges (a percentage each), in a row or stacked
   steps            box, n 2-8, direction h|v: a numbered process or sequence of steps
-  timeline         box, workstreams 1-6, periods 2-24, milestones true|false, rounded true|false, groups 2-6:
+  timeline         box, workstreams 1-10, periods 2-24, milestones true|false, rounded true|false, groups 2-6:
                    a Gantt chart; rounded = pill bars, groups = year pills above the period headers
   swimlane         box, lanes 2-6, stages 2-8, curve true|false: lanes (rows) by stages (columns), e.g. a
                    service blueprint; curve = a sentiment/emotion line above the lanes
@@ -49,6 +51,8 @@ Components (kind and its only fields; integers are counts you read off the pictu
   map_callouts     box, n 1-8: a map with numbered markers and their labels beside it
   tree             box, levels 2-4, branching 2-4: an issue/driver tree (at most 16 leaves)
   funnel           box, stages 2-6
+  nested_circles   box, n 2-4, arrangement nested|concentric: circles inside each other (TAM/SAM/SOM), each with
+                   a header and a share; nested = resting on one bottom point, concentric = sharing a centre
   hub              box, n 3-8, connectors true|false, cycle true|false: a centre node with n satellites around
                    it (hub-and-spoke); connectors = lines from the centre to each satellite, cycle = arrows
                    running round the satellites
@@ -59,6 +63,9 @@ Components (kind and its only fields; integers are counts you read off the pictu
   section_divider  number 1-9: a section opener slide. No box.
   cover            the deck's title slide. No box.
   closing          a thank-you / questions slide. No box.
+
+A blank or spacer slide (nothing on it, or only a stray placeholder text box) is {{"version": 3, "blank": true,
+"components": []}}: blank slides are never published.
 
 Choose the nearest kind; when several fit, take the simpler one (a grid of text cells with dark row labels is
 label_rows, a grid with a header row is a table, a row of boxes is card_row).
