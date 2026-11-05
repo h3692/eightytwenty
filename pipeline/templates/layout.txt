@@ -1,58 +1,51 @@
-Draw the layout of one slide as a short element list; a fixed builder turns it into a real PowerPoint mockup.
+Describe one slide as a few big components; a fixed builder draws them as a clean greyscale wireframe slide.
 
 Look at the rendered slide: {png}
-Extracted regions of the same slide: {regions}
-(index "i", type, normalised box {{x, y, w, h}}).
+An optional alignment hint, the extracted regions of the same slide, {regions}
+(index "i", type, normalised box {{x, y, w, h}}). Use them only to place edges more exactly; the picture decides.
 
 Write ONE JSON object to {out}
 It must validate against {schema}:
-  {{"version": 2, "elements": [ {{...}}, {{...}} ]}}   5-20 elements, never more than 25
+  {{"version": 3, "components": [ {{...}}, {{...}} ]}}   at most 8 components, usually 3-6
 
-Draw from the picture: decide every element and estimate its box by eye. Then, only where an element clearly matches
-one extracted region (the same thing in the same place), add region_ids with that region's "i": its box snaps to the
-exact region (several ids snap to their union, e.g. one text block split over lines). Where no region clearly matches,
-leave region_ids out and keep your box. Give a box for every element either way.
+Look at the picture zoomed out: what are the 3-8 major blocks that give the slide its structure? Pick one component
+for each. Ignore everything smaller: single icons, decoration, connectors, footnotes, page numbers, sources.
+Every slide gets a title + subtitle header (top-left) automatically, except cover, section_divider and closing.
 
-Each element has only these fields:
-  kind         one of: {kinds}
-  shape        one of: {shapes}
-  box          [x, y, w, h] as floats 0-1 of the 16:9 slide: top-left corner, width, height (x + w <= 1, y + h <= 1)
-  points       optional, for polygon / line / connector only: up to 12 [x, y] points, floats 0-1 of the slide
-  dashed       optional, true when the outline or line is dashed
-  emphasis     optional, one of: {emphases}; it sets the real size: "hero" is the one element the eye lands on
-               first (a hero number is drawn huge), "strong" a secondary accent
-  region_ids   optional: indices "i" of the extracted regions this element clearly matches (see above)
-  parent       optional: index (from 0) of the container this element sits inside; containers are band, strip,
-               panel and card, and a parent is always listed before its children (cards inside a panel, text in a card)
-  framed       optional, text kinds and takeaway only: true when the text sits inside a visible outline or box
-  fill         optional, containers only: one of: {fills} (how dark the container's background is)
-  chart_type   charts (kind "chart") only, required: one of: {chart_types}
-               (bar = horizontal bars, column = vertical bars, stacked_bar = horizontal stacked)
-  series       optional, charts only: 1-6, the number of bar groups / lines / stacked segments / donut rings
-  categories   optional, charts only: 1-12, the number of bars per series / line points / slices
-  rows, cols   tables (kind "table") only, required: 1-20 each, count the visible grid
-  header_row   optional, tables only: true when the first row is a header
-  arrow_style  arrows (kind "arrow") only: one of: {arrow_styles} (line = a thin line with a head, block = a fat
-               arrow shape, give its direction with shape arrow_*; chevron = a chevron shape)
-  head         optional, connectors and line arrows: one of: {heads} (default end)
-  from, to     optional, connectors only: indices (from 0) of the two elements the connector joins
+Placement: "box" is [x, y, w, h], floats 0-1 of the CONTENT AREA (below the header, above the bottom tracker),
+not of the whole slide; x + w <= 1, y + h <= 1. It is snapped to a 12 x 8 grid (12 columns, 8 rows), so think
+in grid cells: a full-width bar one row high at the bottom is [0, 0.875, 1, 0.125]. Blocks side by side or stacked
+should not overlap.
 
-Identify the 5-20 elements that carry the slide's structure:
-  - Merge stacked text lines of one block into ONE element (title, subtitle, text, bullets, quote or label).
-  - Ignore tiny decoration, background texture and page furniture (page numbers, footers, small logos in a corner).
-  - Keep repeated shapes (cards, steps, icons in a row): one element each, so the repetition shows.
-  - Keep the connectors and arrows that form the composition; give connectors "from" and "to" when they join two elements.
-  - Keep the insight device (the big number, highlighted bar, callout, contrast or takeaway line the slide is built
-    around) and mark it emphasis "hero" or "strong". Use kind takeaway for the one-line conclusion, framed or not.
-  - Containers group content: band (full-width horizontal strip), strip (vertical band), panel (large background
-    area), card (a box holding content). List containers before the elements inside them and give those elements
-    "parent"; containers can nest (a card inside a panel).
-  - Charts: kind chart with chart_type, and series / categories counted from the picture. Tables: kind table with
-    rows / cols counted from the grid.
-  - shape is the outline you see: none for unframed text, rect, round_rect, ellipse, chevron, arrow_*, triangle,
-    diamond, line, or polygon (with points).
+Components (kind and its only fields; integers are counts you read off the picture):
+  tracker          n 2-8 pills along the bottom, active 1-n = the highlighted one (a section/agenda tracker
+                   strip at the top or bottom of the slide). No box.
+  logo             a logo top-right. No box.
+  text             box, lines 1-8, bullets true|false: a block of running text or a bullet list
+  kpi_row          box, n 1-6: a row of big-number tiles (value + caption)
+  card_row         box, n 1-6, header_strip true|false, icon true|false: a row of boxes/cards with content
+  label_rows       box, rows 1-6, cols 1-4: rows each led by a dark label cell (a row-labelled grid or matrix)
+  table            box, rows 1-12, cols 1-8, header_row true|false, harvey true|false (rating balls in cells)
+  chart_area       box, chart_type one of: {chart_types} (other = map, sankey, anything else)
+  image_area       box, variant one of: {variants} (device = product mockup or screenshot)
+  steps            box, n 2-8, direction h|v: a numbered process or sequence of steps
+  timeline         box, workstreams 1-6, periods 2-12, milestones true|false: a Gantt chart
+  roadmap          box, phases 2-6: phases left to right with content under each
+  matrix           box, dots 0-8: a 2x2 matrix with plotted items
+  tree             box, levels 2-4, branching 2-4: an issue/driver tree (at most 16 leaves)
+  funnel           box, stages 2-6
+  before_after     box, rows 1-4: a before -> after contrast
+  takeaway         box: the one-line conclusion bar
+  quote            box: a quotation
+  hero_number      box: one huge number the slide is built around
+  section_divider  number 1-9: a section opener slide. No box.
+  cover            the deck's title slide. No box.
+  closing          a thank-you / questions slide. No box.
+
+Choose the nearest kind; when several fit, take the simpler one (a grid of text cells with dark row labels is
+label_rows, a grid with a header row is a table, a row of boxes is card_row).
 
 Hard rules:
-  - No words from the slide and no fields other than the ones above: the mockup's only text is a bracket label made
-    from "kind" (and chart_type), e.g. [title], [text], [bar chart].
+  - No words from the slide and no fields other than the ones above: the mockup only ever shows fixed placeholder
+    copy ("Header here", "Text here", "XX%" ...).
   - Write only the JSON file, nothing else.

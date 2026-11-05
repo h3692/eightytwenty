@@ -20,13 +20,12 @@ def main(argv=None):
     p = sub.add_parser("embed", help="embed published descriptions via the local Worker")
     p.add_argument("--url", default=f"http://127.0.0.1:{embed.PORT}")
     sub.add_parser("package", help="write records.sql and copy wireframes for deploy")
-    p = sub.add_parser("layout-prep", help="write layout worksheets for agent-drawn wireframes")
+    p = sub.add_parser("layout-prep", help="write component layout worksheets for mockups")
     p.add_argument("deck_id")
     p.add_argument("--slides", help="comma-separated slide numbers, e.g. 05,08 (default: all)")
-    p = sub.add_parser("mockup", help="build layout JSONs into mockup .pptx templates and PNGs")
+    p = sub.add_parser("mockup", help="build v3 component layouts into mockup .pptx templates and PNGs")
     p.add_argument("deck_id")
     p.add_argument("--slides", help="comma-separated slide numbers, e.g. 05,08 (default: all)")
-    p.add_argument("--variant", choices=["A", "B", "final"], default="final")
     for p in sub.choices.values():
         p.add_argument("--library", default="library")
     a = ap.parse_args(argv)
@@ -54,10 +53,10 @@ def main(argv=None):
     elif a.stage in ("layout-prep", "mockup"):
         slides = a.slides and {n.strip().zfill(2) for n in a.slides.split(",")}
         if a.stage == "mockup":
-            print("\n".join(map(str, mockup.run(a.deck_id, a.library, slides, a.variant))))
+            print("\n".join(map(str, mockup.run(a.deck_id, a.library, slides))))
         else:
             out = layout.prep(a.deck_id, a.library, slides)
-            print(f"Draw each layout: in Claude Code, ask it to follow every {out}/slide-NN.final.prompt.txt")
+            print(f"Draw each layout: in Claude Code, ask it to follow every {out}/slide-NN.prompt.txt")
 
 
 if __name__ == "__main__":

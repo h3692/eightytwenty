@@ -5,65 +5,68 @@ import pytest
 from pipeline import extract, layout
 from pipeline.__main__ import main
 
+B = [0.0, 0.0, 0.5, 0.5]
+# One valid component of every kind, with every optional field set.
+EXAMPLES = {
+    "tracker": {"kind": "tracker", "n": 4, "active": 2},
+    "logo": {"kind": "logo"},
+    "text": {"kind": "text", "box": B, "bullets": True, "lines": 3},
+    "kpi_row": {"kind": "kpi_row", "box": B, "n": 3},
+    "card_row": {"kind": "card_row", "box": B, "n": 3, "header_strip": True, "icon": True},
+    "label_rows": {"kind": "label_rows", "box": B, "rows": 4, "cols": 3},
+    "table": {"kind": "table", "box": B, "rows": 5, "cols": 4, "header_row": True, "harvey": True},
+    "chart_area": {"kind": "chart_area", "box": B, "chart_type": "column"},
+    "image_area": {"kind": "image_area", "box": B, "variant": "device"},
+    "steps": {"kind": "steps", "box": B, "n": 4, "direction": "h"},
+    "timeline": {"kind": "timeline", "box": B, "workstreams": 3, "periods": 8, "milestones": True},
+    "roadmap": {"kind": "roadmap", "box": B, "phases": 3},
+    "matrix": {"kind": "matrix", "box": B, "dots": 4},
+    "tree": {"kind": "tree", "box": B, "levels": 3, "branching": 2},
+    "funnel": {"kind": "funnel", "box": B, "stages": 4},
+    "before_after": {"kind": "before_after", "box": B, "rows": 3},
+    "takeaway": {"kind": "takeaway", "box": B},
+    "quote": {"kind": "quote", "box": B},
+    "hero_number": {"kind": "hero_number", "box": B},
+    "section_divider": {"kind": "section_divider", "number": 2},
+    "cover": {"kind": "cover"},
+    "closing": {"kind": "closing"},
+}
 
-def _el(kind, box, shape="none", **kw):
-    return dict(kind=kind, shape=shape, box=list(box), **kw)
-
-
-V1 = {"elements": [
-    _el("band", (0, 0, 1, 0.2), "rect"),
-    _el("title", (0.05, 0.05, 0.6, 0.1)),
-    _el("card", (0.05, 0.3, 0.4, 0.5), "round_rect", region_ids=[1, 2]),
-    _el("number", (0.1, 0.35, 0.3, 0.3), emphasis="hero"),
-    _el("bar_chart", (0.55, 0.3, 0.4, 0.5), "rect"),
-    _el("connector", (0.45, 0.5, 0.1, 0.05), "line", **{"from": 2, "to": 4}, dashed=True),
-    _el("panel", (0.5, 0.25, 0.48, 0.6), "polygon", points=[[0.5, 0.25], [0.98, 0.25], [0.98, 0.85]]),
-    _el("line_chart", (0.1, 0.8, 0.2, 0.1), "rect"),
-    _el("pie_chart", (0.3, 0.8, 0.1, 0.1), "ellipse"),
-    _el("chart", (0.4, 0.8, 0.1, 0.1), "rect"),
-    _el("table", (0.6, 0.8, 0.2, 0.1), "rect"),
-    _el("arrow", (0.8, 0.8, 0.1, 0.05), "arrow_right"),
-    _el("arrow", (0.8, 0.9, 0.1, 0.05), "chevron"),
-    _el("arrow", (0.9, 0.9, 0.1, 0.05), "line"),
+SAMPLE = {"version": 3, "components": [
+    {"kind": "tracker", "n": 4, "active": 2},
+    {"kind": "logo"},
+    {"kind": "label_rows", "box": [0, 0, 1, 0.75], "rows": 4, "cols": 3},
+    {"kind": "takeaway", "box": [0, 0.875, 1, 0.125]},
 ]}
 
-SAMPLE = {"version": 2, "elements": [
-    _el("band", (0, 0, 1, 0.2), "rect", fill="mid"),
-    _el("title", (0.05, 0.05, 0.6, 0.1), parent=0),
-    _el("card", (0.05, 0.3, 0.4, 0.5), "round_rect", region_ids=[1, 2], fill="light"),
-    _el("number", (0.1, 0.35, 0.3, 0.3), emphasis="hero", parent=2, framed=False),
-    _el("chart", (0.55, 0.3, 0.4, 0.5), "rect", chart_type="stacked_bar", series=3, categories=5),
-    _el("connector", (0.45, 0.5, 0.1, 0.05), "line", **{"from": 2, "to": 4}, dashed=True, head="both"),
-    _el("strip", (0.5, 0.25, 0.1, 0.6), "rect", fill="none"),
-    _el("table", (0.6, 0.8, 0.2, 0.1), "rect", rows=4, cols=3, header_row=True),
-    _el("arrow", (0.8, 0.8, 0.1, 0.05), "arrow_right", arrow_style="block"),
-    _el("takeaway", (0.1, 0.85, 0.4, 0.1), framed=True),
-    _el("panel", (0.5, 0.25, 0.48, 0.6), "polygon", points=[[0.5, 0.25], [0.98, 0.25], [0.98, 0.85]]),
-]}
+
+def _lay(*components):
+    return {"version": 3, "components": list(components)}
 
 
 # --- schema ---------------------------------------------------------------------------------------------------
 
-def test_sample_layout_validates_unchanged():
+def test_every_kind_has_an_example():
+    assert set(EXAMPLES) == set(layout.KINDS) == set(layout.SCHEMA["$defs"]["component"]["properties"]["kind"]["enum"])
+
+
+@pytest.mark.parametrize("kind", EXAMPLES)
+def test_each_kind_validates(kind):
+    assert layout.validate(_lay(EXAMPLES[kind]))["components"][0]["kind"] == kind
+
+
+def test_sample_on_grid_validates_unchanged():
     assert layout.validate(SAMPLE) == SAMPLE
 
 
-def test_v1_layout_upgrades_to_v2():
-    v2 = layout.validate(V1)
-    els = v2["elements"]
-    assert v2["version"] == 2 and len(els) == len(V1["elements"]) and "version" not in V1
-    assert [(e["kind"], e.get("chart_type")) for e in els[7:10]] == [("chart", "line"), ("chart", "pie"), ("chart", "column")]
-    assert (els[4]["kind"], els[4]["chart_type"]) == ("chart", "column")
-    assert (els[10]["rows"], els[10]["cols"]) == (3, 3)
-    assert [e["arrow_style"] for e in els[11:14]] == ["block", "chevron", "line"]
-    assert els[5]["head"] == "end" and els[5]["from"] == 2 and els[5]["dashed"] is True
-    assert els[0] == V1["elements"][0] and els[2]["region_ids"] == [1, 2]  # everything else carries over
-    assert layout.validate(v2) == v2
-
-
-def test_upgrade_needs_a_valid_v1_layout():
-    with pytest.raises(ValueError, match="text"):
-        layout.validate({"elements": [_el("title", (0, 0, 0.5, 0.1), text="Revenue up")]})
+def test_boxes_snap_to_the_12_by_8_grid():
+    out = layout.validate(_lay({"kind": "text", "box": [0.07, 0.3, 0.45, 0.02], "lines": 1}))
+    assert out["components"][0]["box"] == [1 / 12, 2 / 8, 5 / 12, 1 / 8]  # at least one cell high
+    out = layout.validate(_lay({"kind": "quote", "box": [0.99, 0.99, 0.01, 0.01]}))
+    assert out["components"][0]["box"] == [11 / 12, 7 / 8, 1 / 12, 1 / 8]  # stays on the slide
+    raw = {"kind": "quote", "box": [0.07, 0.3, 0.45, 0.02]}
+    layout.validate(_lay(raw))
+    assert raw["box"] == [0.07, 0.3, 0.45, 0.02]  # input untouched
 
 
 def _strings_without_enum(node):
@@ -77,95 +80,79 @@ def _strings_without_enum(node):
             yield from _strings_without_enum(v)
 
 
-@pytest.mark.parametrize("schema", [layout.SCHEMA, layout.SCHEMA_V1])
-def test_schema_has_no_free_text_fields(schema):
-    assert list(_strings_without_enum(schema)) == []
+def test_schema_has_no_free_text_fields():
+    assert list(_strings_without_enum(layout.SCHEMA)) == []
+    for kind, d in layout.SCHEMA["$defs"].items():
+        if kind in EXAMPLES:
+            assert d["additionalProperties"] is False, kind
 
 
-@pytest.mark.parametrize("mutate, message", [
-    (lambda l: l["elements"][1].update(text="Revenue up"), "text"),
-    (lambda l: l["elements"][1].update(label="Revenue"), "label"),
-    (lambda l: l.update(title="Q3 results"), "title"),
-    (lambda l: l.update(version=3), "version"),
-    (lambda l: l["elements"][1].update(kind="headline"), "headline"),
-    (lambda l: l["elements"][1].update(kind="bar_chart"), "bar_chart"),
-    (lambda l: l["elements"][1].update(shape="star"), "star"),
-    (lambda l: l["elements"][1].update(box=[0.1, 0.1, 1.2, 0.1]), "box"),
-    (lambda l: l["elements"][1].update(box=[0.1, 0.1, 0.2]), "box"),
-    (lambda l: l["elements"][1].update(emphasis="loud"), "loud"),
-    (lambda l: l["elements"][10].update(points=[[0.1, 0.1]] * 13), "points"),
-    (lambda l: l["elements"].extend([_el("text", (0, 0, 0.1, 0.1))] * 15), "elements"),
-    (lambda l: l["elements"][5].update(to=99), "to"),
-    (lambda l: l["elements"][4].pop("chart_type"), "chart_type"),
-    (lambda l: l["elements"][4].update(chart_type="radar"), "radar"),
-    (lambda l: l["elements"][4].update(series=7), "series"),
-    (lambda l: l["elements"][4].update(categories=13), "categories"),
-    (lambda l: l["elements"][1].update(chart_type="pie"), "kind"),
-    (lambda l: l["elements"][7].pop("rows"), "rows"),
-    (lambda l: l["elements"][7].update(cols=21), "cols"),
-    (lambda l: l["elements"][7].update(rows=0), "rows"),
-    (lambda l: l["elements"][4].update(header_row=True), "kind"),
-    (lambda l: l["elements"][8].update(arrow_style="curly"), "curly"),
-    (lambda l: l["elements"][2].update(arrow_style="block"), "kind"),
-    (lambda l: l["elements"][5].update(head="start"), "start"),
-    (lambda l: l["elements"][2].update(head="end"), "kind"),
-    (lambda l: l["elements"][8].update(**{"from": 0}), "kind"),
-    (lambda l: l["elements"][1].update(fill="mid"), "kind"),
-    (lambda l: l["elements"][0].update(fill="black"), "black"),
-    (lambda l: l["elements"][4].update(framed=True), "kind"),
-    (lambda l: l["elements"][1].update(parent=5), "parent"),   # parent listed after the child
-    (lambda l: l["elements"][3].update(parent=1), "parent"),   # parent is not a container
-    (lambda l: l["elements"][3].update(parent=3), "parent"),   # its own parent
-    (lambda l: l["elements"].append(_el("logo", (0, 0, 0.1, 0.1), "polygon", points=[[0, 0], [0.1, 0.1]])), "points"),
+@pytest.mark.parametrize("bad, message", [
+    (_lay({**EXAMPLES["text"], "text": "Revenue up"}), "text"),
+    (_lay({**EXAMPLES["quote"], "label": "Revenue"}), "label"),
+    ({**SAMPLE, "title": "Q3 results"}, "title"),
+    ({**SAMPLE, "version": 2}, "version"),
+    ({"version": 3, "components": []}, "components"),
+    (_lay(*[EXAMPLES["quote"]] * 9), "components"),
+    (_lay({"kind": "headline", "box": B}), "headline"),
+    (_lay({"kind": "text", "lines": 2}), "box"),
+    (_lay({**EXAMPLES["logo"], "box": B}), "box"),
+    (_lay({**EXAMPLES["quote"], "box": [0.1, 0.1, 0.95, 0.1]}), "box"),
+    (_lay({**EXAMPLES["quote"], "box": [0.1, 0.1, 0.2]}), "box"),
+    (_lay({**EXAMPLES["quote"], "box": [0.1, 0.1, 1.2, 0.1]}), "box"),
+    (_lay({**EXAMPLES["tracker"], "n": 9}), "n"),
+    (_lay({**EXAMPLES["tracker"], "n": 1}), "n"),
+    (_lay({**EXAMPLES["tracker"], "active": 5}), "active"),
+    (_lay({"kind": "tracker", "n": 3}), "active"),
+    (_lay(EXAMPLES["tracker"], EXAMPLES["tracker"]), "tracker"),
+    (_lay(EXAMPLES["cover"], EXAMPLES["closing"]), "full-slide"),
+    (_lay({**EXAMPLES["text"], "lines": 9}), "lines"),
+    (_lay({**EXAMPLES["text"], "bullets": "yes"}), "bullets"),
+    (_lay({**EXAMPLES["kpi_row"], "n": 7}), "n"),
+    (_lay({**EXAMPLES["card_row"], "n": 0}), "n"),
+    (_lay({**EXAMPLES["label_rows"], "cols": 5}), "cols"),
+    (_lay({**EXAMPLES["table"], "rows": 13}), "rows"),
+    (_lay({**EXAMPLES["table"], "cols": 9}), "cols"),
+    (_lay({**EXAMPLES["chart_area"], "chart_type": "radar"}), "radar"),
+    (_lay({"kind": "chart_area", "box": B}), "chart_type"),
+    (_lay({**EXAMPLES["image_area"], "variant": "video"}), "video"),
+    (_lay({**EXAMPLES["steps"], "direction": "diagonal"}), "diagonal"),
+    (_lay({**EXAMPLES["steps"], "n": 9}), "n"),
+    (_lay({**EXAMPLES["timeline"], "periods": 13}), "periods"),
+    (_lay({**EXAMPLES["timeline"], "workstreams": 7}), "workstreams"),
+    (_lay({**EXAMPLES["roadmap"], "phases": 7}), "phases"),
+    (_lay({**EXAMPLES["matrix"], "dots": 9}), "dots"),
+    (_lay({**EXAMPLES["tree"], "levels": 5}), "levels"),
+    (_lay({**EXAMPLES["tree"], "levels": 4, "branching": 3}), "leaves"),
+    (_lay({**EXAMPLES["funnel"], "stages": 7}), "stages"),
+    (_lay({**EXAMPLES["before_after"], "rows": 5}), "rows"),
+    (_lay({**EXAMPLES["section_divider"], "number": 10}), "number"),
+    (_lay({**EXAMPLES["matrix"], "harvey": True}), "harvey"),  # a field of another kind
 ])
-def test_invalid_layouts_fail(mutate, message):
-    bad = json.loads(json.dumps(SAMPLE))
-    mutate(bad)
+def test_invalid_layouts_fail(bad, message):
     with pytest.raises(ValueError, match=message):
         layout.validate(bad)
 
 
-# --- snap -----------------------------------------------------------------------------------------------------
-
-SLIDE = {"regions": [{"i": 0, "box": {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}},
-                     {"i": 1, "box": {"x": 0.1, "y": 0.2, "w": 0.2, "h": 0.1}},
-                     {"i": 2, "box": {"x": 0.25, "y": 0.4, "w": 0.3, "h": 0.2}}]}
-
-
-def test_snap_replaces_box_with_union_of_regions():
-    out = layout.snap(SAMPLE, SLIDE)
-    assert out["elements"][2]["box"] == pytest.approx([0.1, 0.2, 0.45, 0.4])
-    assert out["elements"][1]["box"] == SAMPLE["elements"][1]["box"]  # no region_ids: the agent's box stays
-    assert SAMPLE["elements"][2]["box"] == [0.05, 0.3, 0.4, 0.5]  # input untouched
-
-
-def test_snap_rejects_unknown_regions():
-    with pytest.raises(ValueError, match="9"):
-        layout.snap({"elements": [_el("text", (0, 0, 0.1, 0.1), region_ids=[9])]}, SLIDE)
-
-
-# --- worksheet + render command -------------------------------------------------------------------------------
+# --- worksheet ------------------------------------------------------------------------------------------------
 
 @pytest.fixture
 def deck_id(deck, lib):
     return extract.run(deck, lib, render=False)
 
 
-def test_worksheet_combines_picture_and_regions(deck_id, lib):
+def test_worksheet_shows_the_picture_and_the_components(deck_id, lib):
     main(["layout-prep", deck_id, "--library", str(lib)])
     out = lib / "layouts" / deck_id
-    assert sorted(p.name for p in out.glob("*.prompt.txt")) == ["slide-01.final.prompt.txt", "slide-02.final.prompt.txt"]
-    text = (out / "slide-02.final.prompt.txt").read_text()
-    for needed in ("slide-02.png", str(lib / "work" / deck_id / "slide-02.json"), str(out / "slide-02.final.json"),
-                   "layout.v2.json", '"version": 2', "5-20", "chevron", "region_ids", "clearly matches",
-                   "Merge stacked text lines", "decoration", "background texture", "connectors", "insight device",
-                   "takeaway", "strip", "parent", "framed", "rows", "cols", "header_row", "chart_type", "stacked_bar",
-                   "waterfall", "series", "categories", "arrow_style", "block", "head", "fill"):
+    assert sorted(p.name for p in out.glob("*.prompt.txt")) == ["slide-01.prompt.txt", "slide-02.prompt.txt"]
+    text = (out / "slide-02.prompt.txt").read_text()
+    for needed in ("slide-02.png", str(lib / "work" / deck_id / "slide-02.json"), str(out / "slide-02.v3.json"),
+                   "layout.v3.json", '"version": 3', "8 components", "12 x 8", "zoomed out", "optional", *EXAMPLES,
+                   "stacked_bar", "photo", "device"):
         assert needed in text, needed
-    assert "bar_chart" not in text
-    assert (out / "slide-01.final.prompt.txt").read_text().replace("slide-01", "slide-02") == text
+    assert (out / "slide-01.prompt.txt").read_text().replace("slide-01", "slide-02") == text
 
 
 def test_worksheet_slide_filter(deck_id, lib):
     main(["layout-prep", deck_id, "--library", str(lib), "--slides", "2"])
-    assert [p.name for p in (lib / "layouts" / deck_id).glob("*.prompt.txt")] == ["slide-02.final.prompt.txt"]
+    assert [p.name for p in (lib / "layouts" / deck_id).glob("*.prompt.txt")] == ["slide-02.prompt.txt"]
