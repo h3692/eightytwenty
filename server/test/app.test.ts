@@ -185,6 +185,7 @@ describe("get_playbook", () => {
 		for (const stage of STAGES) {  // no chapter sends anything into the deck or skips the plan
 			const chapter = (await tool("get_playbook", { stage })).body.result.content[0].text;
 			expect(chapter, stage).not.toMatch(/Design Options (slide|asset list)|rough layout/i);
+			if (stage !== "polish") expect(chapter, stage).not.toMatch(/`[^`\n]*(->|→|=>)[^`\n]*`/); // example slide text never carries an arrow
 		}
 		expect(text).toMatch(/only when the user explicitly asks for everything at once/i);
 		expect(text).toMatch(/If a style filter returns nothing, search again without it/);
