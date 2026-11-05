@@ -7,21 +7,26 @@ It is AI-agnostic: it targets any client that supports remote MCP connectors. Th
 and no sign-in.
 
 The library does not contain original decks. Each entry is an abstract layout record (region boxes,
-colour and type roles, hierarchy, a short note on why the slide works) and a wireframe drawn from
-that record. The source decks never leave the maintainer's machine. Your AI uses a reference as
-inspiration and builds the slide with its own tools.
+colour and type roles, hierarchy, a short note on why the slide works), a component layout, and a
+greyscale wireframe drawn from that layout with placeholder copy. Whole decks are also described as
+deck flows: the order of sections and where the deck uses impact slides. The source decks never leave
+the maintainer's machine. Your AI uses a reference as inspiration and builds the slide with its own
+tools.
 
-## Status
+## Connect
 
-Early development. Nothing is deployed yet and the tools below don't exist yet.
+Add `https://eightytwenty.socratic.workers.dev/mcp` as a remote MCP connector in your client.
 
-## Tools (planned)
+## Tools
 
-- `get_playbook` (planned): the methodology. Workflow, slide archetypes, tagline rules, design
-  options, a QA checklist, and how to audit the style of a deck you attach in chat.
-- `find_references` (planned): search the library by what a slide needs to do, with optional
-  filters such as slide type, industry, and data type. Returns short summaries.
-- `get_reference` (planned): the full design-DNA record for one result, plus its wireframe.
+- `get_playbook`: the methodology. Workflow (storyline first), narrative and impact slides, slide
+  archetypes, tagline rules, design options, a QA checklist, and how to audit the style of a deck you
+  attach in chat.
+- `find_references`: search the library by what a slide needs to do, with optional filters such as
+  slide type, industry, data type and impact slide kind. Returns up to 8 short summaries.
+- `find_deck_flows`: search whole-deck flows by what the deck needs to do, optionally by industry and
+  deck length.
+- `get_reference`: the full record for one slide result plus its wireframe, or one deck flow.
 
 All tools are read-only. There is no way to upload to or list the whole library.
 
