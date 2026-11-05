@@ -15,7 +15,8 @@ Numeric and enum DNA fields are exempt. The wireframe draws only from the DNA, s
 NER and title-case slides mistake ordinary words for names, so a word only counts as a name when it is rare
 (wordfreq zipf < COMMON_ZIPF and not in DESIGN_TERMS) or our text writes it like one (capitalised mid-sentence,
 or all caps), so a common-word name opening a sentence is left to the judge. Standard framework names
-(FRAMEWORKS, exact phrases) are exempt from the shared-words rule.
+(FRAMEWORKS, exact phrases) and the fixed headings of our own description template are exempt from the
+shared-words rule.
 """
 import html
 import io
@@ -87,9 +88,19 @@ def _fixed_lists():
     return [_words(v) for v in chain(*lists)]
 
 
+def _template_phrases():
+    """The fixed scaffold of build.describe ("Why it works:" ...) as _words() phrases: the text between its fields."""
+    blank = "\0"
+    dna = dict.fromkeys(("archetype", "argument_shape", "insight_device", "data_type", "industry", "purpose",
+                         "why_it_works"), blank) | {"regions": [{"role": blank, "text": {"pattern": blank}}]}
+    return [_words(part) for part in build.describe(dna).split(blank)]
+
+
 DESIGN_TERMS |= {w for p in _fixed_lists() for w in p}
-# our own multi-word ids ("how it works") are not slide copy; shorter ones would mask single ordinary words
-FRAMEWORKS = sorted(FRAMEWORKS + [p for p in _fixed_lists() if len(p) >= 3], key=len, reverse=True)
+# our own multi-word ids ("how it works") and description headings ("why it works") are not slide copy; shorter
+# ones would mask single ordinary words
+FRAMEWORKS = sorted(FRAMEWORKS + [p for p in _fixed_lists() + _template_phrases() if len(p) >= 3], key=len,
+                    reverse=True)
 
 
 def _common(word):

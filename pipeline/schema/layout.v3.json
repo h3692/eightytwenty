@@ -12,7 +12,7 @@
   "$defs": {
     "component": {
       "type": "object", "required": ["kind"],
-      "properties": {"kind": {"enum": ["tracker", "logo", "text", "kpi_row", "card_row", "label_rows", "table", "chart_area", "image_area", "steps", "timeline", "roadmap", "matrix", "tree", "funnel", "hub", "before_after", "takeaway", "quote", "hero_number", "section_divider", "cover", "closing"]}},
+      "properties": {"kind": {"enum": ["tracker", "logo", "text", "kpi_row", "card_row", "label_rows", "table", "chart_area", "image_area", "steps", "timeline", "roadmap", "matrix", "tree", "funnel", "hub", "before_after", "takeaway", "quote", "hero_number", "section_divider", "cover", "closing", "card_stack", "swimlane", "journey", "flow_diagram", "device_row", "stage_strip", "gauge_row", "network", "map_callouts", "bar_list"]}},
       "allOf": [
         {"if": {"required": ["kind"], "properties": {"kind": {"const": "tracker"}}}, "then": {"$ref": "#/$defs/tracker"}},
         {"if": {"required": ["kind"], "properties": {"kind": {"const": "logo"}}}, "then": {"$ref": "#/$defs/logo"}},
@@ -36,21 +36,31 @@
         {"if": {"required": ["kind"], "properties": {"kind": {"const": "hero_number"}}}, "then": {"$ref": "#/$defs/hero_number"}},
         {"if": {"required": ["kind"], "properties": {"kind": {"const": "section_divider"}}}, "then": {"$ref": "#/$defs/section_divider"}},
         {"if": {"required": ["kind"], "properties": {"kind": {"const": "cover"}}}, "then": {"$ref": "#/$defs/cover"}},
-        {"if": {"required": ["kind"], "properties": {"kind": {"const": "closing"}}}, "then": {"$ref": "#/$defs/closing"}}
+        {"if": {"required": ["kind"], "properties": {"kind": {"const": "closing"}}}, "then": {"$ref": "#/$defs/closing"}},
+        {"if": {"required": ["kind"], "properties": {"kind": {"const": "card_stack"}}}, "then": {"$ref": "#/$defs/card_stack"}},
+        {"if": {"required": ["kind"], "properties": {"kind": {"const": "swimlane"}}}, "then": {"$ref": "#/$defs/swimlane"}},
+        {"if": {"required": ["kind"], "properties": {"kind": {"const": "journey"}}}, "then": {"$ref": "#/$defs/journey"}},
+        {"if": {"required": ["kind"], "properties": {"kind": {"const": "flow_diagram"}}}, "then": {"$ref": "#/$defs/flow_diagram"}},
+        {"if": {"required": ["kind"], "properties": {"kind": {"const": "device_row"}}}, "then": {"$ref": "#/$defs/device_row"}},
+        {"if": {"required": ["kind"], "properties": {"kind": {"const": "stage_strip"}}}, "then": {"$ref": "#/$defs/stage_strip"}},
+        {"if": {"required": ["kind"], "properties": {"kind": {"const": "gauge_row"}}}, "then": {"$ref": "#/$defs/gauge_row"}},
+        {"if": {"required": ["kind"], "properties": {"kind": {"const": "network"}}}, "then": {"$ref": "#/$defs/network"}},
+        {"if": {"required": ["kind"], "properties": {"kind": {"const": "map_callouts"}}}, "then": {"$ref": "#/$defs/map_callouts"}},
+        {"if": {"required": ["kind"], "properties": {"kind": {"const": "bar_list"}}}, "then": {"$ref": "#/$defs/bar_list"}}
       ]
     },
     "box": {"type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "number", "minimum": 0, "maximum": 1}},
     "tracker": {"type": "object", "additionalProperties": false, "required": ["kind", "n", "active"], "properties": {"kind": {"const": "tracker"}, "n": {"type": "integer", "minimum": 2, "maximum": 8}, "active": {"type": "integer", "minimum": 1, "maximum": 8}}},
     "logo": {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"const": "logo"}}},
     "text": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "lines"], "properties": {"kind": {"const": "text"}, "box": {"$ref": "#/$defs/box"}, "bullets": {"type": "boolean"}, "lines": {"type": "integer", "minimum": 1, "maximum": 8}}},
-    "kpi_row": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "n"], "properties": {"kind": {"const": "kpi_row"}, "box": {"$ref": "#/$defs/box"}, "n": {"type": "integer", "minimum": 1, "maximum": 6}}},
+    "kpi_row": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "n"], "properties": {"kind": {"const": "kpi_row"}, "box": {"$ref": "#/$defs/box"}, "n": {"type": "integer", "minimum": 1, "maximum": 6}, "direction": {"enum": ["h", "v"]}, "tile": {"enum": ["round", "square"]}}},
     "card_row": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "n"], "properties": {"kind": {"const": "card_row"}, "box": {"$ref": "#/$defs/box"}, "n": {"type": "integer", "minimum": 1, "maximum": 6}, "header_strip": {"type": "boolean"}, "icon": {"type": "boolean"}}},
     "label_rows": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "rows", "cols"], "properties": {"kind": {"const": "label_rows"}, "box": {"$ref": "#/$defs/box"}, "rows": {"type": "integer", "minimum": 1, "maximum": 10}, "cols": {"type": "integer", "minimum": 1, "maximum": 4}}},
-    "table": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "rows", "cols"], "properties": {"kind": {"const": "table"}, "box": {"$ref": "#/$defs/box"}, "rows": {"type": "integer", "minimum": 1, "maximum": 12}, "cols": {"type": "integer", "minimum": 1, "maximum": 8}, "header_row": {"type": "boolean"}, "harvey": {"type": "boolean"}}},
+    "table": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "rows", "cols"], "properties": {"kind": {"const": "table"}, "box": {"$ref": "#/$defs/box"}, "rows": {"type": "integer", "minimum": 1, "maximum": 12}, "cols": {"type": "integer", "minimum": 1, "maximum": 12}, "header_row": {"type": "boolean"}, "harvey": {"type": "boolean"}, "marks": {"enum": ["none", "harvey", "check"]}, "highlight_col": {"type": "integer", "minimum": 1, "maximum": 12}}},
     "chart_area": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "chart_type"], "properties": {"kind": {"const": "chart_area"}, "box": {"$ref": "#/$defs/box"}, "chart_type": {"enum": ["bar", "column", "stacked_bar", "line", "pie", "donut", "scatter", "waterfall", "area", "other"]}}},
     "image_area": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "variant"], "properties": {"kind": {"const": "image_area"}, "box": {"$ref": "#/$defs/box"}, "variant": {"enum": ["photo", "device", "map", "icon"]}}},
     "steps": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "n", "direction"], "properties": {"kind": {"const": "steps"}, "box": {"$ref": "#/$defs/box"}, "n": {"type": "integer", "minimum": 2, "maximum": 8}, "direction": {"enum": ["h", "v"]}}},
-    "timeline": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "workstreams", "periods"], "properties": {"kind": {"const": "timeline"}, "box": {"$ref": "#/$defs/box"}, "workstreams": {"type": "integer", "minimum": 1, "maximum": 6}, "periods": {"type": "integer", "minimum": 2, "maximum": 12}, "milestones": {"type": "boolean"}}},
+    "timeline": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "workstreams", "periods"], "properties": {"kind": {"const": "timeline"}, "box": {"$ref": "#/$defs/box"}, "workstreams": {"type": "integer", "minimum": 1, "maximum": 6}, "periods": {"type": "integer", "minimum": 2, "maximum": 24}, "milestones": {"type": "boolean"}, "rounded": {"type": "boolean"}, "groups": {"type": "integer", "minimum": 2, "maximum": 6}}},
     "roadmap": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "phases"], "properties": {"kind": {"const": "roadmap"}, "box": {"$ref": "#/$defs/box"}, "phases": {"type": "integer", "minimum": 2, "maximum": 6}}},
     "matrix": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "dots"], "properties": {"kind": {"const": "matrix"}, "box": {"$ref": "#/$defs/box"}, "dots": {"type": "integer", "minimum": 0, "maximum": 8}}},
     "tree": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "levels", "branching"], "properties": {"kind": {"const": "tree"}, "box": {"$ref": "#/$defs/box"}, "levels": {"type": "integer", "minimum": 2, "maximum": 4}, "branching": {"type": "integer", "minimum": 2, "maximum": 4}}},
@@ -62,6 +72,16 @@
     "hero_number": {"type": "object", "additionalProperties": false, "required": ["kind", "box"], "properties": {"kind": {"const": "hero_number"}, "box": {"$ref": "#/$defs/box"}}},
     "section_divider": {"type": "object", "additionalProperties": false, "required": ["kind", "number"], "properties": {"kind": {"const": "section_divider"}, "number": {"type": "integer", "minimum": 1, "maximum": 9}}},
     "cover": {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"const": "cover"}}},
-    "closing": {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"const": "closing"}}}
+    "closing": {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"const": "closing"}}},
+    "card_stack": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "n"], "properties": {"kind": {"const": "card_stack"}, "box": {"$ref": "#/$defs/box"}, "n": {"type": "integer", "minimum": 2, "maximum": 8}, "header_strip": {"type": "boolean"}, "icon": {"type": "boolean"}}},
+    "swimlane": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "lanes", "stages"], "properties": {"kind": {"const": "swimlane"}, "box": {"$ref": "#/$defs/box"}, "lanes": {"type": "integer", "minimum": 2, "maximum": 6}, "stages": {"type": "integer", "minimum": 2, "maximum": 8}, "curve": {"type": "boolean"}}},
+    "journey": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "n"], "properties": {"kind": {"const": "journey"}, "box": {"$ref": "#/$defs/box"}, "n": {"type": "integer", "minimum": 3, "maximum": 8}, "curve": {"type": "boolean"}, "persona": {"type": "boolean"}}},
+    "flow_diagram": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "n", "arrangement"], "properties": {"kind": {"const": "flow_diagram"}, "box": {"$ref": "#/$defs/box"}, "n": {"type": "integer", "minimum": 3, "maximum": 10}, "arrangement": {"enum": ["row", "grid"]}, "icon": {"type": "boolean"}}},
+    "device_row": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "n", "device"], "properties": {"kind": {"const": "device_row"}, "box": {"$ref": "#/$defs/box"}, "n": {"type": "integer", "minimum": 1, "maximum": 6}, "device": {"enum": ["phone", "laptop"]}}},
+    "stage_strip": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "n", "active"], "properties": {"kind": {"const": "stage_strip"}, "box": {"$ref": "#/$defs/box"}, "n": {"type": "integer", "minimum": 2, "maximum": 6}, "active": {"type": "integer", "minimum": 1, "maximum": 6}}},
+    "gauge_row": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "n"], "properties": {"kind": {"const": "gauge_row"}, "box": {"$ref": "#/$defs/box"}, "n": {"type": "integer", "minimum": 1, "maximum": 6}, "direction": {"enum": ["h", "v"]}}},
+    "network": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "n"], "properties": {"kind": {"const": "network"}, "box": {"$ref": "#/$defs/box"}, "n": {"type": "integer", "minimum": 3, "maximum": 12}}},
+    "map_callouts": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "n"], "properties": {"kind": {"const": "map_callouts"}, "box": {"$ref": "#/$defs/box"}, "n": {"type": "integer", "minimum": 1, "maximum": 8}}},
+    "bar_list": {"type": "object", "additionalProperties": false, "required": ["kind", "box", "n"], "properties": {"kind": {"const": "bar_list"}, "box": {"$ref": "#/$defs/box"}, "n": {"type": "integer", "minimum": 2, "maximum": 12}, "groups": {"type": "integer", "minimum": 1, "maximum": 4}}}
   }
 }

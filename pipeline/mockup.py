@@ -144,6 +144,28 @@ def _add(shapes, x, y, w, h, fill=None, line=None, text=(), size=12, color=DARK,
     return s
 
 
+def _line(shapes, ax, ay, bx, by, arrow=False):
+    """A straight connector at slide inches; arrow = a triangle head at the end."""
+    ln = shapes.add_connector(MSO_CONNECTOR.STRAIGHT, *(Emu(round(v * IN)) for v in (ax, ay, bx, by)))
+    ln.line.color.rgb, ln.line.width = _rgb(GREYS[1] if arrow else GREYS[2]), Pt(1.25 if arrow else 1)
+    if arrow:
+        ln.line._get_or_add_ln().append(parse_xml(f'<a:tailEnd {nsdecls("a")} type="triangle"/>'))
+    return ln
+
+
+def _path(shapes, pts, color=DARK, width=1.5, smooth=False):
+    """An open line through points at slide inches (a tick, a curve); smooth eases between the points."""
+    if smooth:
+        pts = [(ax + (bx - ax) * t / 8, ay + (by - ay) * (1 - math.cos(math.pi * t / 8)) / 2)
+               for (ax, ay), (bx, by) in zip(pts, pts[1:]) for t in range(8)] + pts[-1:]
+    ff = shapes.build_freeform(*(Emu(round(v * IN)) for v in pts[0]))
+    ff.add_line_segments([(round(px * IN), round(py * IN)) for px, py in pts[1:]], close=False)
+    s = ff.convert_to_shape()
+    s.fill.background()
+    s.line.color.rgb, s.line.width = _rgb(color), Pt(width)
+    return s
+
+
 # --- slide chrome ---------------------------------------------------------------------------------------------
 
 def _header(shapes):
@@ -173,7 +195,24 @@ def _text(shapes, c, x, y, w, h, rng):
 
 
 def _kpi_row(shapes, c, x, y, w, h, rng):
+    rnd = c.get("tile") == "round"
+    if c.get("direction") == "v":  # tiles down the left, captions beside them
+        ys, th = _split(y, h, c["n"])
+        d = min(th, w * 0.4) if rnd else min(2.2, w * 0.4)
+        dh = d if rnd else th
+        for k, ty in enumerate(ys):
+            _add(shapes, x, ty + (th - dh) / 2, d, dh, LIGHT, text=VALUES[k % 2], size=28, bold=True,
+                 preset=MSO_SHAPE.OVAL if rnd else MSO_SHAPE.RECTANGLE)
+            _add(shapes, x + d + 0.15, ty, w - d - 0.15, th, text="Text here", size=14, color=GREYS[0], align=LEFT)
+        return
     xs, tw = _split(x, w, c["n"])
+    if rnd:
+        d = min(tw, h * 0.65)
+        for k, tx in enumerate(xs):
+            _add(shapes, tx + (tw - d) / 2, y, d, d, LIGHT, text=VALUES[k % 2], size=28, bold=True,
+                 preset=MSO_SHAPE.OVAL)
+            _add(shapes, tx, y + d + 0.06, tw, h - d - 0.06, text="Text here", color=GREYS[0], anchor=TOP)
+        return
     for k, tx in enumerate(xs):
         _add(shapes, tx, y, tw, h, LIGHT)
         _add(shapes, tx + 0.1, y, tw - 0.2, h * 0.6, text=VALUES[k % 2], size=28, bold=True, align=LEFT, anchor=BOTTOM)
@@ -214,7 +253,9 @@ def _label_rows(shapes, c, x, y, w, h, rng):
 
 
 def _table(shapes, c, x, y, w, h, rng):
-    rows, cols, head, harvey = c["rows"], c["cols"], c.get("header_row", False), c.get("harvey", False)
+    rows, cols, head = c["rows"], c["cols"], c.get("header_row", False)
+    marks = c.get("marks", "harvey" if c.get("harvey") else "none")
+    hl = c.get("highlight_col", 0) - 1  # the emphasised column, -1 for none
     table = shapes.add_table(rows, cols, *(Emu(round(v * IN)) for v in (x, y, w, h))).table
     table.first_row, table.horz_banding = head, False
     rh, cw = h / rows, w / cols
@@ -224,21 +265,31 @@ def _table(shapes, c, x, y, w, h, rng):
         for k, cell in enumerate(row.cells):
             top = head and r == 0
             cell.fill.solid()
-            cell.fill.fore_color.rgb = _rgb(DARK if top else LIGHT if k == 0 else WHITE)
+            cell.fill.fore_color.rgb = _rgb(DARK if top else MID if k == hl else LIGHT if k == 0 else WHITE)
             cell.margin_left = cell.margin_right = Emu(round(0.06 * IN))
             cell.margin_top = cell.margin_bottom = 0
             cell.vertical_anchor = MIDDLE
             cell._tc.get_or_add_tcPr().insert(0, parse_xml(rule))  # borders precede the cell fill
             p = cell.text_frame.paragraphs[0]
-            if harvey and not top and k > 0:
-                p._p.get_or_add_endParaRPr().set("sz", "100")  # the ball is drawn over the empty cell
+            if marks != "none" and not top and k > 0:
+                p._p.get_or_add_endParaRPr().set("sz", "100")  # the mark is drawn over the empty cell
                 continue
             p.alignment = LEFT if k == 0 else PP_ALIGN.CENTER
             run = p.add_run()
             run.text = "Header here" if top else "Text here"
             run.font.name, run.font.size, run.font.bold = FONT, size, top
             run.font.color.rgb = _rgb(WHITE if top else DARK)
-    if harvey:
+    if marks == "check":  # mostly ticks, some crosses
+        d = min(rh * 0.6, cw * 0.6, 0.22)
+        for r in range(int(head), rows):
+            for k in range(1, cols):
+                bx, by = x + (k + 0.5) * cw - d / 2, y + (r + 0.5) * rh - d / 2
+                if rng.random() < 0.7:
+                    _path(shapes, [(bx, by + d * 0.55), (bx + d * 0.38, by + d * 0.9), (bx + d, by + d * 0.1)],
+                          width=2)
+                else:
+                    _add(shapes, bx, by, d, d, GREYS[1], preset=MSO_SHAPE.MATH_MULTIPLY)
+    if marks == "harvey":
         d = min(rh * 0.6, 0.25)
         for r in range(int(head), rows):
             for k in range(1, cols):
@@ -345,6 +396,13 @@ def _timeline(shapes, c, x, y, w, h, rng):
     periods, milestones = c["periods"], c.get("milestones", False)
     lw = min(1.6, w * 0.2)
     xs, pw = _split(x + lw, w - lw, periods, 0.04)
+    if c.get("groups"):  # year pills spanning equal runs of periods, above the period headers
+        g, gh = c["groups"], min(0.28, h * 0.1)
+        ends = [round(k * periods / g) for k in range(g + 1)]
+        for a, b in zip(ends, ends[1:]):
+            _add(shapes, xs[a], y, xs[b - 1] + pw - xs[a], gh, MID, text="Year X", size=11, bold=True,
+                 preset=MSO_SHAPE.ROUNDED_RECTANGLE)
+        y, h = y + gh + 0.04, h - gh - 0.04
     hh = min(0.32, h * 0.15)
     for px in xs:
         _add(shapes, px, y, pw, hh, DARK, text="QX", size=11, color=WHITE, bold=True)
@@ -361,7 +419,8 @@ def _timeline(shapes, c, x, y, w, h, rng):
             continue
         start = rng.randrange(periods - 1)
         end = rng.randint(start + 1, periods)
-        _add(shapes, xs[start], ry + rh * 0.3, xs[end - 1] + pw - xs[start], rh * 0.4, DARK if r % 2 == 0 else GREYS[2])
+        _add(shapes, xs[start], ry + rh * 0.3, xs[end - 1] + pw - xs[start], rh * 0.4, DARK if r % 2 == 0 else GREYS[2],
+             preset=MSO_SHAPE.ROUNDED_RECTANGLE if c.get("rounded") else MSO_SHAPE.RECTANGLE)
 
 
 def _roadmap(shapes, c, x, y, w, h, rng):
@@ -427,21 +486,15 @@ def _hub(shapes, c, x, y, w, h, rng):
     rx, ry = (w - sw) / 2, (h - sh) / 2
     pts = [(cx + rx * math.cos(a), cy + ry * math.sin(a)) for a in (math.radians(-90 + 360 * k / n) for k in range(n))]
 
-    def line(ax, ay, bx, by, arrow=False):
-        ln = shapes.add_connector(MSO_CONNECTOR.STRAIGHT, *(Emu(round(v * IN)) for v in (ax, ay, bx, by)))
-        ln.line.color.rgb, ln.line.width = _rgb(GREYS[1] if arrow else GREYS[2]), Pt(1.25 if arrow else 1)
-        if arrow:
-            ln.line._get_or_add_ln().append(parse_xml(f'<a:tailEnd {nsdecls("a")} type="triangle"/>'))
-
     if c.get("connectors"):  # drawn first: the nodes cover the ends
         for px, py in pts:
-            line(cx, cy, px, py)
+            _line(shapes, cx, cy, px, py)
     if c.get("cycle"):  # clockwise arrows between neighbouring satellites, from pill edge to pill edge
         for (ax, ay), (bx, by) in zip(pts, pts[1:] + pts[:1]):
             dx, dy = bx - ax, by - ay
             t = min(sw / 2 / abs(dx) if abs(dx) > 1e-9 else 1, sh / 2 / abs(dy) if abs(dy) > 1e-9 else 1)
             t = min(t + 0.06 / math.hypot(dx, dy), 0.45)
-            line(ax + dx * t, ay + dy * t, bx - dx * t, by - dy * t, arrow=True)
+            _line(shapes, ax + dx * t, ay + dy * t, bx - dx * t, by - dy * t, arrow=True)
     _add(shapes, cx - d / 2, cy - d / 2, d, d, DARK, text="Header here", size=14, color=WHITE, bold=True,
          preset=MSO_SHAPE.OVAL)
     for px, py in pts:
@@ -480,6 +533,220 @@ def _quote(shapes, c, x, y, w, h, rng):
 def _hero_number(shapes, c, x, y, w, h, rng):
     _add(shapes, x, y, w, h * 0.65, text="XX%", size=72, bold=True, anchor=BOTTOM)
     _add(shapes, x, y + h * 0.65, w, h * 0.35, text="Text here", size=14, color=GREYS[0], anchor=TOP)
+
+
+def _card_stack(shapes, c, x, y, w, h, rng):
+    ys, ch = _split(y, h, c["n"], 0.08)
+    sw = min(2.08, w * 0.22) if c.get("header_strip") else 0
+    for cy in ys:
+        left = x
+        if sw:
+            _add(shapes, x, cy, sw, ch, MID, text="Header here", size=13, bold=True)
+            left += sw + 0.08
+        _add(shapes, left, cy, x + w - left, ch, LIGHT)
+        left += 0.12
+        if c.get("icon"):
+            d = min(0.5, ch * 0.7)
+            _add(shapes, left, cy + (ch - d) / 2, d, d, WHITE, GREYS[3], "Icon", 10, GREYS[0], preset=MSO_SHAPE.OVAL)
+            left += d + 0.12
+        if not sw:
+            hw = min(2.4, (x + w - left) * 0.35)
+            _add(shapes, left, cy, hw, ch, text="Header here", size=14, bold=True, align=LEFT)
+            left += hw
+        _add(shapes, left, cy, x + w - left - 0.1, ch, text="Text here", color=GREYS[0], align=LEFT)
+
+
+def _swimlane(shapes, c, x, y, w, h, rng):
+    lw = min(1.6, w * 0.18)
+    xs, sw = _split(x + lw + 0.08, w - lw - 0.08, c["stages"], 0.08)
+    hh = min(0.36, h * 0.12)
+    for sx in xs:
+        _add(shapes, sx, y, sw, hh, DARK, text="Header here", size=12, color=WHITE, bold=True)
+    top = y + hh + 0.08
+    if c.get("curve"):  # a sentiment line over the stages, one dot per stage
+        ch, d = min(1.0, (h - hh) * 0.25), 0.14
+        pts = [(sx + sw / 2, top + d / 2 + rng.random() * (ch - d)) for sx in xs]
+        _path(shapes, pts, color=GREYS[1], smooth=True)
+        for px, py in pts:
+            _add(shapes, px - d / 2, py - d / 2, d, d, DARK, preset=MSO_SHAPE.OVAL)
+        top += ch + 0.08
+    ys, rh = _split(top, y + h - top, c["lanes"], 0.08)
+    for ry in ys:
+        _add(shapes, x, ry, lw, rh, MID, text="Header here", size=12, bold=True)
+        for sx in xs:
+            _add(shapes, sx, ry, sw, rh, LIGHT, text="Text here", size=11)
+
+
+def _journey(shapes, c, x, y, w, h, rng):
+    n = c["n"]
+    if c.get("persona"):  # a profile slot at the left
+        pw = min(2.2, w * 0.22)
+        d = min(0.9, pw * 0.5, h * 0.35)
+        _add(shapes, x, y, pw, h, LIGHT)
+        _add(shapes, x + (pw - d) / 2, y + 0.15, d, d, WHITE, GREYS[3], "Icon", 10, GREYS[0], preset=MSO_SHAPE.OVAL)
+        _add(shapes, x + 0.1, y + 0.2 + d, pw - 0.2, 0.3, text="Name here", size=13, bold=True)
+        _add(shapes, x + 0.1, y + 0.55 + d, pw - 0.2, max(h - d - 0.65, 0.02), text=["Text here"] * 3, align=LEFT,
+             anchor=TOP, color=GREYS[0], bullets=True)
+        x, w = x + pw + 0.2, w - pw - 0.2
+    xs, sw = _split(x, w, n)
+    cy, d = y + h / 2, min(0.39, h * 0.12)
+    wave = h * 0.08 if c.get("curve") else 0
+    pts = [(sx + sw / 2, cy + (wave if k % 2 else -wave)) for k, sx in enumerate(xs)]
+    if wave:
+        _path(shapes, [(x, cy)] + pts + [(x + w, cy)], color=GREYS[2], width=2, smooth=True)
+    else:
+        _line(shapes, x, cy, x + w, cy)
+    hb = min(0.3, (h / 2 - wave - d / 2 - 0.3) / 2)
+    for k, (sx, (px, py)) in enumerate(zip(xs, pts)):
+        above = k % 2 == 0
+        edge = py - d / 2 if above else py + d / 2
+        label = cy - wave - d / 2 - 0.25 if above else cy + wave + d / 2 + 0.25  # the label edge near the axis
+        _line(shapes, px, edge, px, label)
+        top = label - 2 * hb if above else label
+        _add(shapes, sx, top, sw, hb, text="Header here", size=13, bold=True)
+        _add(shapes, sx, top + hb, sw, hb, text="Text here", color=GREYS[0])
+        _add(shapes, px - d / 2, py - d / 2, d, d, DARK, text=str(k + 1), size=12, color=WHITE, bold=True,
+             preset=MSO_SHAPE.OVAL)
+
+
+def _flow_diagram(shapes, c, x, y, w, h, rng):
+    n, icon = c["n"], c.get("icon", False)
+    rows = 1 if c["arrangement"] == "row" else 2 if n <= 8 else 3
+    cols = math.ceil(n / rows)
+    xs, nw = _split(x, w, cols, 0.45)
+    ys, sh = _split(y, h, rows, 0.4)
+    nh = min(sh, 1.6 if icon else 1.1)
+    boxes = []
+    for k in range(n):  # rows wind back and forth, so every arrow is short
+        r, j = divmod(k, cols)
+        boxes.append((xs[j if r % 2 == 0 else cols - 1 - j], ys[r] + (sh - nh) / 2))
+    for (ax, ay), (bx, by) in zip(boxes, boxes[1:]):
+        if ay == by:
+            sx, ex = (ax + nw + 0.05, bx - 0.05) if bx > ax else (ax - 0.05, bx + nw + 0.05)
+            _line(shapes, sx, ay + nh / 2, ex, by + nh / 2, arrow=True)
+        else:
+            _line(shapes, ax + nw / 2, ay + nh + 0.05, bx + nw / 2, by - 0.05, arrow=True)
+    for bx, by in boxes:
+        _add(shapes, bx, by, nw, nh, LIGHT, text="Header here", size=13, bold=True, anchor=BOTTOM if icon else MIDDLE)
+        if icon:
+            d = min(0.5, nh * 0.4, nw * 0.6)
+            _add(shapes, bx + (nw - d) / 2, by + nh * 0.12, d, d, WHITE, GREYS[3], "Icon", 10, GREYS[0],
+                 preset=MSO_SHAPE.OVAL)
+
+
+def _device_row(shapes, c, x, y, w, h, rng):
+    xs, dw = _split(x, w, c["n"], 0.3)
+    for dx in xs:
+        if c["device"] == "phone":
+            fw = min(dw, h / 2)
+            fx, fy, fh = dx + (dw - fw) / 2, y + (h - 2 * fw) / 2, 2 * fw
+            frame = _add(shapes, fx, fy, fw, fh, WHITE, GREYS[2], preset=MSO_SHAPE.ROUNDED_RECTANGLE)
+            frame.adjustments[0] = 0.15
+            _add(shapes, fx + fw * 0.08, fy + fw * 0.2, fw * 0.84, fh - fw * 0.4, LIGHT, text="Image here",
+                 color=GREYS[0])
+            continue
+        sh = min(h / 1.1, dw * 0.85 * 10 / 16)
+        sw, bh = sh * 1.6, sh * 0.1
+        fy = y + (h - sh - bh) / 2
+        _add(shapes, dx + (dw - sw) / 2, fy, sw, sh, WHITE, GREYS[2])
+        _add(shapes, dx + (dw - sw) / 2 + sh * 0.05, fy + sh * 0.05, sw - sh * 0.1, sh * 0.9, LIGHT, text="Image here",
+             color=GREYS[0])
+        bw = min(dw, sw * 1.18)
+        _add(shapes, dx + (dw - bw) / 2, fy + sh, bw, bh, MID, preset=MSO_SHAPE.TRAPEZOID)
+
+
+def _stage_strip(shapes, c, x, y, w, h, rng):
+    xs, cw = _split(x, w, c["n"], 0.04)
+    ch = min(h, 0.5)
+    for k, cx in enumerate(xs):
+        on = k == c["active"] - 1
+        _add(shapes, cx, y + (h - ch) / 2, cw, ch, DARK if on else LIGHT, text="Step Header", size=12,
+             color=WHITE if on else DARK, bold=True, preset=MSO_SHAPE.PENTAGON if k == 0 else MSO_SHAPE.CHEVRON)
+
+
+def _gauge_row(shapes, c, x, y, w, h, rng):
+    vertical = c.get("direction") == "v"
+    starts, size = _split(y if vertical else x, h if vertical else w, c["n"])
+    d = min(size, w * 0.35, 2.0) if vertical else min(size, h * 0.7, 2.0)
+    for s0 in starts:
+        gx, gy = (x, s0 + (size - d) / 2) if vertical else (s0 + (size - d) / 2, y)
+        ring = _add(shapes, gx, gy, d, d, MID, preset=MSO_SHAPE.DONUT)
+        ring.adjustments[0] = 0.18
+        arc = _add(shapes, gx, gy, d, d, DARK, preset=MSO_SHAPE.BLOCK_ARC)  # from 12 o'clock, clockwise
+        end = (270 + 360 * rng.uniform(0.25, 0.9)) % 360 * 0.6  # 60000ths deg, as for the Harvey balls
+        arc.adjustments[0], arc.adjustments[1], arc.adjustments[2] = 162.0, end, 0.18
+        _add(shapes, gx + d * 0.2, gy + d * 0.3, d * 0.6, d * 0.4, text="XX%", size=16, bold=True)
+        if vertical:
+            _add(shapes, gx + d + 0.15, s0, w - d - 0.15, size, text="Text here", size=14, color=GREYS[0], align=LEFT)
+        else:
+            _add(shapes, s0, gy + d + 0.06, size, h - d - 0.06, text="Text here", color=GREYS[0], anchor=TOP)
+
+
+def _network(shapes, c, x, y, w, h, rng):
+    n = c["n"]
+    cols = max(1, min(n, round(math.sqrt(n * 1.6 * w / h))))
+    rows = math.ceil(n * 1.6 / cols)  # about 60% of the cells hold a node
+    cw, ch = w / cols, h / rows
+    nw, nh = min(1.6, cw * 0.8), min(0.42, ch * 0.6)
+    pts = []
+    for cell in sorted(rng.sample(range(cols * rows), n)):  # one node per cell, jittered inside it: no overlaps
+        r, k = divmod(cell, cols)
+        pts.append((x + (k + 0.5) * cw + rng.uniform(-1, 1) * (cw - nw) / 2,
+                    y + (r + 0.5) * ch + rng.uniform(-1, 1) * (ch - nh) / 2))
+    near = lambda k, among: sorted(among, key=lambda j: math.dist(pts[k], pts[j]))
+    edges = {(near(k, range(k))[0], k) for k in range(1, n)}  # each node to its nearest earlier one: connected
+    for k in rng.sample(range(n), n // 3):  # a few cross links
+        j = near(k, [j for j in range(n) if j != k])[min(1, n - 2)]
+        edges.add((min(j, k), max(j, k)))
+    for a, b in sorted(edges):
+        _line(shapes, *pts[a], *pts[b])
+    hub = max(range(n), key=lambda k: sum(k in e for e in edges))
+    for k, (px, py) in enumerate(pts):
+        _add(shapes, px - nw / 2, py - nh / 2, nw, nh, DARK if k == hub else LIGHT, text="Header here", size=11,
+             color=WHITE if k == hub else DARK, bold=True, preset=MSO_SHAPE.ROUNDED_RECTANGLE)
+
+
+def _map_callouts(shapes, c, x, y, w, h, rng):
+    n, mw = c["n"], w * 0.6
+    _add(shapes, x, y, mw, h, LIGHT, text="Map here", size=14, color=GREYS[0], align=LEFT, anchor=TOP)
+    ys, lh = _split(y, h, n, 0.08)
+    lx, d = x + mw + 0.35, min(0.3, lh * 0.8)
+    cw, ch = (mw - 0.4) / 4, (h - 0.5) / 3
+    cells = rng.sample(range(12), n)  # markers in distinct cells of a 4 x 3 grid over the map
+    marks = sorted((y + 0.4 + (k // 4 + 0.5 + rng.uniform(-0.3, 0.3)) * ch,
+                    x + 0.2 + (k % 4 + 0.5 + rng.uniform(-0.3, 0.3)) * cw) for k in cells)  # top first
+    marks = [(mx, my) for my, mx in marks]  # numbered top to bottom like the labels, so few leader lines cross
+    for (mx, my), ly in zip(marks, ys):
+        _line(shapes, mx, my, lx, ly + lh / 2)
+    for k, ((mx, my), ly) in enumerate(zip(marks, ys)):
+        _add(shapes, mx - d / 2, my - d / 2, d, d, DARK, text=str(k + 1), size=11, color=WHITE, bold=True,
+             preset=MSO_SHAPE.OVAL)
+        _add(shapes, lx, ly + (lh - d) / 2, d, d, DARK, text=str(k + 1), size=11, color=WHITE, bold=True,
+             preset=MSO_SHAPE.OVAL)
+        _add(shapes, lx + d + 0.1, ly, x + w - lx - d - 0.1, lh / 2, text="Header here", size=13, bold=True,
+             align=LEFT, anchor=BOTTOM)
+        _add(shapes, lx + d + 0.1, ly + lh / 2, x + w - lx - d - 0.1, lh / 2, text="Text here", color=GREYS[0],
+             align=LEFT, anchor=TOP)
+
+
+def _bar_list(shapes, c, x, y, w, h, rng):
+    n, g = c["n"], c.get("groups", 1)
+    heads = g > 1
+    starts, rh = _split(y, h, n + g * heads, 0.06)
+    ys = iter(starts)
+    lw, vw = min(2.2, w * 0.25), 0.8
+    full = w - lw - vw - 0.1
+    ends = [round(k * n / g) for k in range(g + 1)]
+    for a, b in zip(ends, ends[1:]):
+        for item in range(a - heads, b):  # a group header row first, then its items
+            ry, head = next(ys), item < a
+            ind = 0.2 * (heads and not head)
+            bl = full * (rng.uniform(0.7, 1) if head else rng.uniform(0.2, 0.9))
+            _add(shapes, x + ind, ry, lw - ind, rh, text="Header here" if head else "Text here", size=13, bold=head,
+                 align=LEFT)
+            _add(shapes, x + lw, ry + rh * 0.2, bl, rh * 0.6, DARK if head else GREYS[2],
+                 preset=MSO_SHAPE.ROUNDED_RECTANGLE)
+            _add(shapes, x + lw + bl + 0.06, ry, vw, rh, text="$X.XM", size=12, bold=head, align=LEFT)
 
 
 # --- whole-slide components (slide inches) --------------------------------------------------------------------

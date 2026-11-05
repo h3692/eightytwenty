@@ -18,16 +18,35 @@ Components (kind and its only fields; integers are counts you read off the pictu
   logo             a logo top-right. No box.
   text             box, lines 1-8, bullets true|false: a block of running text or a bullet list (drawn as at
                    most 4 placeholder lines)
-  kpi_row          box, n 1-6: a row of big-number tiles (value + caption)
+  kpi_row          box, n 1-6, direction h|v, tile round|square: big-number tiles (value + caption) in a row,
+                   or stacked down the slide (v); round = circular tiles
+  card_stack       box, n 2-8, header_strip true|false, icon true|false: cards stacked top to bottom (a vertical
+                   list of boxes; a row of boxes is card_row)
   card_row         box, n 1-6, header_strip true|false, icon true|false: a row of boxes/cards with content
   label_rows       box, rows 1-10, cols 1-4: rows each led by a dark label cell (a row-labelled grid or matrix)
-  table            box, rows 1-12, cols 1-8, header_row true|false, harvey true|false (rating balls in cells)
+  table            box, rows 1-12, cols 1-12, header_row true|false, marks none|harvey|check (harvey = rating
+                   balls, check = tick/cross grid), highlight_col 1-cols (one emphasised column, heat-map style)
+  bar_list         box, n 2-12, groups 1-4: a list of labelled horizontal bars (budget or ranking list); groups
+                   = header bars that the items sit under
   chart_area       box, chart_type one of: {chart_types} (other = map, sankey, anything else)
   image_area       box, variant one of: {variants} (device = product mockup or screenshot)
+  device_row       box, n 1-6, device phone|laptop: a row of phone or laptop screens (app screenshots)
+  gauge_row        box, n 1-6, direction h|v: donut gauges (a percentage each), in a row or stacked
   steps            box, n 2-8, direction h|v: a numbered process or sequence of steps
-  timeline         box, workstreams 1-6, periods 2-12, milestones true|false: a Gantt chart
+  timeline         box, workstreams 1-6, periods 2-24, milestones true|false, rounded true|false, groups 2-6:
+                   a Gantt chart; rounded = pill bars, groups = year pills above the period headers
+  swimlane         box, lanes 2-6, stages 2-8, curve true|false: lanes (rows) by stages (columns), e.g. a
+                   service blueprint; curve = a sentiment/emotion line above the lanes
+  journey          box, n 3-8, curve true|false, persona true|false: milestones along one horizontal axis with
+                   labels alternating above and below; curve = a wavy path, persona = a profile slot at the left
+  stage_strip      box, n 2-6, active 1-n: a row of chevrons with one highlighted (a process-stage strip, often
+                   across the top; may sit alongside the tracker)
   roadmap          box, phases 2-6: phases left to right with content under each
   matrix           box, dots 0-8: a 2x2 matrix with plotted items
+  flow_diagram     box, n 3-10, arrangement row|grid, icon true|false: boxes joined by arrows (a process or
+                   system flow); grid wraps the boxes onto rows
+  network          box, n 3-12: nodes joined by lines (an ecosystem, ERD or relationship web)
+  map_callouts     box, n 1-8: a map with numbered markers and their labels beside it
   tree             box, levels 2-4, branching 2-4: an issue/driver tree (at most 16 leaves)
   funnel           box, stages 2-6
   hub              box, n 3-8, connectors true|false, cycle true|false: a centre node with n satellites around

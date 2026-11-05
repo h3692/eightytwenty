@@ -190,6 +190,17 @@ def test_standard_framework_phrases_are_not_copied_text(text, source):
     assert leak_check.problems_in(text, source, set()) == []
 
 
+@pytest.mark.parametrize("heading", ["Why it works", "WHY IT WORKS\nPurpose\nLayout", "Why it works: the plan"])
+def test_our_description_template_phrases_are_not_copied_text(heading):
+    dna = {"archetype": "situational-analysis", "argument_shape": "evidence-stack", "insight_device": "big-number",
+           "data_type": "kpi-numbers", "industry": "travel-hospitality", "purpose": "Open with one bold promise",
+           "why_it_works": "A single dominant statement makes the promise unmissable",
+           "regions": [{"role": "title", "text": {"pattern": "outcome promise as a short noun phrase"}}]}
+    assert ["why", "it", "works"] in leak_check.FRAMEWORKS  # computed from build.describe, not retyped
+    assert leak_check.problems_in(build.describe(dna), heading, set()) == []
+    assert leak_check.problems_in(build.describe(dna), "Open with one bold promise", set())  # real copies still fail
+
+
 @pytest.mark.parametrize("text, source, problem", [
     ("Echoes the Quillmoor Analytics house style with a dark band", "", "name"),
     ("Styled after the London Underground map with coloured lines", "", "name"),

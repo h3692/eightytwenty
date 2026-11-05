@@ -11,14 +11,16 @@ EXAMPLES = {
     "tracker": {"kind": "tracker", "n": 4, "active": 2},
     "logo": {"kind": "logo"},
     "text": {"kind": "text", "box": B, "bullets": True, "lines": 3},
-    "kpi_row": {"kind": "kpi_row", "box": B, "n": 3},
+    "kpi_row": {"kind": "kpi_row", "box": B, "n": 3, "direction": "v", "tile": "round"},
     "card_row": {"kind": "card_row", "box": B, "n": 3, "header_strip": True, "icon": True},
     "label_rows": {"kind": "label_rows", "box": B, "rows": 4, "cols": 3},
-    "table": {"kind": "table", "box": B, "rows": 5, "cols": 4, "header_row": True, "harvey": True},
+    "table": {"kind": "table", "box": B, "rows": 5, "cols": 4, "header_row": True, "harvey": True, "marks": "harvey",
+              "highlight_col": 2},
     "chart_area": {"kind": "chart_area", "box": B, "chart_type": "column"},
     "image_area": {"kind": "image_area", "box": B, "variant": "device"},
     "steps": {"kind": "steps", "box": B, "n": 4, "direction": "h"},
-    "timeline": {"kind": "timeline", "box": B, "workstreams": 3, "periods": 8, "milestones": True},
+    "timeline": {"kind": "timeline", "box": B, "workstreams": 3, "periods": 8, "milestones": True, "rounded": True,
+                 "groups": 2},
     "roadmap": {"kind": "roadmap", "box": B, "phases": 3},
     "matrix": {"kind": "matrix", "box": B, "dots": 4},
     "tree": {"kind": "tree", "box": B, "levels": 3, "branching": 2},
@@ -31,6 +33,16 @@ EXAMPLES = {
     "section_divider": {"kind": "section_divider", "number": 2},
     "cover": {"kind": "cover"},
     "closing": {"kind": "closing"},
+    "card_stack": {"kind": "card_stack", "box": B, "n": 4, "header_strip": True, "icon": True},
+    "swimlane": {"kind": "swimlane", "box": B, "lanes": 3, "stages": 4, "curve": True},
+    "journey": {"kind": "journey", "box": B, "n": 5, "curve": True, "persona": True},
+    "flow_diagram": {"kind": "flow_diagram", "box": B, "n": 5, "arrangement": "grid", "icon": True},
+    "device_row": {"kind": "device_row", "box": B, "n": 3, "device": "phone"},
+    "stage_strip": {"kind": "stage_strip", "box": B, "n": 4, "active": 2},
+    "gauge_row": {"kind": "gauge_row", "box": B, "n": 3, "direction": "h"},
+    "network": {"kind": "network", "box": B, "n": 6},
+    "map_callouts": {"kind": "map_callouts", "box": B, "n": 4},
+    "bar_list": {"kind": "bar_list", "box": B, "n": 6, "groups": 2},
 }
 
 SAMPLE = {"version": 3, "components": [
@@ -58,6 +70,15 @@ def test_each_kind_validates(kind):
 
 def test_label_rows_go_up_to_ten_rows():
     assert layout.validate(_lay({**EXAMPLES["label_rows"], "rows": 10}))["components"][0]["rows"] == 10
+
+
+def test_upper_limits_of_the_extended_kinds():
+    for c in ({**EXAMPLES["table"], "cols": 12, "highlight_col": 12, "marks": "check"},
+              {**EXAMPLES["timeline"], "periods": 24, "groups": 6}, {**EXAMPLES["stage_strip"], "n": 6, "active": 6},
+              {**EXAMPLES["card_stack"], "n": 8}, {**EXAMPLES["flow_diagram"], "n": 10},
+              {**EXAMPLES["network"], "n": 12}, {**EXAMPLES["bar_list"], "n": 12, "groups": 4},
+              {**EXAMPLES["swimlane"], "lanes": 6, "stages": 8}, {**EXAMPLES["map_callouts"], "n": 8}):
+        assert layout.validate(_lay(c))["components"][0] == c
 
 
 def test_sample_on_grid_validates_unchanged():
@@ -118,13 +139,37 @@ def test_schema_has_no_free_text_fields():
     (_lay({**EXAMPLES["label_rows"], "cols": 5}), "cols"),
     (_lay({**EXAMPLES["label_rows"], "rows": 11}), "rows"),
     (_lay({**EXAMPLES["table"], "rows": 13}), "rows"),
-    (_lay({**EXAMPLES["table"], "cols": 9}), "cols"),
+    (_lay({**EXAMPLES["table"], "cols": 13}), "cols"),
+    (_lay({**EXAMPLES["table"], "marks": "stars"}), "stars"),
+    (_lay({**EXAMPLES["table"], "highlight_col": 5}), "highlight_col"),
+    (_lay({**EXAMPLES["kpi_row"], "direction": "d"}), "direction"),
+    (_lay({**EXAMPLES["kpi_row"], "tile": "hex"}), "hex"),
     (_lay({**EXAMPLES["chart_area"], "chart_type": "radar"}), "radar"),
     (_lay({"kind": "chart_area", "box": B}), "chart_type"),
     (_lay({**EXAMPLES["image_area"], "variant": "video"}), "video"),
     (_lay({**EXAMPLES["steps"], "direction": "diagonal"}), "diagonal"),
     (_lay({**EXAMPLES["steps"], "n": 9}), "n"),
-    (_lay({**EXAMPLES["timeline"], "periods": 13}), "periods"),
+    (_lay({**EXAMPLES["timeline"], "periods": 25}), "periods"),
+    (_lay({**EXAMPLES["timeline"], "groups": 7}), "groups"),
+    (_lay({**EXAMPLES["timeline"], "periods": 2, "groups": 3}), "groups"),
+    (_lay({**EXAMPLES["card_stack"], "n": 1}), "n"),
+    (_lay({**EXAMPLES["card_stack"], "n": 9}), "n"),
+    (_lay({**EXAMPLES["swimlane"], "lanes": 7}), "lanes"),
+    (_lay({**EXAMPLES["swimlane"], "stages": 9}), "stages"),
+    (_lay({**EXAMPLES["journey"], "n": 2}), "n"),
+    (_lay({**EXAMPLES["journey"], "n": 9}), "n"),
+    (_lay({**EXAMPLES["flow_diagram"], "n": 11}), "n"),
+    (_lay({**EXAMPLES["flow_diagram"], "arrangement": "circle"}), "circle"),
+    (_lay({**EXAMPLES["device_row"], "n": 7}), "n"),
+    (_lay({**EXAMPLES["device_row"], "device": "watch"}), "watch"),
+    (_lay({**EXAMPLES["stage_strip"], "n": 7}), "n"),
+    (_lay({**EXAMPLES["stage_strip"], "active": 5}), "active"),
+    (_lay({**EXAMPLES["gauge_row"], "n": 7}), "n"),
+    (_lay({**EXAMPLES["network"], "n": 2}), "n"),
+    (_lay({**EXAMPLES["network"], "n": 13}), "n"),
+    (_lay({**EXAMPLES["map_callouts"], "n": 9}), "n"),
+    (_lay({**EXAMPLES["bar_list"], "n": 13}), "n"),
+    (_lay({**EXAMPLES["bar_list"], "n": 2, "groups": 3}), "groups"),
     (_lay({**EXAMPLES["timeline"], "workstreams": 7}), "workstreams"),
     (_lay({**EXAMPLES["roadmap"], "phases": 7}), "phases"),
     (_lay({**EXAMPLES["matrix"], "dots": 9}), "dots"),

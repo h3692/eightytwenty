@@ -28,8 +28,8 @@ def _snap(v, w, cells):
 
 def validate(layout):
     """Return a copy with every box snapped to the grid; raise ValueError unless it matches the schema, boxes stay
-    on the slide, the tracker's active pill exists, trees stay readable and tracker, logo and the whole-slide kinds
-    appear at most once."""
+    on the slide, active pills, highlighted columns and groups exist, trees stay readable and tracker, logo and the
+    whole-slide kinds appear at most once."""
     _check(layout, SCHEMA)
     out = copy.deepcopy(layout)
     comps, bad = out["components"], []
@@ -40,8 +40,11 @@ def validate(layout):
                 bad.append(f"components/{k}/box: off the slide")
             (x, w), (y, h) = _snap(x, w, COLS), _snap(y, h, ROWS)
             c["box"] = [x, y, w, h]
-        if c["kind"] == "tracker" and c["active"] > c["n"]:
+        if c["kind"] in ("tracker", "stage_strip") and c["active"] > c["n"]:
             bad.append(f"components/{k}/active: past the last of {c['n']} pills")
+        for field, count in (("highlight_col", "cols"), ("groups", "periods" if c["kind"] == "timeline" else "n")):
+            if c.get(field, 0) > c.get(count, 0):
+                bad.append(f"components/{k}/{field}: more than {count}")
         if c["kind"] == "tree" and c["branching"] ** (c["levels"] - 1) > MAX_LEAVES:
             bad.append(f"components/{k}: more than {MAX_LEAVES} leaves, zoom out")
     kinds = [c["kind"] for c in comps]

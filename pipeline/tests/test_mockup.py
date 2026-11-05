@@ -34,7 +34,27 @@ BUSY = _lay(
     {"kind": "image_area", "box": [0.75, 0.75, 0.25, 0.125], "variant": "map"},
     {"kind": "takeaway", "box": [0, 0.875, 1, 0.125]},
 )
-SLIDES = {kind: _lay(EXAMPLES[kind]) for kind in EXAMPLES} | {"busy": BUSY}
+B, FULL_BOX = [0, 0, 0.5, 0.5], [0, 0, 1, 1]
+MAXED = {  # every count at its upper limit, on the whole content area
+    "table_check": {**EXAMPLES["table"], "box": FULL_BOX, "rows": 12, "cols": 12, "harvey": False, "marks": "check",
+                    "highlight_col": 12},
+    "timeline_24": {**EXAMPLES["timeline"], "box": FULL_BOX, "workstreams": 6, "periods": 24, "groups": 6},
+    "kpi_square_v": {**EXAMPLES["kpi_row"], "box": FULL_BOX, "n": 6, "tile": "square"},
+    "card_stack_8": {**EXAMPLES["card_stack"], "box": FULL_BOX, "n": 8},
+    "swimlane_max": {**EXAMPLES["swimlane"], "box": FULL_BOX, "lanes": 6, "stages": 8},
+    "journey_8": {**EXAMPLES["journey"], "box": FULL_BOX, "n": 8},
+    "flow_10": {**EXAMPLES["flow_diagram"], "box": FULL_BOX, "n": 10},
+    "laptops_6": {**EXAMPLES["device_row"], "box": FULL_BOX, "n": 6, "device": "laptop"},
+    "gauges_v_6": {**EXAMPLES["gauge_row"], "box": FULL_BOX, "n": 6, "direction": "v"},
+    "network_12": {**EXAMPLES["network"], "box": FULL_BOX, "n": 12},
+    "map_8": {**EXAMPLES["map_callouts"], "box": FULL_BOX, "n": 8},
+    "bar_list_12": {**EXAMPLES["bar_list"], "box": FULL_BOX, "n": 12, "groups": 4},
+}
+NEW_KINDS = ("card_stack", "swimlane", "journey", "flow_diagram", "device_row", "stage_strip", "gauge_row", "network",
+             "map_callouts", "bar_list")
+NEW_BUSY = _lay(*(dict(EXAMPLES[k], box=[(i % 2) / 2, (i // 2) / 4, 0.5, 0.25]) for i, k in enumerate(NEW_KINDS[:8])))
+SLIDES = {kind: _lay(EXAMPLES[kind]) for kind in EXAMPLES} | {"busy": BUSY, "new_busy": NEW_BUSY} | \
+    {name: _lay(c) for name, c in MAXED.items()}
 
 
 def _shapes(layout):
@@ -144,7 +164,7 @@ def test_tables_are_real_and_harvey_balls_are_drawn():
     assert table.cell(3, 2).text == ""  # Harvey ball cells
     balls = [s for s in shapes if s.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE and s.auto_shape_type == MSO_SHAPE.OVAL]
     assert len(balls) == 6 * 3
-    plain = _shapes(_lay({**EXAMPLES["table"], "harvey": False, "header_row": False}))
+    plain = _shapes(_lay({**EXAMPLES["table"], "harvey": False, "marks": "none", "header_row": False}))
     assert next(s for s in plain if s.has_table).table.cell(0, 1).text == "Text here"
 
 
@@ -204,6 +224,207 @@ def test_hub_draws_a_centre_and_n_satellites_with_optional_spokes_and_cycle_arro
             if a is not b:
                 assert (a.left + a.width <= b.left or b.left + b.width <= a.left or a.top + a.height <= b.top
                         or b.top + b.height <= a.top), (a.name, b.name)
+
+
+# --- Z1b kinds -------------------------------------------------------------------------------------------------
+
+def _auto(shapes, *types):
+    return [s for s in shapes if s.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE and s.auto_shape_type in types]
+
+
+def _freeforms(shapes):
+    return [s for s in shapes if s.shape_type == MSO_SHAPE_TYPE.FREEFORM]
+
+
+def _body(layout):
+    return [s for s in _shapes(layout) if s.top > H * 0.2]
+
+
+@pytest.mark.parametrize("kind", NEW_KINDS + ("kpi_row", "table", "timeline"))
+def test_new_and_extended_kinds_stay_inside_their_box(kind):
+    box = [0.5, 0.25, 0.5, 0.5]
+    for c in [EXAMPLES[kind]] + [m for m in MAXED.values() if m["kind"] == kind]:
+        x, y, w, h = (round(v * 914400) for v in mockup._place(box))
+        for s in _body(_lay({**c, "box": box})):
+            assert s.left >= x - 2 and s.top >= y - 2, s.name
+            assert s.left + s.width <= x + w + 2 and s.top + s.height <= y + h + 2, s.name
+
+
+@pytest.mark.parametrize("n", [2, 5, 8])
+@pytest.mark.parametrize("strip, icon", [(False, False), (True, True)])
+def test_card_stack_stacks_n_cards_vertically(n, strip, icon):
+    body = _body(_lay({"kind": "card_stack", "box": FULL_BOX, "n": n, "header_strip": strip, "icon": icon}))
+    heads = [s for s in body if _texts([s]) == ["Header here"]]
+    assert len(heads) == n and len({h.left for h in heads}) == 1
+    assert [h.top for h in heads] == sorted({h.top for h in heads})
+    assert _texts(body).count("Icon") == n * icon
+
+
+@pytest.mark.parametrize("direction, tile", [("h", "round"), ("v", "round"), ("v", "square"), ("h", "square")])
+def test_kpi_row_runs_horizontal_or_vertical_with_round_or_square_tiles(direction, tile):
+    body = _body(_lay({"kind": "kpi_row", "box": FULL_BOX, "n": 4, "direction": direction, "tile": tile}))
+    values = [s for s in body if _texts([s])[:1] in (["XX%"], ["$X.XM"])]
+    assert len(values) == 4
+    lead, other = ("left", "top") if direction == "h" else ("top", "left")
+    assert len({getattr(v, lead) for v in values}) == 4 and len({getattr(v, other) for v in values}) == 1
+    assert len(_auto(body, MSO_SHAPE.OVAL)) == 4 * (tile == "round")
+
+
+def test_kpi_row_defaults_to_the_old_horizontal_square_tiles():
+    old = _shapes(_lay({"kind": "kpi_row", "box": B, "n": 3}))
+    assert [(s.left, s.top, s.width, s.height) for s in old] == [
+        (s.left, s.top, s.width, s.height) for s in _shapes(_lay({"kind": "kpi_row", "box": B, "n": 3,
+                                                                   "direction": "h", "tile": "square"}))]
+
+
+
+def test_table_check_marks_and_highlighted_column():
+    c = {"kind": "table", "box": FULL_BOX, "rows": 5, "cols": 4, "header_row": True, "marks": "check",
+         "highlight_col": 2}
+    shapes = _shapes(_lay(c))
+    table = next(s for s in shapes if s.has_table).table
+    assert table.cell(2, 1).text == "" and table.cell(0, 1).text == "Header here"
+    ticks, crosses = _freeforms(shapes), _auto(shapes, MSO_SHAPE.MATH_MULTIPLY)
+    assert len(ticks) + len(crosses) == 4 * 3 and ticks and crosses
+    assert not _auto(shapes, MSO_SHAPE.OVAL)
+    fills = [[str(table.cell(r, k).fill.fore_color.rgb) for k in range(4)] for r in range(5)]
+    assert all(row[1] == "E2E5E9" and "E2E5E9" not in row[2:] for row in fills[1:])
+    assert fills[0][1] == "2B2F36"
+
+
+def test_table_marks_harvey_is_the_old_harvey_flag_and_twelve_columns_fit():
+    old = _shapes(_lay({"kind": "table", "box": B, "rows": 5, "cols": 4, "header_row": True, "harvey": True}))
+    new = _shapes(_lay({"kind": "table", "box": B, "rows": 5, "cols": 4, "header_row": True, "marks": "harvey"}))
+    assert len(_auto(new, MSO_SHAPE.OVAL)) == len(_auto(old, MSO_SHAPE.OVAL)) == 4 * 3
+    wide = next(s for s in _shapes(_lay(MAXED["table_check"])) if s.has_table).table
+    assert len(wide.columns) == 12
+
+
+def test_timeline_takes_24_periods_rounded_bars_and_group_pills():
+    body = _body(_lay({"kind": "timeline", "box": FULL_BOX, "workstreams": 3, "periods": 24, "rounded": True,
+                       "groups": 3}))
+    texts = _texts(body)
+    assert texts.count("QX") == 24 and texts.count("Year X") == 3
+    bars = [s for s in _auto(body, MSO_SHAPE.ROUNDED_RECTANGLE) if not _texts([s])]
+    assert len(bars) == 3
+    plain = _body(_lay({"kind": "timeline", "box": FULL_BOX, "workstreams": 3, "periods": 8}))
+    assert "Year X" not in _texts(plain) and not _auto(plain, MSO_SHAPE.ROUNDED_RECTANGLE)
+
+
+@pytest.mark.parametrize("curve", [False, True])
+def test_swimlane_draws_lanes_by_stages_with_an_optional_curve(curve):
+    body = _body(_lay({"kind": "swimlane", "box": FULL_BOX, "lanes": 3, "stages": 5, "curve": curve}))
+    texts = _texts(body)
+    assert texts.count("Text here") == 15 and texts.count("Header here") == 3 + 5
+    assert len(_freeforms(body)) == curve and len(_auto(body, MSO_SHAPE.OVAL)) == 5 * curve
+
+
+@pytest.mark.parametrize("n", [3, 6, 8])
+@pytest.mark.parametrize("curve, persona", [(False, False), (True, True)])
+def test_journey_alternates_milestones_above_and_below_the_axis(n, curve, persona):
+    box = [0, 0, 1, 0.75]
+    body = _body(_lay({"kind": "journey", "box": box, "n": n, "curve": curve, "persona": persona}))
+    texts = _texts(body)
+    assert [t for t in texts if t.isdigit()] == [str(k) for k in range(1, n + 1)]
+    assert ("Name here" in texts) == persona
+    assert len(_freeforms(body)) == curve
+    x, y, w, h = mockup._place(box)
+    axis = (y + h / 2) * 914400
+    heads = sorted((s for s in body if _texts([s]) == ["Header here"]), key=lambda s: s.left)
+    assert len(heads) == n
+    assert all((s.top + s.height / 2 < axis) == (k % 2 == 0) for k, s in enumerate(heads))
+
+
+def _no_overlap(nodes):
+    for a in nodes:
+        for b in nodes:
+            if a is not b:
+                assert (a.left + a.width <= b.left or b.left + b.width <= a.left or a.top + a.height <= b.top
+                        or b.top + b.height <= a.top), (a.name, b.name)
+
+
+@pytest.mark.parametrize("n", [3, 7, 10])
+@pytest.mark.parametrize("arrangement, icon", [("row", False), ("grid", True)])
+def test_flow_diagram_links_n_nodes_with_arrows(n, arrangement, icon):
+    body = _body(_lay({"kind": "flow_diagram", "box": FULL_BOX, "n": n, "arrangement": arrangement, "icon": icon}))
+    nodes = [s for s in body if _texts([s]) == ["Header here"]]
+    assert len(nodes) == n and _lines(body) == (0, n - 1)
+    assert (len({s.top for s in nodes}) > 1) == (arrangement == "grid")
+    assert _texts(body).count("Icon") == n * icon
+    _no_overlap(nodes)
+
+
+@pytest.mark.parametrize("device", ["phone", "laptop"])
+def test_device_row_draws_n_screens(device):
+    body = _body(_lay({"kind": "device_row", "box": FULL_BOX, "n": 4, "device": device}))
+    assert _texts(body).count("Image here") == 4
+    assert len(_auto(body, MSO_SHAPE.TRAPEZOID)) == 4 * (device == "laptop")
+
+
+@pytest.mark.parametrize("n, active", [(2, 1), (4, 3), (6, 6)])
+def test_stage_strip_draws_chevrons_with_the_active_one_dark(n, active):
+    body = _body(_lay({"kind": "stage_strip", "box": [0, 0, 1, 0.125], "n": n, "active": active}))
+    chevrons = sorted(_auto(body, MSO_SHAPE.PENTAGON, MSO_SHAPE.CHEVRON), key=lambda s: s.left)
+    assert len(chevrons) == n and len({s.top for s in chevrons}) == 1
+    assert [_fill(s) for s in chevrons] == ["F3F4F6" if k != active - 1 else "2B2F36" for k in range(n)]
+
+
+def test_stage_strip_sits_alongside_the_tracker():
+    layout = _lay(EXAMPLES["tracker"], {"kind": "stage_strip", "box": [0, 0, 1, 0.125], "n": 4, "active": 2})
+    assert len(_auto(_shapes(layout), MSO_SHAPE.ROUNDED_RECTANGLE)) == 4  # tracker pills untouched
+
+
+@pytest.mark.parametrize("direction", ["h", "v"])
+def test_gauge_row_draws_n_donut_gauges(direction):
+    body = _body(_lay({"kind": "gauge_row", "box": FULL_BOX, "n": 5, "direction": direction}))
+    arcs = _auto(body, MSO_SHAPE.BLOCK_ARC)
+    assert len(arcs) == 5 and _texts(body).count("XX%") == 5
+    assert len({(s.top if direction == "h" else s.left) for s in arcs}) == 1
+
+
+@pytest.mark.parametrize("n", [3, 7, 12])
+def test_network_nodes_are_connected_and_seeded(n):
+    layout = _lay({"kind": "network", "box": FULL_BOX, "n": n})
+    body = _body(layout)
+    nodes = [s for s in body if s.shape_type == MSO_SHAPE_TYPE.AUTO_SHAPE]
+    lines = [s for s in body if s.shape_type == MSO_SHAPE_TYPE.LINE]
+    assert len(nodes) == n and len(lines) >= n - 1
+    _no_overlap(nodes)
+    centres = [(s.left + s.width / 2, s.top + s.height / 2) for s in nodes]
+
+    def node(px, py):
+        return min(range(n), key=lambda k: abs(centres[k][0] - px) + abs(centres[k][1] - py))
+
+    seen, todo = {0}, [0]
+    edges = [(node(ln.begin_x, ln.begin_y), node(ln.end_x, ln.end_y)) for ln in lines]
+    while todo:
+        k = todo.pop()
+        for a, b in edges:
+            for u, v in ((a, b), (b, a)):
+                if u == k and v not in seen:
+                    seen.add(v)
+                    todo.append(v)
+    assert seen == set(range(n))
+    assert [(s.left, s.top) for s in _body(layout)] == [(s.left, s.top) for s in body]
+
+
+@pytest.mark.parametrize("n", [1, 4, 8])
+def test_map_callouts_number_each_marker_and_its_label_with_a_leader_line(n):
+    body = _body(_lay({"kind": "map_callouts", "box": FULL_BOX, "n": n}))
+    texts = _texts(body)
+    assert "Map here" in texts
+    assert sorted(t for t in texts if t.isdigit()) == sorted(str(k) for k in range(1, n + 1) for _ in range(2))
+    assert _lines(body) == (n, 0)
+
+
+@pytest.mark.parametrize("groups", [1, 2, 4])
+def test_bar_list_draws_n_rounded_bars_under_optional_group_headers(groups):
+    body = _body(_lay({"kind": "bar_list", "box": FULL_BOX, "n": 8, "groups": groups}))
+    texts = _texts(body)
+    heads = groups if groups > 1 else 0
+    assert texts.count("Text here") == 8 and texts.count("$X.XM") == 8 + heads
+    assert texts.count("Header here") == heads
+    assert len(_auto(body, MSO_SHAPE.ROUNDED_RECTANGLE)) == 8 + heads
 
 
 def test_section_divider_shows_its_number():
@@ -267,6 +488,10 @@ def test_vocabulary_is_placeholder_copy_only():
 
 def test_saved_mockups_are_byte_identical(tmp_path):
     a, b = tmp_path / "a.pptx", tmp_path / "b.pptx"
+    for lay in (NEW_BUSY, *(_lay(c) for c in MAXED.values())):
+        mockup.save(mockup.build_mockup_v3(lay), a)
+        mockup.save(mockup.build_mockup_v3(lay), b)
+        assert a.read_bytes() == b.read_bytes()
     mockup.save(mockup.build_mockup_v3(BUSY), a)
     mockup.save(mockup.build_mockup_v3(BUSY), b)
     assert a.read_bytes() == b.read_bytes()
