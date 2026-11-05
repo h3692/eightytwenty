@@ -12,7 +12,9 @@ the source slide came from. Then write verdicts/<id>.json in this folder:
   {{"identified": true or false, "guess": "<your best guess, or none>"}}
 Set "identified" to true if anything in the record or mockup names or clearly points to a specific client,
 competition, team, person or place, or if any shape in the record or mockup reproduces a logo, brand mark, mascot or
-recognisable icon. Records with "identified": true, or without a valid verdict, are never published.
+recognisable icon. Specific brand colours, mascots, wordmarks, sponsor logos, what an illustration depicts and a highly
+specific operating model (named site types, routes or steps) count as identifying too.
+Records with "identified": true, or without a valid verdict, are never published.
 
 Judge the flow with the whole deck at once: read flow.json together with every record and mockup above, and ask
 whether the sequence, the arc or its line of text, combined with the slides, points to a specific client,

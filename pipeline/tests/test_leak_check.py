@@ -135,7 +135,7 @@ def test_malformed_verdict_counts_as_fail(deck, lib):
 @pytest.mark.parametrize("text", [
     "Summarises financial outcomes with a revenue bar chart and a highlighted growth callout on the left, two "
     "ring-framed headline metrics below, and an assumptions list on the right.",
-    "Screenshots are annotated with a red circle and leader line to the key figure.",
+    "Screenshots are annotated with an accent circle and leader line to the key figure.",
     "A chevron strip with boxed percentages under each stage gives the data story at a glance.",
     "Appendix mosaic of competitor creatives illustrating a shared tactic.",
     "Coloured vertical stage tabs and coloured column headers form a clear matrix.",
@@ -222,6 +222,37 @@ def test_real_names_numbers_and_copies_still_fail(text, source, problem):
     assert any(problem in p for p in found), found
 
 
+@pytest.mark.parametrize("text, words", [
+    ("A coral wordmark with a smiling mascot letter", "coral, mascot, wordmark"),
+    ("A blue field with world-map dot texture and a colourful ribbon swoosh", "blue, swoosh, world map"),
+    ("Three sponsor logos inside a thin red frame", "red, sponsor"),
+    ("A bespoke botanical illustration and logo lockup on a green watercolour wash", "botanical, green, lockup"),
+    ("A team affiliation list under the title", "affiliation"),
+    ("A row of portraits, two corner logos and a domain banner", "domain, portraits"),
+    ("A reddish band and a bluish tint behind the title", "bluish, reddish"),
+    ("Teal, navy and gold blocks with a crimson accent", "crimson, gold, navy, teal"),
+    ("A monogram, an emblem, a crest and a watermark", "crest, emblem, monogram, watermark"),
+    ("A logomark beside the signature", "logomark, signature"),
+    ("Brand art and a brand motif frame the brand illustration", "brand art, brand illustration, brand motif"),
+    ("Footer carries the acme.com address", "acme.com"),
+    ("A skyline and a landmark behind a cartoon character", "character, landmark, skyline"),
+    ("An owl illustration next to the title", "owl"),
+])
+def test_brand_identity_words_fail_closed(text, words):
+    assert f"brand identity: {words}" in leak_check.problems_in(text, "", set())
+
+
+@pytest.mark.parametrize("text", [
+    "Primary fill with an accent rule, a brand-colour fill band, dark and light panels, mid-grey text, black on white",
+    "A greyscale photo with a tint, a shade, saturated headers and muted labels",
+    "logo top right, a title band and two headshot slots below",
+    "An illustration, a photo, an icon row, an image and a map",
+    "The chart sits left and leaves quiet space around it",
+])
+def test_role_and_placement_words_are_not_brand_identity(text):
+    assert leak_check.problems_in(text, "", set()) == []
+
+
 @pytest.mark.parametrize("missing, problem", [("layouts/{d}/slide-02.v3.json", "no v3 layout"),
                                               ("mockups/{d}/slide-02.png", "no mockup"),
                                               ("mockups/{d}/slide-02.pptx", "no mockup")])
@@ -277,6 +308,8 @@ def test_judge_worksheet_is_about_mockups(deck, lib):
     text = (lib / "judge" / deck_id / "JUDGE.txt").read_text()
     assert "mockup" in text and all(i in text for i in ids)
     assert not any(w in text.lower() for w in ("outline", "path", "trace"))
+    assert ("Specific brand colours, mascots, wordmarks, sponsor logos, what an illustration depicts and a highly\n"
+            "specific operating model (named site types, routes or steps) count as identifying too.") in text
 
 
 def _app_xml(old, new):
@@ -366,6 +399,7 @@ def test_flow_waits_for_the_judge_then_publishes_with_its_slides(deck, lib):
     ("Builds trust the quillmoor way, then lands the plan before any detail", "name from slide text"),
     ("Opens with members who redeem twice, then lands the plan before any detail", "shared words"),
     ("Opens on one promise, then lands the plan in 2 moves", "digit"),
+    ("Opens on a teal cover with the mascot, then lands the plan", "brand identity: mascot, teal"),
 ])
 def test_flow_text_is_checked_against_every_slide_of_the_deck(deck, lib, why, problem):
     deck_id, ids = _six_slide_deck(deck, lib, why=why)

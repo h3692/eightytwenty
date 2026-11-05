@@ -31,6 +31,14 @@ Hard rules for every free-text field (purpose, why_it_works, pattern). A leak ch
     brand, product or place names, and no hint that identifies them.
   - No digits at all (write "one big number", not "3x").
   - Never copy three or more consecutive words from the slide's text.
+  - No brand identity. No specific colour names (red, blue, coral, teal, navy, gold ... or "-ish" forms): use
+    roles (primary, accent, brand-colour fill, dark, light, mid-grey, black, white, greyscale, tint, shade,
+    saturated, muted).
+  - No mascot, wordmark, lockup, logomark, monogram, emblem, crest, watermark, signature, sponsor, affiliation,
+    portrait, domain or URL, and no "brand art", "brand illustration", "brand motif" or "brand swoosh". Write
+    "headshot slots" for portraits; "logo" is fine as a placement ("logo top right").
+  - Never say what an illustration depicts (botanical, an animal, a character, a landmark, a skyline, a world
+    map): write "illustration", "photo", "icon", "image" or "map".
   - No other fields than the ones above.
 
 === File 2: component layout ===

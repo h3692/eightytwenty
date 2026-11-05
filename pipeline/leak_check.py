@@ -9,7 +9,8 @@ EVERY slide of the deck, judged with the whole deck, and published to library/fl
 its slides are published too (blank and duplicate slides not counted).
 
 Free-text fields (purpose, why_it_works, description, text patterns) must not contain digits, share a 3-word
-sequence with the slide's original text, or contain names (spaCy NER, plus any name found in the slide text).
+sequence with the slide's original text, contain names (spaCy NER, plus any name found in the slide text), or
+name a brand identity (HUES, BRAND_WORDS, BRAND_PHRASES, a web domain), whatever DESIGN_TERMS says.
 Numeric and enum DNA fields are exempt. The wireframe draws only from the DNA, so it inherits this check.
 
 NER and title-case slides mistake ordinary words for names, so a word only counts as a name when it is rare
@@ -60,6 +61,28 @@ FRAMEWORKS = sorted((p.split() for p in (  # standard framework names, as _words
     "political economic social technological legal environmental",
     "political economic social technological environmental legal",
     "political economic social technological")), key=len, reverse=True)
+# brand identity re-identifies a deck from prose alone: specific hues, brand marks and what an illustration depicts.
+# Banned whatever DESIGN_TERMS says; roles (primary, accent, dark, mid-grey ...) and generic placement words
+# ("logo top right", "illustration", "photo", "icon", "image", "map", "headshot slots") stay allowed.
+HUES = {"red", "orange", "yellow", "green", "blue", "purple", "pink", "magenta", "coral", "teal", "navy", "turquoise",
+        "maroon", "gold", "golden", "silver", "beige", "brown", "olive", "lime", "cyan", "violet", "indigo", "crimson",
+        "scarlet", "amber", "peach", "mint", "lavender", "burgundy", "fuchsia", "aqua", "khaki", "ochre", "mustard",
+        "saffron", "emerald", "ruby", "sapphire", "salmon", "lilac", "mauve", "cobalt", "azure", "vermilion"}
+BRAND_WORDS = {"mascot", "mascots", "wordmark", "wordmarks", "lockup", "lockups", "logomark", "logomarks", "monogram",
+               "monograms", "emblem", "emblems", "sponsor", "sponsors", "sponsored", "crest", "crests", "watermark",
+               "watermarks", "signature", "signatures", "swoosh", "portrait", "portraits", "affiliation",
+               "affiliations", "affiliated", "domain", "domains", "url", "urls", "www", "http", "https",
+               # what an illustration depicts
+               "botanical", "floral", "flower", "flowers", "foliage", "leaf", "character", "characters",
+               "animal", "animals", "cat", "bird", "birds", "lion", "tiger", "elephant", "bear", "owl", "fox", "horse",
+               "fish", "butterfly", "bee", "rabbit", "panda", "monkey", "eagle", "dragon", "unicorn", "penguin",
+               "deer", "wolf", "shark", "dolphin", "whale", "landmark", "landmarks", "monument", "skyline",
+               "cityscape", "mountain", "mountains"}
+BRAND_WORDS |= HUES | {h + s for h in HUES for s in ("s", "ish", h[-1] + "ish")} | {h[:-1] + "ish" for h in HUES}
+BRAND_PHRASES = [("world", "map")] + [("brand", w) for w in ("art", "artwork", "illustration", "illustrations",
+                                                             "motif", "motifs", "swoosh", "mark", "marks", "graphic",
+                                                             "graphics", "pattern", "character", "mascot")]
+DOMAIN = re.compile(r"\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|org|net|io|co|edu|gov|ai|app|ca|uk|in|au)\b", re.I)
 TEMPLATE = (Path(__file__).parent / "templates" / "judge.txt").read_text()
 MIN_SHARE = 0.6  # of a deck's slides that must be published before its flow is
 MASTER_PARTS = ("ppt/slideMasters/", "ppt/slideLayouts/")  # the only parts the stock boilerplate may sit in
@@ -148,6 +171,10 @@ def problems_in(text, source, names):
     hits = sorted(w for w in names & set(words) if w not in DESIGN_TERMS and (w in written_as_name or not _common(w)))
     if hits:
         found.append(f"name from slide text: {hits[0]!r}")
+    brand = {w for w in words if w in BRAND_WORDS} | {" ".join(p) for p in zip(words, words[1:]) if p in BRAND_PHRASES}
+    brand |= {m.lower() for m in DOMAIN.findall(text)}
+    if brand:
+        found.append(f"brand identity: {', '.join(sorted(brand))}")
     return found
 
 

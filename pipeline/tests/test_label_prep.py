@@ -38,6 +38,14 @@ LEAK_RULES = (  # verbatim: the labeling agent sees exactly these rules
     '  - No digits at all (write "one big number", not "3x").',
     "  - Never copy three or more consecutive words from the slide's text.",
     "  - No other fields than the ones above.",
+    '  - No brand identity. No specific colour names (red, blue, coral, teal, navy, gold ... or "-ish" forms): use\n'
+    "    roles (primary, accent, brand-colour fill, dark, light, mid-grey, black, white, greyscale, tint, shade,\n"
+    "    saturated, muted).",
+    "  - No mascot, wordmark, lockup, logomark, monogram, emblem, crest, watermark, signature, sponsor, affiliation,\n"
+    '    portrait, domain or URL, and no "brand art", "brand illustration", "brand motif" or "brand swoosh". Write\n'
+    '    "headshot slots" for portraits; "logo" is fine as a placement ("logo top right").',
+    "  - Never say what an illustration depicts (botanical, an animal, a character, a landmark, a skyline, a world\n"
+    '    map): write "illustration", "photo", "icon", "image" or "map".',
     "  - No words from the slide and no fields other than the ones above: the mockup only ever shows fixed placeholder\n"
     '    copy ("Header here", "Text here", "XX%" ...).',
 )
