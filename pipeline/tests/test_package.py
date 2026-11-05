@@ -131,3 +131,17 @@ def test_refuses_flows_changed_since_embed(lib):
     (lib / "flows" / "00000000000000cc.json").write_text((lib / "flows" / "00000000000000aa.json").read_text())
     with pytest.raises(SystemExit, match="embed"):
         package.run(lib)
+
+
+def test_slides_get_the_impact_of_their_step_in_a_published_flow(lib):
+    ids = _library(lib, ["Compare the options side by side", "Pick a winner", "Recap the plan"])
+    _flows(lib, ["00000000000000aa"])
+    f = lib / "flows" / "00000000000000aa.json"
+    steps = [{"id": ids[0], "archetype": "options", "section": "solution", "impact": "none", "builds_on": None},
+             {"id": ids[1], "archetype": "options", "section": "solution", "impact": "spotlight", "builds_on": 1}]
+    f.write_text(json.dumps(dict(json.loads(f.read_text()), steps=steps)))
+    package.run(lib)
+    db = _load(lib)
+    assert db.execute("SELECT id, impact FROM slides ORDER BY n").fetchall() == [
+        (ids[0], "none"), (ids[1], "spotlight"), (ids[2], "none")]  # a slide in no flow is not an impact slide
+    assert "impact" not in json.loads(db.execute("SELECT dna FROM slides WHERE n = 1").fetchone()[0])  # records unchanged

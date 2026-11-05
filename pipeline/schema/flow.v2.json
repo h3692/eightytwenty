@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "flow.v2.json",
+  "title": "Deck flow v2: v1 plus optional impact marks (written in the maintainer's own Claude Code session; everything else in a flow record is computed)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["sections", "arc", "why_the_flow_works"],
+  "dependentRequired": {"impact": ["builds_on"], "builds_on": ["impact"]},
+  "properties": {
+    "sections": {
+      "type": "array",
+      "description": "one section per visible slide, in deck order",
+      "items": {"enum": ["cover", "hook", "executive-summary", "agenda", "situation", "problem-analysis", "customer", "competition", "solution", "how-it-works", "implementation", "financials", "risks", "kpis", "closing", "appendix", "other"]}
+    },
+    "arc": {"enum": ["problem-to-solution", "pillars", "journey", "options-to-pick", "chronological", "other"]},
+    "why_the_flow_works": {"type": "string", "minLength": 20, "maxLength": 400},
+    "impact": {
+      "type": "array",
+      "description": "one impact device per visible slide, in deck order",
+      "items": {"enum": ["none", "build", "spotlight", "shade_ribbon", "repeat"]}
+    },
+    "builds_on": {
+      "type": "array",
+      "description": "per visible slide: null, or the earlier slide (1-based) an impact slide builds on",
+      "items": {"type": ["integer", "null"], "minimum": 1}
+    }
+  }
+}

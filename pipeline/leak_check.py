@@ -3,6 +3,7 @@ are promoted to library/records/ + library/wireframes/; anything else is withhel
 A record's picture is its slide's mockup (library/mockups/<deck>/slide-NN.png, built from layouts/<deck>/slide-NN.v3.json);
 a slide without a v3 layout or mockup, or with a mockup older than its layout, is never published, and its mockup .pptx
 must pass the placeholder whitelist. Blank and near-duplicate slides (pipeline.dedupe) are withdrawn, never judged.
+A verdict is discarded when its item fails the automated check or its judge copy (record, mockup, flow) changes.
 
 A deck flow (work/<deck>/flow-record.json, decks of flow.MIN_SLIDES+ slides) is checked the same way against the text of
 EVERY slide of the deck, judged with the whole deck, and published to library/flows/ only if at least MIN_SHARE of
@@ -198,8 +199,12 @@ def check_flow(record, source):
     try:
         if set(record) != flow.RECORD_KEYS:
             raise ValueError(f"fields {sorted(set(record) ^ flow.RECORD_KEYS)}")
+        if any(set(s) != flow.STEP_KEYS for s in record["steps"]):
+            raise ValueError(f"step fields other than {sorted(flow.STEP_KEYS)}")
         flow.validate({"sections": [s["section"] for s in record["steps"]], "arc": record["arc"],
-                       "why_the_flow_works": record["why_the_flow_works"]}, len(record["steps"]))
+                       "why_the_flow_works": record["why_the_flow_works"],
+                       "impact": [s["impact"] for s in record["steps"]],
+                       "builds_on": [s["builds_on"] for s in record["steps"]]}, len(record["steps"]))
     except Exception as e:  # fail closed on any schema problem
         return [f"schema: {e}"]
     return [f"why_the_flow_works: {p}"
@@ -275,6 +280,14 @@ def _verdict(path):
         return "fail"
 
 
+def _copy_for_judge(copies, verdict):
+    """Copy (source, judge copy) pairs; a verdict on other bytes than the fresh copies is stale, so it is discarded."""
+    if any(dst.exists() and dst.read_bytes() != src.read_bytes() for src, dst in copies):
+        verdict.unlink(missing_ok=True)
+    for src, dst in copies:
+        shutil.copyfile(src, dst)
+
+
 def run(deck_id, library):
     lib = Path(library)
     work, judge = lib / "work" / deck_id, lib / "judge" / deck_id
@@ -287,8 +300,8 @@ def run(deck_id, library):
         if rid in skip:  # blank or a near-duplicate: withdrawn, never judged
             report[rid] = {"auto": "excluded", "problems": [skip[rid]], "judge": "excluded", "published": False,
                            "excluded": skip[rid]}
-            for p in (judge / f"{rid}.json", judge / f"{rid}.png", lib / "records" / f"{rid}.json",
-                      lib / "wireframes" / f"{rid}.png"):
+            for p in (judge / f"{rid}.json", judge / f"{rid}.png", judge / "verdicts" / f"{rid}.json",
+                      lib / "records" / f"{rid}.json", lib / "wireframes" / f"{rid}.png"):
                 p.unlink(missing_ok=True)
             continue
         nn = f"slide-{dna['slide']:02d}"
@@ -305,12 +318,11 @@ def run(deck_id, library):
         else:
             problems += [f"mockup: {p}" for p in mockup_problems(pptx)]
         r = report[rid] = {"auto": "fail" if problems else "pass", "problems": problems, "judge": "pending"}
-        if problems:
-            for p in (judge / f"{rid}.json", judge / f"{rid}.png"):
+        if problems:  # whatever replaces the problem is judged afresh
+            for p in (judge / f"{rid}.json", judge / f"{rid}.png", judge / "verdicts" / f"{rid}.json"):
                 p.unlink(missing_ok=True)
         else:
-            shutil.copyfile(f, judge / f"{rid}.json")
-            shutil.copyfile(pic, judge / f"{rid}.png")
+            _copy_for_judge(((f, judge / f"{rid}.json"), (pic, judge / f"{rid}.png")), judge / "verdicts" / f"{rid}.json")
             r["judge"] = _verdict(judge / "verdicts" / f"{rid}.json")
         published = (lib / "records" / f"{rid}.json", lib / "wireframes" / f"{rid}.png")
         r["published"] = r["auto"] == "pass" and r["judge"] == "pass"
@@ -324,16 +336,20 @@ def run(deck_id, library):
     visible = sorted(work.glob("slide-??.json"))
     record, published = work / "flow-record.json", lib / "flows" / f"{deck_id}.json"
     shown = sum(r["published"] for r in report.values())  # slides of this deck published
-    (judge / "flow.json").unlink(missing_ok=True)
-    if len(visible) >= flow.MIN_SLIDES:
+    if len(visible) < flow.MIN_SLIDES:
+        (judge / "flow.json").unlink(missing_ok=True)
+    else:
         if record.exists():
             deck_text = "\n".join((work / "text" / f"{f.stem}.txt").read_text() for f in visible)
             problems = check_flow(json.loads(record.read_text()), deck_text)
         else:
             problems = ["no flow record: run flow-prep, follow its worksheet, then flow-build"]
         r = report["flow"] = {"auto": "fail" if problems else "pass", "problems": problems, "judge": "pending"}
-        if not problems:
-            shutil.copyfile(record, judge / "flow.json")
+        if problems:
+            for p in (judge / "flow.json", judge / "verdicts" / "flow.json"):
+                p.unlink(missing_ok=True)
+        else:
+            _copy_for_judge(((record, judge / "flow.json"),), judge / "verdicts" / "flow.json")
             r["judge"] = _verdict(judge / "verdicts" / "flow.json")
         kept = max(len(visible) - len(skip), 1)  # blank and duplicate slides are never published, so never counted
         r["published"] = r["auto"] == "pass" and r["judge"] == "pass" and shown / kept >= MIN_SHARE

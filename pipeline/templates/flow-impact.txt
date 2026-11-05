@@ -1,0 +1,12 @@
+Mark the impact slides of one deck for the eightytwenty design library. Its deck flow is already written:
+  {out}
+ADD two fields to that JSON object, "impact" and "builds_on", and change nothing else: keep sections, arc and
+why_the_flow_works exactly as they are. Look at the contact sheet ONCE, then edit that ONE file, nothing else.
+
+The contact sheet, every slide in deck order (numbered): {sheet}
+The deck's {count} slides, one per line: number, slide type, purpose (from its labels):
+{slides}
+
+The file must still validate against {schema}. The two fields to add:
+
+{impact}No free text: both fields are fixed values and slide numbers only.

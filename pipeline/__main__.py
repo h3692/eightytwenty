@@ -19,6 +19,8 @@ def main(argv=None):
                         ("flow-prep", "write the deck-flow worksheet and contact sheet"),
                         ("flow-build", "flow.json + labels -> deck-flow record")):
         sub.add_parser(name, help=help_).add_argument("deck_id")
+    sub.choices["flow-prep"].add_argument("--impact-only", action="store_true",
+                                          help="worksheet to add impact marks to an existing flow.json, nothing else")
     p = sub.add_parser("embed", help="embed published descriptions via the local Worker")
     p.add_argument("--url", default=f"http://127.0.0.1:{embed.PORT}")
     sub.add_parser("package", help="write records.sql and copy wireframes for deploy")
@@ -51,7 +53,8 @@ def main(argv=None):
             print(f"Not published: fix labels and rebuild, or judge in a fresh session (library/judge/{a.deck_id}/JUDGE.txt).")
             sys.exit(1)
     elif a.stage in ("flow-prep", "flow-build"):
-        out = flow.prep(a.deck_id, a.library) if a.stage == "flow-prep" else flow.build_flow(a.deck_id, a.library)
+        out = flow.prep(a.deck_id, a.library, a.impact_only) if a.stage == "flow-prep" else \
+            flow.build_flow(a.deck_id, a.library)
         if out is None:
             print(f"{a.deck_id}: fewer than {flow.MIN_SLIDES} visible slides, no deck flow (skipped)")
         elif a.stage == "flow-prep":

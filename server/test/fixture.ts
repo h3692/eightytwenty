@@ -10,7 +10,7 @@ const SCHEMA = [
 	"DROP TABLE IF EXISTS meta",
 	`CREATE TABLE slides (n INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE, deck_id TEXT NOT NULL, archetype TEXT NOT NULL,
   industry TEXT NOT NULL, data_type TEXT NOT NULL, purpose TEXT NOT NULL, why_it_works TEXT NOT NULL,
-  description TEXT NOT NULL, dna TEXT NOT NULL)`,
+  description TEXT NOT NULL, dna TEXT NOT NULL, impact TEXT NOT NULL)`,
 	"CREATE INDEX slides_filters ON slides (archetype, industry, data_type)",
 	"CREATE VIRTUAL TABLE slides_fts USING fts5(purpose, why_it_works, description, tokenize='porter')",
 	`CREATE TABLE flows (n INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE, deck_id TEXT NOT NULL, arc TEXT NOT NULL,
@@ -111,7 +111,7 @@ export async function seed(db: D1Database, version = manifest.library_version) {
 	await db.batch([
 		...SCHEMA.map((s) => db.prepare(s)),
 		...rows.flatMap((r) => [
-			db.prepare("INSERT INTO slides VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(r.n, r.id, r.deck_id, r.archetype, r.industry, r.data_type, r.purpose, r.why_it_works, r.description, JSON.stringify(r)),
+			db.prepare("INSERT INTO slides VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(r.n, r.id, r.deck_id, r.archetype, r.industry, r.data_type, r.purpose, r.why_it_works, r.description, JSON.stringify(r), "none"),
 			db.prepare("INSERT INTO slides_fts (rowid, purpose, why_it_works, description) VALUES (?, ?, ?, ?)").bind(r.n, r.purpose, r.why_it_works, r.description),
 		]),
 		...flows.map((f) => db.prepare("INSERT INTO flows VALUES (?, ?, ?, ?, ?, ?, ?, ?)").bind(f.n, f.id, f.deck_id, f.arc, f.length_bucket, f.industry, JSON.stringify(f.record), f.description)),

@@ -1,5 +1,6 @@
 Describe the flow of one whole deck for the eightytwenty design library: the section of every slide, the arc
-pattern and why the flow works. Look at the contact sheet ONCE, then write ONE file, nothing else:
+pattern, why the flow works and where it uses impact slides. Look at the contact sheet ONCE, then write ONE file,
+nothing else:
   {out}
 
 The contact sheet, every slide in deck order (numbered): {sheet}
@@ -14,6 +15,24 @@ It must validate against {schema}. Fields:
                       a section divider takes the section it opens; "other" fits none of them
   arc                 the deck's arc pattern, one of: {arcs}
   why_the_flow_works  why the order of the slides works, 20-400 characters
+  impact              exactly {count} entries, one per slide in deck order, each one of:
+                      {impacts}
+                      (see "Impact slides" below; most slides are "none")
+  builds_on           exactly {count} entries, one per slide in deck order: null, or the number of the
+                      earlier slide this impact slide builds on (see below); always null where impact is "none"
+
+Impact slides are narrative devices: mark where the deck uses them, decided from the contact sheet (it shows
+every slide, including near-duplicates that are never published). A deck usually has only a few.
+  build         reveals elements one by one across consecutive slides. Mark every slide of the sequence
+                build: the first with builds_on null, each later one with builds_on the slide just before it.
+  spotlight     repeats a slide with one element highlighted (the others greyed or faded): builds_on the plain
+                slide it repeats, or null when the deck never shows it plain.
+  shade_ribbon  the previous slide shaded with a ribbon carrying a so-what: builds_on the slide it shades.
+  repeat        an earlier slide repeated as a recap or bookend: builds_on the slide it repeats.
+  none          every other slide (builds_on null).
+Near-duplicate slides found automatically (hints only: check each on the contact sheet, it may be none of these):
+{hints}
+
 
 Hard rules for why_the_flow_works. A leak check rejects the flow otherwise:
   - Describe the design, never the content. No client, competition, team, school, year, person, company,

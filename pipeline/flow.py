@@ -1,5 +1,5 @@
 """Deck flows: an agent looks at a contact sheet of a deck and writes only each slide's section, the arc pattern and
-why the flow works (flow.v1.json); the rest of the record (steps, section dividers, pacing, length bucket, industry,
+why the flow works, and may mark impact slides (flow.v2.json; v1 flows stay valid); the rest of the record (steps, section dividers, pacing, length bucket, industry,
 description) is computed from the slides' labels. Only decks with at least MIN_SLIDES visible slides get a flow.
 The record is built into work/<deck>/flow-record.json; the leak check publishes it to library/flows/."""
 import collections
@@ -10,25 +10,42 @@ from pathlib import Path
 import jsonschema
 from PIL import Image, ImageDraw, ImageFont
 
+from pipeline import dedupe
+
 HERE = Path(__file__).parent
-SCHEMA_PATH = HERE / "schema" / "flow.v1.json"
+SCHEMA_PATH = HERE / "schema" / "flow.v2.json"
 SCHEMA = json.loads(SCHEMA_PATH.read_text())
 SECTIONS = SCHEMA["properties"]["sections"]["items"]["enum"]
 ARCS = SCHEMA["properties"]["arc"]["enum"]
+IMPACTS = SCHEMA["properties"]["impact"]["items"]["enum"]
 TEMPLATE = (HERE / "templates" / "flow.txt").read_text()
+IMPACT_TEMPLATE = (HERE / "templates" / "flow-impact.txt").read_text()
 MIN_SLIDES = 6
 RECORD_KEYS = {"schema_version", "id", "deck_id", "arc", "why_the_flow_works", "steps", "dividers", "pacing",
                "length_bucket", "industry", "description"}
+STEP_KEYS = {"id", "archetype", "section", "impact", "builds_on"}
 TILE, COLUMNS = (320, 180), 5  # contact sheet: slide thumbnails in px, per row
 
 
 def validate(flow, n):
-    """Raise ValueError unless the agent's flow matches the schema and has one section per visible slide."""
+    """Raise ValueError unless the agent's flow matches the schema and has one section (and, when marked, one impact
+    and one builds_on) per visible slide; builds_on names an earlier step, only on an impact slide, and a build's
+    the step just before it."""
     errors = sorted(jsonschema.Draft202012Validator(SCHEMA).iter_errors(flow), key=str)
     if errors:
         raise ValueError("; ".join(f"{'/'.join(map(str, e.path)) or 'flow'}: {e.message}" for e in errors))
-    if len(flow["sections"]) != n:
-        raise ValueError(f"sections: {len(flow['sections'])} entries for {n} slides")
+    for key in ("sections", "impact", "builds_on"):
+        if key in flow and len(flow[key]) != n:
+            raise ValueError(f"{key}: {len(flow[key])} entries for {n} slides")
+    for step, (kind, base) in enumerate(zip(flow.get("impact", ()), flow.get("builds_on", ())), 1):
+        if base is None:
+            continue
+        if kind == "none":
+            raise ValueError(f"builds_on: step {step} is not an impact slide, so its builds_on must be null")
+        if not (type(base) is int and base < step):  # the schema already refused booleans and numbers below one
+            raise ValueError(f"builds_on: step {step} builds on {base}, not an earlier step")
+        if kind == "build" and base != step - 1:
+            raise ValueError(f"builds_on: step {step} is a build, so it builds on step {step - 1}, not {base}")
 
 
 def length_bucket(n):
@@ -52,13 +69,16 @@ def _labels(work):
     return out
 
 
-def prep(deck_id, library):
+def prep(deck_id, library, impact_only=False):
     """Write work/<deck>/flow.prompt.txt and a contact sheet of the slide renders (local only, never published);
-    return the worksheet path, or None for a deck under MIN_SLIDES."""
+    return the worksheet path, or None for a deck under MIN_SLIDES. impact_only writes flow-impact.prompt.txt instead:
+    add impact marks to the deck's existing flow.json and change nothing else."""
     work = Path(library).absolute() / "work" / deck_id
     n = _visible(work)
     if n < MIN_SLIDES:
         return None
+    if impact_only and not (work / "flow.json").exists():
+        raise SystemExit(f"No {work / 'flow.json'} to add impact marks to: run flow-prep without --impact-only.")
     labels = _labels(work)
     renders = [work / f"slide-{k:02d}.png" for k in range(1, n + 1)]
     missing = [p.name for p in renders if not p.exists()]
@@ -72,12 +92,19 @@ def prep(deck_id, library):
             sheet.paste(im.convert("RGB").resize((TILE[0] - 8, TILE[1] - 8)), (x + 4, y + 4))
         d.rectangle((x + 4, y + 4, x + 40, y + 30), fill="black")
         d.text((x + 9, y + 6), f"{k + 1:02d}", fill="white", font=font)
-    sheet_path, out = work / "flow-contact-sheet.png", work / "flow.prompt.txt"
+    sheet_path = work / "flow-contact-sheet.png"
     sheet.save(sheet_path)
-    out.write_text(TEMPLATE.format(
-        out=work / "flow.json", sheet=sheet_path, count=n, schema=SCHEMA_PATH, sections=", ".join(SECTIONS),
-        arcs=", ".join(ARCS), slides="\n".join(f"{k:02d}  {lb['archetype']}  {lb['purpose']}"
-                                               for k, lb in enumerate(labels, 1))))
+    hints = [f"  {d[-2:]}  duplicate_of {k[-2:]} (spotlight/build?)"
+             for d, (k, _) in sorted(dedupe.duplicates(deck_id, library).items())]
+    fields = dict(out=work / "flow.json", sheet=sheet_path, count=n, schema=SCHEMA_PATH,
+                  slides="\n".join(f"{k:02d}  {lb['archetype']}  {lb['purpose']}" for k, lb in enumerate(labels, 1)))
+    text = TEMPLATE.format(**fields, sections=", ".join(SECTIONS), arcs=", ".join(ARCS), impacts=", ".join(IMPACTS),
+                           hints="\n".join(hints) or "  none found")
+    out = work / "flow.prompt.txt"
+    if impact_only:  # the same impact fields and definitions, from the full worksheet
+        text, out = IMPACT_TEMPLATE.format(**fields, impact=text[text.index("  impact "):text.index("Hard rules")]), \
+            work / "flow-impact.prompt.txt"
+    out.write_text(text)
     return out
 
 
@@ -95,10 +122,11 @@ def build_flow(deck_id, library):
     except (OSError, ValueError) as e:
         raise SystemExit(f"{work / 'flow.json'}: {e} (run flow-prep and follow flow.prompt.txt)")
     sections = agent["sections"]
-    rec = {"schema_version": "deck-flow/v1", "id": deck_id, "deck_id": deck_id, "arc": agent["arc"],
+    impact, builds_on = agent.get("impact", ["none"] * n), agent.get("builds_on", [None] * n)
+    rec = {"schema_version": "deck-flow/v2", "id": deck_id, "deck_id": deck_id, "arc": agent["arc"],
            "why_the_flow_works": agent["why_the_flow_works"],
-           "steps": [{"id": f"{deck_id}-{k:02d}", "archetype": lb["archetype"], "section": s}
-                     for k, (lb, s) in enumerate(zip(labels, sections), 1)],
+           "steps": [{"id": f"{deck_id}-{k:02d}", "archetype": lb["archetype"], "section": s, "impact": i,
+                      "builds_on": b} for k, (lb, s, i, b) in enumerate(zip(labels, sections, impact, builds_on), 1)],
            "dividers": [k for k, lb in enumerate(labels, 1) if lb["archetype"] == "section-divider"],
            "pacing": [{"section": s, "slides": len(list(g))} for s, g in itertools.groupby(sections)],
            "length_bucket": length_bucket(n),
@@ -110,11 +138,19 @@ def build_flow(deck_id, library):
 
 
 def describe(rec):
-    """Fixed template, words only (no counts, so no digits): length, arc, industry, the section sequence, the slide
-    types (most used first) and why the flow works."""
-    words = lambda s: s.replace("-", " ")
+    """Fixed template, words only (counts spelled out, so no digits): length, arc, industry, the section sequence,
+    the slide types (most used first), the impact slides per kind and why the flow works."""
+    words = lambda s: s.replace("-", " ").replace("_", " ")
     mix = collections.Counter(s["archetype"] for s in rec["steps"]).most_common()
+    impact = collections.Counter(s["impact"] for s in rec["steps"])
     return (f"{rec['length_bucket'].capitalize()} deck, {words(rec['arc'])} arc, {words(rec['industry'])}. "
             f"Sections: {', '.join(words(p['section']) for p in rec['pacing'])}. "
             f"Slide types: {', '.join(words(a) for a, _ in mix)}. "
+            f"Impact slides: {', '.join(f'{_count(impact[k])} {words(k)}' for k in IMPACTS[1:] if impact[k]) or 'none'}. "
             f"Why the flow works: {rec['why_the_flow_works'].rstrip('.')}.")
+
+
+def _count(k):
+    # shortcut: counts past twelve read "many"; spell them out if a deck ever marks that many of one kind
+    return ("one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve")[k - 1] \
+        if k <= 12 else "many"

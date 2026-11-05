@@ -474,3 +474,59 @@ def test_blank_and_duplicate_slides_are_withdrawn_and_never_judged(deck, lib, ca
     assert all(report[rid]["published"] for rid in (ids[1], *ids[3:])) and report["flow"]["published"]
     main(["leak-check", deck_id, "--library", str(lib)])  # exclusions are not failures: no exit 1
     assert f"{ids[0]}  auto=excluded  judge=excluded  blank" in capsys.readouterr().out
+
+
+def test_flow_record_steps_with_extra_keys_or_bad_impact_fail_closed(deck, lib):
+    deck_id, ids = _six_slide_deck(deck, lib)
+    rec = lib / "work" / deck_id / "flow-record.json"
+    good = json.loads(rec.read_text())
+    assert leak_check.check_flow(good, "") == []
+    marked = json.loads(json.dumps(good))
+    marked["steps"][3].update(impact="spotlight", builds_on=3)
+    assert leak_check.check_flow(marked, "") == []
+    for edit in (lambda s: s.update(notes=f"{CLIENT} slide"), lambda s: s.pop("impact"),
+                 lambda s: s.update(builds_on=5), lambda s: s.update(impact="hero_reveal")):
+        bad = json.loads(json.dumps(marked))
+        edit(bad["steps"][3])
+        assert leak_check.check_flow(bad, "")[0].startswith("schema"), bad["steps"][3]
+
+
+def test_a_verdict_is_discarded_when_what_it_judged_changed(deck, lib):
+    deck_id, ids = _six_slide_deck(deck, lib)
+    leak_check.run(deck_id, lib)
+    for rid in [*ids, "flow"]:
+        _judge(lib, deck_id, rid, False)
+    assert all(r["published"] for r in leak_check.run(deck_id, lib).values())
+    verdicts = lib / "judge" / deck_id / "verdicts"
+    assert all(r["published"] for r in leak_check.run(deck_id, lib).values())  # unchanged: verdicts kept
+    record = lib / "work" / deck_id / "build" / f"{ids[0]}.json"
+    record.write_text(json.dumps(dict(json.loads(record.read_text()), purpose="Open on one bold promise first")))
+    Image.new("L", (96, 54), 17).save(lib / "mockups" / deck_id / "slide-02.png")  # a new mockup picture
+    rec = lib / "work" / deck_id / "flow-record.json"
+    rec.write_text(json.dumps(dict(json.loads(rec.read_text()), arc="pillars")))
+    report = leak_check.run(deck_id, lib)
+    for rid in (ids[0], ids[1], "flow"):
+        assert report[rid]["auto"] == "pass" and report[rid]["judge"] == "pending", rid
+        assert not (verdicts / f"{rid}.json").exists()
+    assert (lib / "judge" / deck_id / f"{ids[0]}.json").read_bytes() == record.read_bytes()  # the new copy
+    assert (lib / "judge" / deck_id / "flow.json").read_bytes() == rec.read_bytes()
+    assert all(report[rid]["published"] for rid in ids[2:])  # the unchanged ones keep theirs
+    assert not (lib / "records" / f"{ids[0]}.json").exists() and not (lib / "flows" / f"{deck_id}.json").exists()
+
+
+def test_a_verdict_is_discarded_when_its_item_fails_the_automated_check(deck, lib):
+    deck_id, ids = _six_slide_deck(deck, lib)
+    leak_check.run(deck_id, lib)
+    for rid in [*ids, "flow"]:
+        _judge(lib, deck_id, rid, False)
+    leak_check.run(deck_id, lib)
+    record = lib / "work" / deck_id / "build" / f"{ids[0]}.json"
+    record.write_text(json.dumps(dict(json.loads(record.read_text()), purpose=f"Open the {CLIENT} story")))
+    rec = lib / "work" / deck_id / "flow-record.json"
+    rec.write_text(json.dumps(dict(json.loads(rec.read_text()), why_the_flow_works=f"Opens the {CLIENT} way, then lands")))
+    report = leak_check.run(deck_id, lib)
+    verdicts = lib / "judge" / deck_id / "verdicts"
+    assert report[ids[0]]["auto"] == report["flow"]["auto"] == "fail"
+    # the copies go, and the verdicts with them: whatever text replaces the leak is judged afresh
+    assert not (verdicts / f"{ids[0]}.json").exists() and not (verdicts / "flow.json").exists()
+    assert (verdicts / f"{ids[1]}.json").exists()
