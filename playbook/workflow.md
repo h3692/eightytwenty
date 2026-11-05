@@ -27,14 +27,15 @@ help with a deck instead.
 1. **Questions** about this slide (Step 2), one per message.
 2. **Slide plan** in text with 2 to 3 layout options (Step 3).
 3. **Approval gate** (Step 4).
-4. **Build** (Steps 5 to 7), then design options if the deck has none yet (Step 8), then QA.
+4. **Build** (Steps 5 and 6), then design options if the deck has none yet (Step 8), then QA.
 
 Check the chain of proof against the neighbouring slides in both modes: what the earlier slides established, what this
 slide must hand to the next, and that it uses nothing a later slide proves.
 
-**Single-shot or batch runs** (the user wants everything at once, or you cannot pause for answers): send all the
-questions as one numbered list in priority order with the assumption you will use for each, then the plan, marked
-`[assumed]`, and proceed. Every assumed value stays marked `[assumed]` in the output.
+**Single-shot or batch runs**: only when the user explicitly asks for everything at once, send all the questions as one
+numbered list in priority order with the assumption you will use for each, then the plan, marked `[assumed]`, and still
+end with the approval ask unless the user said to skip it. Every assumed value stays marked `[assumed]` in the output.
+Never decide on your own that you cannot pause for answers.
 
 Chapters (stages): `workflow`, `narrative`, `anatomy-and-taglines`, `archetypes`, `distinctive-design`,
 `visual-rules-and-design-options`, `polish`, `writing`, `qa`, `attached-decks`.
@@ -125,6 +126,7 @@ to inform the options:
   slide's job in plain words; `slide_type` is the archetype id (`archetypes`). Read each result's `when_to_use` and
   `effect`, and `get_reference(id)` on the strongest: the header and tagline form, the exhibit arrangement, the insight
   device, how the space is split, and the element notes.
+- If a style filter returns nothing, search again without it and keep the chosen style in the layout spec.
 
 **Deck mode plan**: the storyline table (`narrative`), then one layout spec per slide.
 **Slide mode plan**: 2 to 3 layout options for the slide, each a layout spec with a one-line why. One may be a single

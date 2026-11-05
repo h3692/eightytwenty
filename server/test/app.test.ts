@@ -182,6 +182,12 @@ describe("get_playbook", () => {
 		for (const s of ["eightytwenty can't be used for that.", "One question per message", "Reply **approve**", "Nothing extra in the deck", "Research to-do, in chat"])
 			expect(text).toContain(s);
 		expect(text).not.toMatch(/hidden \*\*Research To-Do\*\* slide|Design Options slide \(hidden\)/);
+		for (const stage of STAGES) {  // no chapter sends anything into the deck or skips the plan
+			const chapter = (await tool("get_playbook", { stage })).body.result.content[0].text;
+			expect(chapter, stage).not.toMatch(/Design Options (slide|asset list)|rough layout/i);
+		}
+		expect(text).toMatch(/only when the user explicitly asks for everything at once/i);
+		expect(text).toMatch(/If a style filter returns nothing, search again without it/);
 		const polish = (await tool("get_playbook", { stage: "polish" })).body.result.content[0].text;
 		expect(polish).toContain("# Density and polish");
 		expect(polish).toMatch(/No arrow characters/);

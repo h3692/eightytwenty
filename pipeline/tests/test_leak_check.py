@@ -644,3 +644,29 @@ def test_flow_record_without_a_valid_style_fails_closed(deck, lib):
     assert good["style"] == "bold-pitch" and leak_check.check_flow(good, "") == []
     for bad in (dict(good, style="neon-brutalist"), {k: v for k, v in good.items() if k != "style"}):
         assert leak_check.check_flow(bad, "")[0].startswith("schema"), bad
+
+
+def test_style_words_written_as_names_still_count_as_names():
+    assert leak_check.problems_in("The ReAssure header band carries the promise", "ReAssure plc annual results", {"reassure"})
+    assert leak_check.problems_in("Rigor's dashboard tiles explain the pitch", "Rigor monitoring", {"rigor"})
+
+
+def test_style_notes_never_name_a_sector_or_audience(deck, lib):
+    deck_id, ids = _six_slide_deck(deck, lib)
+    record = lib / "work" / deck_id / "build" / f"{ids[1]}.json"
+    dna = json.loads(record.read_text())
+    record.write_text(json.dumps(dict(dna, when_to_use="Use when a hospital board needs the plan on one page")))
+    report = leak_check.run(deck_id, lib)
+    assert report[ids[1]]["auto"] == "fail" and any("sector or audience: hospital" in p for p in report[ids[1]]["problems"])
+    assert leak_check.problems_in("Gives a calm, energetic finish", "", set()) == []  # only notes are checked for sectors
+
+
+def test_element_notes_pointing_outside_the_layout_fail_closed(deck, lib):
+    deck_id, ids = _six_slide_deck(deck, lib)
+    layout = lib / "layouts" / deck_id / "slide-02.v3.json"
+    record = lib / "work" / deck_id / "build" / f"{ids[1]}.json"
+    n = len(json.loads(layout.read_text())["components"])
+    dna = json.loads(record.read_text())
+    record.write_text(json.dumps(dict(dna, elements=[{"component": n, "note": "Use the lead panel to state the answer first"}])))
+    report = leak_check.run(deck_id, lib)
+    assert report[ids[1]]["auto"] == "fail" and any("stale build" in p for p in report[ids[1]]["problems"])

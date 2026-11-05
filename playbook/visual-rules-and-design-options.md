@@ -88,7 +88,7 @@ clean.
 Budget: one hero image or up to three small images per slide. If more than half the content slides carry photos, cut
 the weakest.
 
-**How to block a slot** (in the rough layout, and on finished slides until filled):
+**How to block a slot** (in the layout spec, and on finished slides until filled):
 - **Photo**: light grey shape in the final crop shape (rectangle, circle, full-bleed with the overlay already applied)
   with a bracketed label: `[PHOTO: young couple unpacking boxes in first home | full-bleed, darkened 40% | why: sets up
   the homeowner milestone]`. Name it `IMG_<role>` (`IMG_Persona`, `IMG_Hero`).
@@ -98,7 +98,7 @@ the weakest.
   client's real app.
 - **Logos and maps**: `[LOGO: client, two partner logos]`, `[MAP: country, pins at four largest cities]`. Maps can
   usually be built from a provided image or simple shapes.
-- Log every slot on the Design Options asset list; if that slide does not exist yet, add them when it is created.
+- Log every slot on the research to-do list in chat (`workflow`, Step 5).
 
 **Sourcing** (suggest, don't overwhelm; image requests count toward the 1 to 2 asks):
 - The client's press kit, newsroom, app store screenshots or website for product and brand images.

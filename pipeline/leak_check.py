@@ -48,10 +48,18 @@ DESIGN_TERMS = {"kpi", "kpis", "swot", "gantt", "harvey", "roi", "cagr", "mece",
                 "financials", "deliverables", "storyboard", "faq", "roadmap", "persona", "personas", "agenda", "appendix",
                 "takeaway", "benchmark", "playbook", "scorecard", "dashboard", "wireframe", "mockup", "pillar",
                 "pillars", "workstream", "workstreams", "milestone", "milestones", "synergy", "synergies", "npv",
-                "ebitda", "tam", "sam", "som", "b2b", "b2c", "d2c", "sku", "skus", "go", "to", "market", "gtm",
-                # the verbs and nouns of style notes
-                "convey", "conveys", "reassure", "reassures", "rigour", "rigor", "jargon", "mitigation", "mitigations",
-                "constraint", "constraints", "checklist", "checklists", "sizing"}
+                "ebitda", "tam", "sam", "som", "b2b", "b2c", "d2c", "sku", "skus", "go", "to", "market", "gtm"}
+# The verbs and nouns of style notes: never a name unless written like one (a company could be called ReAssure).
+STYLE_TERMS = {"conveys", "reassures", "rigour", "jargon", "mitigation", "mitigations", "constraint", "constraints",
+               "checklist", "checklists", "sizing"}
+# Style notes describe when and why a layout works, never for whom: a sector or audience narrows the source beyond the
+# coarse industry tag.
+SECTOR_WORDS = {"healthcare", "hospital", "hospitals", "clinic", "clinics", "patient", "patients", "pharma",
+                "pharmaceutical", "airline", "airlines", "aviation", "bank", "banks", "banking", "insurer", "insurers",
+                "insurance", "fintech", "nonprofit", "nonprofits", "charity", "charities", "donor", "donors", "retailer",
+                "retailers", "grocery", "restaurant", "restaurants", "hotel", "hotels", "hospitality", "university",
+                "universities", "student", "students", "school", "schools", "government", "telecom", "automaker",
+                "automakers", "utility", "utilities", "mining", "shipping", "farmers", "investors", "regulators"}
 COMMON_ZIPF = 3.5  # wordfreq zipf: 3.5 is about once per 300k words; below it a word may be a name
 FRAMEWORKS = sorted((p.split() for p in (  # standard framework names, as _words() sees them; exact phrases only
     "strengths weaknesses opportunities threats", "strengths weaknesses opportunities and threats",
@@ -170,11 +178,13 @@ def problems_in(text, source, names):
         found.append(f"shared words with slide text: {shared[0]!r}")
     doc = _nlp()(text)
     for e in doc.ents:
-        if e.label_ in NAME_LABELS and not all(t.lower_ in DESIGN_TERMS or (_common(t.lower_) and not _name_like(t))
-                                               for t in e if t.is_alpha):
+        if e.label_ in NAME_LABELS and not all(
+                t.lower_ in DESIGN_TERMS or ((_common(t.lower_) or t.lower_ in STYLE_TERMS) and not _name_like(t))
+                for t in e if t.is_alpha):
             found.append(f"name ({e.label_}): {e.text!r}")
     written_as_name = {w for t in doc if _name_like(t) for w in _words(t.text)}
-    hits = sorted(w for w in names & set(words) if w not in DESIGN_TERMS and (w in written_as_name or not _common(w)))
+    hits = sorted(w for w in names & set(words)
+                  if w not in DESIGN_TERMS and (w in written_as_name or not (_common(w) or w in STYLE_TERMS)))
     if hits:
         found.append(f"name from slide text: {hits[0]!r}")
     brand = {w for w in words if w in BRAND_WORDS} | {" ".join(p) for p in zip(words, words[1:]) if p in BRAND_PHRASES}
@@ -196,6 +206,8 @@ def check(dna, source, deck_names=frozenset()):
     fields |= {f"regions/{r['i']}/pattern": r["text"]["pattern"] for r in dna["regions"] if r["text"] and r["text"]["pattern"]}
     for key, text in fields.items():
         problems += [f"{key}: {p}" for p in problems_in(text, source, names)]
+        if key in ("when_to_use", "effect") or key.startswith("elements/"):
+            problems += [f"{key}: sector or audience: {w}" for w in sorted(SECTOR_WORDS & set(_words(text)))]
     return problems
 
 
@@ -329,6 +341,10 @@ def run(deck_id, library):
             problems.append("stale mockup: its v3 layout changed after it was built, run mockup")
         else:
             problems += [f"mockup: {p}" for p in mockup_problems(pptx)]
+        if layout.exists():  # element notes index the layout's components: a redrawn layout can leave them pointing elsewhere
+            n = len(json.loads(layout.read_text())["components"])
+            if any(e["component"] >= n for e in dna.get("elements", [])):
+                problems.append("stale build: element notes point outside its v3 layout, rewrite the notes and run build")
         r = report[rid] = {"auto": "fail" if problems else "pass", "problems": problems, "judge": "pending"}
         if problems:  # whatever replaces the problem is judged afresh
             for p in (judge / f"{rid}.json", judge / f"{rid}.png", judge / "verdicts" / f"{rid}.json"):
