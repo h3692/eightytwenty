@@ -6,6 +6,7 @@ import { createMcpHandler } from "agents/mcp/server";
 import { z } from "zod";
 import flow from "../../pipeline/schema/flow.v2.json";
 import labels from "../../pipeline/schema/labels.v1.json";
+import style from "../../pipeline/schema/style.v1.json";
 import anatomyAndTaglines from "../../playbook/anatomy-and-taglines.md";
 import archetypes from "../../playbook/archetypes.md";
 import attachedDecks from "../../playbook/attached-decks.md";
@@ -49,12 +50,14 @@ const FIND_INPUT = z.object({
 	industry: enumOf(labels.properties.industry.enum).optional(),
 	data_type: enumOf(labels.properties.data_type.enum).optional(),
 	impact: enumOf(flow.properties.impact.items.enum).optional().describe("Only impact slides of this kind: how reference decks repeat a slide for effect. Use it when the user wants to emphasize or land a key point: shade_ribbon (the previous slide dimmed, a ribbon stating the takeaway), spotlight (one part highlighted), build (revealed step by step), repeat (an earlier slide brought back as a recap). Few exist."),
+	style: enumOf(style.properties.style.enum).optional().describe("Only slides from decks with this overall look."),
 	k: z.number().int().min(1).max(8).optional().describe("How many results, 1 to 8 (default 8)."),
 });
 const FLOWS_INPUT = z.object({
 	purpose: z.string().min(1).max(1000).describe("What the whole deck must achieve, in plain words."),
 	industry: enumOf(labels.properties.industry.enum).optional(),
 	length: enumOf(LENGTHS).optional().describe("short: up to 10 slides, medium: 11 to 25, long: more."),
+	style: enumOf(style.properties.style.enum).optional().describe("Only decks with this overall look."),
 });
 const REFERENCE_INPUT = z.object({ id: z.string().regex(/^[A-Za-z0-9-]{1,64}$/, "Use an id exactly as find_references or find_deck_flows returned it.") });
 const DECK_ID = /^[0-9a-f]{16}$/; // slide ids are <deck id>-NN
@@ -100,7 +103,7 @@ function createServer(env: Env, lib: Library, key: string) {
 			if (!results.length)
 				return { content: [text(`No references match these filters. Try fewer filters or a broader purpose. (library_version ${library_version})`)] };
 			const lines = results.map((r, i) => `${i + 1}. ${r.id} | ${r.slide_type} | score ${r.score}\n   Purpose: ${r.purpose}\n   Why it works: ${r.why_it_works}` +
-				`\n   Kinds: ${r.kinds}${r.impact === "none" ? "" : ` | impact: ${r.impact}`}`);
+				`\n   Kinds: ${r.kinds}${r.impact === "none" ? "" : ` | impact: ${r.impact}`}\n   Style: ${r.style} | When to use: ${r.when_to_use}`);
 			return { content: [text(`library_version ${library_version}\n\n${lines.join("\n")}\n\nCall get_reference with an id for its layout, mockup and design DNA.`)] };
 		},
 	);
@@ -121,7 +124,7 @@ function createServer(env: Env, lib: Library, key: string) {
 				async (q, k) => (await spend(), env.SEARCHER.get(env.SEARCHER.idFromName("global")).flows(q, k)));
 			if (!results.length)
 				return { content: [text(`No deck flows match these filters. Try fewer filters or a broader purpose. (library_version ${library_version})`)] };
-			const lines = results.map((r, i) => `${i + 1}. ${r.id} | ${r.arc} | ${r.length} deck | ${r.industry} | score ${r.score}\n   Sections: ${r.sections}\n   Why the flow works: ${r.why_the_flow_works}`);
+			const lines = results.map((r, i) => `${i + 1}. ${r.id} | ${r.arc} | ${r.length} deck | ${r.industry} | ${r.style} style | score ${r.score}\n   Sections: ${r.sections}\n   Why the flow works: ${r.why_the_flow_works}`);
 			return { content: [text(`library_version ${library_version}\n\n${lines.join("\n")}\n\nCall get_reference with a deck id for its full flow, then on its steps' slide ids.`)] };
 		},
 	);

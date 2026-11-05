@@ -164,7 +164,9 @@ describe("search", () => {
 		expect(out.library_version).toBe(manifest.library_version);
 		expect(out.results.length).toBe(3);
 		expect(ai.calls[0]).toEqual({ model: "@cf/baai/bge-m3", input: { text: ["market share"] } });
-		expect(Object.keys(out.results[0]).sort()).toEqual(["id", "impact", "kinds", "purpose", "score", "slide_type", "why_it_works"]);
+		expect(Object.keys(out.results[0]).sort()).toEqual(["id", "impact", "kinds", "purpose", "score", "slide_type", "style", "when_to_use", "why_it_works"]);
+		const r = rows.find((x) => x.id === out.results[0].id)!;
+		expect([out.results[0].style, out.results[0].when_to_use]).toEqual([r.style, r.when_to_use]);
 	});
 
 	it("rejects bad input", async () => {
@@ -191,6 +193,20 @@ describe("search", () => {
 			expect(r.impact).toBe(impacts[n]);
 		}
 		expect(out.results.map((r) => r.impact)).toContain("shade_ribbon");
+	});
+
+	it("filters by style in the vector and FTS branches, and keeps it apart in the cache", async () => {
+		const flags = { ...DEFAULT_FLAGS, cache: false, rerank: false, mmr: false };
+		const s = withAI(fakeAI(() => near(3)));
+		const want = rows.filter((r) => r.style === "data-led").map((r) => r.id).sort();
+		for (const f of [flags, { ...flags, fts: false }])
+			expect((await search(s, lib, { purpose: "market share of competitors", style: "data-led" }, f)).results.map((r) => r.id).sort()).toEqual(want);
+		const ai = fakeAI(() => near(3));
+		const all = await search(withAI(ai), lib, { purpose: "market share" });
+		const led = await search(withAI(ai), lib, { purpose: "market share", style: "data-led" });
+		expect(led.results.map((r) => r.style)).toEqual(["data-led"]); // one deck, one slide after MMR
+		expect(led).not.toEqual(all);
+		expect(ai.calls.filter((c) => c.model === "@cf/baai/bge-m3").length).toBe(2);
 	});
 
 	it("keeps an impact-filtered query apart from the unfiltered one in the cache", async () => {
@@ -295,7 +311,7 @@ describe("searchFlows", () => {
 			.slice(0, 3);
 		expect(out.results.map((r) => ({ id: r.id, score: r.score }))).toEqual(expected);
 		expect(out.results[0]).toEqual({
-			id: flows[2].id, arc: "journey", length: "long", industry: "retail",
+			id: flows[2].id, arc: "journey", length: "long", industry: "retail", style: "visual-storytelling",
 			sections: "hook > customer > closing", why_the_flow_works: flows[2].why_the_flow_works, score: expected[0].score,
 		});
 	});
@@ -310,6 +326,16 @@ describe("searchFlows", () => {
 		expect((await searchFlows(s, lib, { purpose: "x", industry: "retail", length: "short" })).results.map((r) => r.id)).toEqual([flows[0].id]);
 		expect((await searchFlows(s, lib, { purpose: "x", industry: "technology" })).results.map((r) => r.id).sort()).toEqual([flows[1].id, flows[3].id]);
 		expect((await searchFlows(s, lib, { purpose: "x", industry: "healthcare" })).results).toEqual([]);
+	});
+
+	it("filters by style, and keeps it apart in the cache", async () => {
+		const ai = fakeAI(() => nearFlow(2));
+		const all = await searchFlows(withAI(ai), lib, { purpose: "x" });
+		const pitch = await searchFlows(withAI(ai), lib, { purpose: "x", style: "bold-pitch" });
+		expect(pitch.results.map((r) => [r.id, r.style])).toEqual([[flows[1].id, "bold-pitch"]]);
+		expect(pitch).not.toEqual(all);
+		expect(ai.calls.length).toBe(2);
+		expect((await searchFlows(withAI(ai), lib, { purpose: "x", style: "bold-pitch", industry: "retail" })).results).toEqual([]);
 	});
 
 	it("breaks score ties by id", async () => {

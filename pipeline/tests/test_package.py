@@ -21,7 +21,7 @@ def _library(lib, purposes):
         rid = f"{k:016x}-01"
         dna = {"id": rid, "deck_id": f"{k:016x}", "slide": 1, "archetype": "options", "industry": "technology",
                "data_type": "table", "purpose": purpose, "why_it_works": "Rows make the trade-off obvious",
-               "description": f"Options slide. Purpose: {purpose}."}
+               "style": ("consulting-structured", "data-led")[k % 2], "description": f"Options slide. Purpose: {purpose}."}
         (lib / "records" / f"{rid}.json").write_text(json.dumps(dna))
         (lib / "wireframes" / f"{rid}.png").write_bytes(b"\x89PNG fake")
         (lib / "layouts" / f"{k:016x}").mkdir(parents=True)
@@ -38,7 +38,8 @@ def _flows(lib, decks):
     for k, d in enumerate(decks):
         rec = {"schema_version": "deck-flow/v1", "id": d, "deck_id": d, "arc": "pillars",
                "why_the_flow_works": "Each pillar gets its own beat", "steps": [], "dividers": [], "pacing": [],
-               "length_bucket": ("short", "long")[k % 2], "industry": "technology", "description": f"Deck flow {k}"}
+               "length_bucket": ("short", "long")[k % 2], "industry": "technology",
+               "style": ("bold-pitch", "minimal-editorial")[k % 2], "description": f"Deck flow {k}"}
         (lib / "flows" / f"{d}.json").write_text(json.dumps(rec))
     man = json.loads((lib / "manifest.json").read_text())
     (lib / "manifest.json").write_text(json.dumps(dict(man, flows={"count": len(decks), "ids": sorted(decks)})))
@@ -64,6 +65,19 @@ def test_records_sql_loads_with_rows_filters_and_fts(lib):
     # Rebuild-safe: loading twice replaces rather than duplicates.
     db.executescript((lib / "records.sql").read_text())
     assert db.execute("SELECT count(*) FROM slides").fetchone() == (2,)
+
+
+def test_slides_and_flows_carry_their_style_as_an_indexed_filter(lib):
+    ids = _library(lib, ["Compare the options side by side", "Pick a winner"])
+    _flows(lib, ["00000000000000aa", "00000000000000bb"])
+    package.run(lib)
+    db = _load(lib)
+    assert db.execute("SELECT id, style FROM slides ORDER BY n").fetchall() == [
+        (ids[0], "consulting-structured"), (ids[1], "data-led")]
+    assert db.execute("SELECT id, style FROM flows ORDER BY n").fetchall() == [
+        ("00000000000000aa", "bold-pitch"), ("00000000000000bb", "minimal-editorial")]
+    assert "style" in [r[2] for r in db.execute("PRAGMA index_info(slides_filters)")]
+    assert "style" in [r[2] for r in db.execute("PRAGMA index_info(flows_filters)")]
 
 
 def test_no_explicit_transactions_for_d1(lib):

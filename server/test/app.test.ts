@@ -2,6 +2,7 @@ import { env, runInDurableObject } from "cloudflare:test";
 import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import labels from "../../pipeline/schema/labels.v1.json";
+import styles from "../../pipeline/schema/style.v1.json";
 import archetypesMd from "../../playbook/archetypes.md";
 import { app, clientKey, STAGES } from "../src/app";
 import type { Limiter } from "../src/limiter";
@@ -74,6 +75,8 @@ describe("MCP endpoint", () => {
 		expect(p.data_type.enum).toEqual(labels.properties.data_type.enum);
 		expect(p.k.maximum).toBe(8);
 		expect(p.impact.enum).toEqual(["none", "build", "spotlight", "shade_ribbon", "repeat"]);
+		expect(p.style.enum).toEqual(styles.properties.style.enum);
+		expect(p.style.description).toBeTruthy();
 		expect(tools.find_references.description).toMatch(/one per deck/i);
 		expect(tools.find_references.description).toMatch(/impact filter returns few/i);
 		for (const t of [tools.find_references, tools.find_deck_flows]) expect(t.description).toMatch(/deck mode.*after the slide-by-slide storyline is confirmed.*get_playbook/i);
@@ -83,6 +86,8 @@ describe("MCP endpoint", () => {
 		const f = tools.find_deck_flows.inputSchema;
 		expect(f.properties.industry.enum).toEqual(labels.properties.industry.enum);
 		expect(f.properties.length.enum).toEqual(["short", "medium", "long"]);
+		expect(f.properties.style.enum).toEqual(styles.properties.style.enum);
+		expect(f.properties.style.description).toBeTruthy();
 		expect(f.required).toEqual(["purpose"]);
 		expect(tools.find_deck_flows.description).toMatch(/whole deck/i);
 	});
@@ -172,8 +177,17 @@ describe("find_references", () => {
 		expect(text).toContain("   Kinds: tracker×5, kpi_row×2, takeaway\n");
 		expect(text).toContain(`   Kinds: tracker×5, kpi_row×${(9 % 3) + 2}, takeaway | impact: shade_ribbon\n`);
 		expect(text).not.toContain("impact: none");
+		expect(text).toContain(`takeaway | impact: shade_ribbon\n   Style: ${rows[9].style} | When to use: ${rows[9].when_to_use}\n`);
 		const spot = await tool("find_references", { purpose: "market share", impact: "spotlight" });
 		expect(spot.body.result.content[0].text.split("\n").filter((l: string) => /^\d\. /.test(l))).toEqual([expect.stringContaining(rows[6].id)]);
+	});
+
+	it("filters by style and rejects an unknown one with the valid values", async () => {
+		const { body } = await tool("find_references", { purpose: "market share", style: "data-led" });
+		expect(body.result.content[0].text.split("\n").filter((l: string) => /^\d\. /.test(l))).toEqual([expect.stringContaining(rows[6].id)]);
+		const bad = await tool("find_references", { purpose: "x", style: "flashy" });
+		expect(bad.body.result?.isError ?? !!bad.body.error).toBe(true);
+		expect(JSON.stringify(bad.body)).toContain("minimal-editorial");
 	});
 
 	it("accepts k up to 8 and rejects an unknown impact", async () => {
@@ -207,10 +221,15 @@ describe("find_deck_flows", () => {
 		const { results } = await searchFlows(testEnv({ AI: fakeAI(() => flowFloats[1]) }), lib, { purpose: "win over the judges" });
 		expect(results).toHaveLength(3);
 		expect(results[0].id).toBe(flows[1].id);
-		expect(text.split("\n").filter((l) => /^\d\. /.test(l))).toEqual(results.map((r, i) => `${i + 1}. ${r.id} | ${r.arc} | ${r.length} deck | ${r.industry} | score ${r.score}`));
+		expect(text.split("\n").filter((l) => /^\d\. /.test(l))).toEqual(results.map((r, i) => `${i + 1}. ${r.id} | ${r.arc} | ${r.length} deck | ${r.industry} | ${r.style} style | score ${r.score}`));
 		for (const s of [manifest.library_version, "Sections: cover > solution > financials", `Why the flow works: ${flows[1].why_the_flow_works}`, "get_reference"]) expect(text).toContain(s);
 		const cached = await env.DB.prepare("SELECT results FROM search_cache").all<{ results: string }>();
 		expect(cached.results.map((r) => JSON.parse(r.results))).toEqual([results]);
+	});
+
+	it("filters by style", async () => {
+		const { body } = await tool("find_deck_flows", { purpose: "x", style: "bold-pitch" });
+		expect(body.result.content[0].text.split("\n").filter((l: string) => /^\d\. /.test(l))).toEqual([expect.stringContaining(`${flows[1].id} | pillars | medium deck | technology | bold-pitch style |`)]);
 	});
 
 	it("rejects an unknown length with the valid values", async () => {

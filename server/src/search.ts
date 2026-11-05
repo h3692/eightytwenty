@@ -11,13 +11,13 @@ export const LENGTHS = ["short", "medium", "long"]; // pipeline/flow.py length_b
 export type Manifest = { library_version: string; model: string; pooling: string; dims: number; count: number; ids: string[]; flows: { count: number; ids: string[] } };
 type Vectors = { manifest: Manifest; vecs: Int8Array; norms: Float32Array; scan: (q8: Int8Array) => Int32Array };
 export type Library = Vectors & { flows: Vectors };
-export type Query = { purpose: string; slide_type?: string; industry?: string; data_type?: string; impact?: string; k?: number };
+export type Query = { purpose: string; slide_type?: string; industry?: string; data_type?: string; impact?: string; style?: string; k?: number };
 // Stage switches for the S6 ablation: dense only -> +fts (RRF) -> +rerank -> +mmr.
 export type Flags = { fts: boolean; rerank: boolean; mmr: boolean; cache: boolean; lambda: number };
-export type Result = { id: string; slide_type: string; purpose: string; why_it_works: string; kinds: string; impact: string; score: number };
-export type FlowQuery = { purpose: string; industry?: string; length?: string; k?: number };
-export type FlowResult = { id: string; arc: string; length: string; industry: string; sections: string; why_the_flow_works: string; score: number };
-type Row = { n: number; id: string; deck_id: string; archetype: string; purpose: string; why_it_works: string; description: string; impact: string; layout: string };
+export type Result = { id: string; slide_type: string; purpose: string; why_it_works: string; kinds: string; impact: string; style: string; when_to_use: string; score: number };
+export type FlowQuery = { purpose: string; industry?: string; length?: string; style?: string; k?: number };
+export type FlowResult = { id: string; arc: string; length: string; industry: string; style: string; sections: string; why_the_flow_works: string; score: number };
+type Row = { n: number; id: string; deck_id: string; archetype: string; purpose: string; why_it_works: string; description: string; impact: string; layout: string; style: string; when_to_use: string };
 
 export const DEFAULT_FLAGS: Flags = { fts: true, rerank: true, mmr: true, cache: true, lambda: 0.7 };
 
@@ -140,7 +140,7 @@ export async function search(env: Pick<Env, "DB" | "AI">, lib: Library, query: Q
 	let key = "";
 	if (flags.cache) {
 		let hit: string | null;
-		[key, hit] = await cached(env, ["slides", library_version, purpose, query.slide_type ?? null, query.industry ?? null, query.data_type ?? null, query.impact ?? null, k, flags.fts, flags.rerank, flags.mmr, flags.lambda]);
+		[key, hit] = await cached(env, ["slides", library_version, purpose, query.slide_type ?? null, query.industry ?? null, query.data_type ?? null, query.impact ?? null, query.style ?? null, k, flags.fts, flags.rerank, flags.mmr, flags.lambda]);
 		if (hit) return { results: JSON.parse(hit), library_version };
 	}
 	return miss({ ...query, purpose, k }, key);
@@ -150,7 +150,7 @@ export async function search(env: Pick<Env, "DB" | "AI">, lib: Library, query: Q
 export async function uncached(env: Pick<Env, "DB" | "AI">, lib: Library, query: Query, flags: Flags, key: string): Promise<Found> {
 	const { library_version, ids } = lib.manifest;
 	const { purpose, k = MAX_K } = query;
-	const filters = ([["archetype", query.slide_type], ["industry", query.industry], ["data_type", query.data_type], ["impact", query.impact]] as const).filter(([, v]) => v != null);
+	const filters = ([["archetype", query.slide_type], ["industry", query.industry], ["data_type", query.data_type], ["impact", query.impact], ["style", query.style]] as const).filter(([, v]) => v != null);
 
 	// One D1 round trip, in parallel with the embedding: build check, filter set for the vector branch, FTS branch.
 	const where = filters.map(([col]) => ` AND s.${col} = ?`).join(""), args = filters.map(([, v]) => v);
@@ -176,7 +176,7 @@ export async function uncached(env: Pick<Env, "DB" | "AI">, lib: Library, query:
 
 	let results: Result[] = [];
 	if (pool.length) {
-		const { results: found } = await env.DB.prepare(`SELECT n, id, deck_id, archetype, purpose, why_it_works, description, impact, layout FROM slides WHERE n IN (${pool.map(() => "?").join(", ")})`)
+		const { results: found } = await env.DB.prepare(`SELECT n, id, deck_id, archetype, purpose, why_it_works, description, impact, layout, style, json_extract(dna, '$.when_to_use') AS when_to_use FROM slides WHERE n IN (${pool.map(() => "?").join(", ")})`)
 			.bind(...pool.map(([n]) => n)).all<Row>();
 		const byN = new Map(found.map((r) => [r.n, r]));
 		const cands = pool.map(([n, score]) => ({ ...byN.get(n)!, score }));
@@ -189,7 +189,7 @@ export async function uncached(env: Pick<Env, "DB" | "AI">, lib: Library, query:
 		const picked = flags.mmr ? mmr(cands, lib, k, flags.lambda) : cands.slice(0, k);
 		// kinds: the layout's components in order, with their counts ("kpi_row×3"), so results compare without get_reference
 		const kinds = (layout: string) => (JSON.parse(layout).components as { kind: string; n?: number }[]).map((c) => (c.n ? `${c.kind}×${c.n}` : c.kind)).join(", ");
-		results = picked.map((c) => ({ id: c.id, slide_type: c.archetype, purpose: c.purpose, why_it_works: c.why_it_works, kinds: kinds(c.layout), impact: c.impact, score: c.score }));
+		results = picked.map((c) => ({ id: c.id, slide_type: c.archetype, purpose: c.purpose, why_it_works: c.why_it_works, kinds: kinds(c.layout), impact: c.impact, style: c.style, when_to_use: c.when_to_use, score: c.score }));
 	}
 
 	return { results: key ? await store(env, key, results, library_version) : results, library_version };
@@ -203,12 +203,12 @@ export async function searchFlows(env: Pick<Env, "DB" | "AI">, lib: Library, que
 	const k = query.k ?? MAX_FLOWS;
 	if (!purpose || purpose.length > MAX_PURPOSE) throw new RangeError(`purpose must be 1 to ${MAX_PURPOSE} characters.`);
 	if (!Number.isInteger(k) || k < 1 || k > MAX_FLOWS) throw new RangeError(`k must be a whole number from 1 to ${MAX_FLOWS}.`);
-	const [key, hit] = await cached(env, ["flows", library_version, purpose, query.industry ?? null, query.length ?? null, k]);
+	const [key, hit] = await cached(env, ["flows", library_version, purpose, query.industry ?? null, query.length ?? null, query.style ?? null, k]);
 	if (hit) return { results: JSON.parse(hit), library_version };
 	return miss({ ...query, purpose, k }, key);
 }
 
-type FlowRow = { n: number; id: string; arc: string; length_bucket: string; industry: string; why: string; pacing: string };
+type FlowRow = { n: number; id: string; arc: string; length_bucket: string; industry: string; style: string; why: string; pacing: string };
 
 // The uncached flow search for a validated query. Every flows row is read (a few dozen), so the same query checks that
 // D1 holds exactly the bundled flows; a mismatch fails only this tool, slide search is unaffected.
@@ -219,7 +219,7 @@ export async function uncachedFlows(env: Pick<Env, "DB" | "AI">, lib: Library, q
 		env.AI.run(EMBED_MODEL, { text: [purpose] }) as Promise<{ data?: number[][]; pooling?: string }>,
 		env.DB.batch<Record<string, any>>([
 			env.DB.prepare("SELECT value FROM meta WHERE key = 'library_version'"),
-			env.DB.prepare("SELECT n, id, arc, length_bucket, industry, json_extract(record, '$.why_the_flow_works') AS why, json_extract(record, '$.pacing') AS pacing FROM flows ORDER BY n"),
+			env.DB.prepare("SELECT n, id, arc, length_bucket, industry, style, json_extract(record, '$.why_the_flow_works') AS why, json_extract(record, '$.pacing') AS pacing FROM flows ORDER BY n"),
 		]).catch((e: Error) => {
 			throw new Error(`D1 cannot read the flows table (${e.message}): load the matching records.sql.`);
 		}),
@@ -233,12 +233,12 @@ export async function uncachedFlows(env: Pick<Env, "DB" | "AI">, lib: Library, q
 	if (emb.pooling !== lib.manifest.pooling || emb.data?.[0]?.length !== DIMS)
 		throw new Error(`${EMBED_MODEL} returned pooling ${emb.pooling}, ${emb.data?.[0]?.length}-d; the library was embedded with ${lib.manifest.pooling}, ${DIMS}-d.`);
 
-	const filtered = query.industry != null || query.length != null;
-	const allowed = new Set(rows.filter((r) => (query.industry ?? r.industry) === r.industry && (query.length ?? r.length_bucket) === r.length_bucket).map((r) => r.n));
+	const filtered = query.industry != null || query.length != null || query.style != null;
+	const allowed = new Set(rows.filter((r) => (query.industry ?? r.industry) === r.industry && (query.length ?? r.length_bucket) === r.length_bucket && (query.style ?? r.style) === r.style).map((r) => r.n));
 	const results = dense(lib.flows, emb.data[0], filtered ? allowed : null).slice(0, k).map(([n, score]): FlowResult => {
 		const r = rows[n];
 		const sections = (JSON.parse(r.pacing) as { section: string; slides: number }[]).map((p) => (p.slides > 1 ? `${p.section} x${p.slides}` : p.section)).join(" > ");
-		return { id: r.id, arc: r.arc, length: r.length_bucket, industry: r.industry, sections, why_the_flow_works: r.why, score };
+		return { id: r.id, arc: r.arc, length: r.length_bucket, industry: r.industry, style: r.style, sections, why_the_flow_works: r.why, score };
 	});
 	return { results: key ? await store(env, key, results, library_version) : results, library_version };
 }
