@@ -100,6 +100,10 @@ def test_design_vocabulary_is_not_a_name():
     assert leak_check.problems_in("Gantt bars and a SWOT grid with KPI tiles and Harvey balls", "", set()) == []
     # plurals too, even when the deck's text tags the word as a name somewhere
     assert leak_check.problems_in("Two Personas side by side", "Personas", {"personas"}) == []
+    # the verbs and nouns of style notes are design vocabulary, also at the start of a sentence
+    for note in ("Conveys rigour without jargon.", "Reassures the judges that every risk has a mitigation.",
+                 "Sizing, constraints and a checklist on one page."):
+        assert leak_check.problems_in(note, "Mitigation Sizing Checklist Constraint", {"mitigation", "sizing", "checklist", "constraint"}) == [], note
 
 
 def test_names_from_the_slide_text_are_blocked_even_if_ner_misses_them():

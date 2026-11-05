@@ -48,7 +48,10 @@ DESIGN_TERMS = {"kpi", "kpis", "swot", "gantt", "harvey", "roi", "cagr", "mece",
                 "financials", "deliverables", "storyboard", "faq", "roadmap", "persona", "personas", "agenda", "appendix",
                 "takeaway", "benchmark", "playbook", "scorecard", "dashboard", "wireframe", "mockup", "pillar",
                 "pillars", "workstream", "workstreams", "milestone", "milestones", "synergy", "synergies", "npv",
-                "ebitda", "tam", "sam", "som", "b2b", "b2c", "d2c", "sku", "skus", "go", "to", "market", "gtm"}
+                "ebitda", "tam", "sam", "som", "b2b", "b2c", "d2c", "sku", "skus", "go", "to", "market", "gtm",
+                # the verbs and nouns of style notes
+                "convey", "conveys", "reassure", "reassures", "rigour", "rigor", "jargon", "mitigation", "mitigations",
+                "constraint", "constraints", "checklist", "checklists", "sizing"}
 COMMON_ZIPF = 3.5  # wordfreq zipf: 3.5 is about once per 300k words; below it a word may be a name
 FRAMEWORKS = sorted((p.split() for p in (  # standard framework names, as _words() sees them; exact phrases only
     "strengths weaknesses opportunities threats", "strengths weaknesses opportunities and threats",
