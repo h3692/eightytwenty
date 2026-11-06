@@ -38,8 +38,14 @@ def preflight(lib):
     _run([sys.executable, "-m", "pytest", "-q", "pipeline/tests"], REPO)
     _run(["npx", "vitest", "run"], server)
     _run(["npx", "tsc", "--noEmit", "-p", "."], server)
-    _run(["npx", "wrangler", "whoami"], server, "wrangler is not logged in. Log in again: cd server && npx wrangler login")
-    blocking = []
+    # --json: plain `whoami` exits 0 even when logged out
+    _run(["npx", "wrangler", "whoami", "--json"], server, "wrangler is not logged in. Log in again: cd server && npx wrangler login")
+    blocking, built = [], {b.parent.name for b in (lib / "work").glob("*/build")}
+    for f in sorted((lib / "records").glob("*.json")) + sorted((lib / "flows").glob("*.json")):  # leak-check can't reach these
+        deck = f.stem[:-3] if f.parent.name == "records" else f.stem
+        if deck not in built:
+            what = f.stem if f.parent.name == "records" else f"{deck} flow"
+            blocking.append(f"{what}: published, but {deck} has no build folder (run leak-check on it before retiring it)")
     for build in sorted((lib / "work").glob("*/build")):
         deck = build.parent.name
         for rid, r in leak_check.run(deck, lib).items():
@@ -60,7 +66,7 @@ def _embed(lib):
     else:
         raise SystemExit(f"Port {embed.PORT} is already in use; find the process with: lsof -i :{embed.PORT}")
     proc = subprocess.Popen(["npx", "wrangler", "dev", "--config", "../pipeline/embed_worker/wrangler.jsonc"],
-                            cwd=REPO / "server", start_new_session=True)
+                            cwd=REPO / "server", start_new_session=True, stdin=subprocess.DEVNULL)
     try:
         ready = urllib.request.Request(f"http://127.0.0.1:{embed.PORT}", json.dumps({"text": ["ready"]}).encode(),
                                        {"Content-Type": "application/json"})
@@ -91,7 +97,10 @@ def _rpc(method, params):
     with urllib.request.urlopen(urllib.request.Request(URL, body, HEADERS), timeout=30, context=ctx) as r:
         text = r.read().decode()
     data = [line[5:] for line in text.splitlines() if line.startswith("data:")]
-    return json.loads(data[-1] if data else text)["result"]
+    reply = json.loads(data[-1] if data else text)
+    if "error" in reply:
+        raise ValueError(reply["error"].get("message", reply["error"]))
+    return reply["result"]
 
 
 def _tool(name, args):
@@ -122,6 +131,9 @@ def smoke(version):
 def run(library, dry_run=False):
     sys.stdout.reconfigure(line_buffering=True)  # our lines and wrangler's, in the order they happen
     lib, server = Path(library).resolve(), REPO / "server"
+    git = lambda *a: subprocess.run(["git", *a], cwd=REPO, capture_output=True, text=True).stdout.strip()
+    if not dry_run and git("status", "--porcelain"):  # what goes live must be a commit someone can read
+        raise SystemExit("Release refused: uncommitted changes in the repo. Commit them first (git status shows them).")
     preflight(lib)
     records, flows = (len(list((lib / d).glob("*.json"))) for d in ("records", "flows"))
     if dry_run:
@@ -138,7 +150,6 @@ def run(library, dry_run=False):
                  "cd server && npx wrangler rollback")
     version = json.loads((lib / "manifest.json").read_text())["library_version"]
     smoke(version)
-    git = lambda *a: subprocess.run(["git", *a], cwd=REPO, capture_output=True, text=True).stdout.strip()
-    sha = git("rev-parse", "--short", "HEAD") + (" dirty" if git("status", "--porcelain") else "")
+    sha = git("rev-parse", "--short", "HEAD")
     deployed = next((line.strip() for line in deploy.stdout.splitlines() if "Version ID" in line), "")
     print(f"Released {records} records, {flows} flows, library_version {version}, git {sha}. {deployed}")

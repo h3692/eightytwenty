@@ -70,7 +70,7 @@ class _Fake:
         self.lib, self.steps, self.sleeps, self.libraries, self.requests = lib, [], [], [], []
         self.fail, self.reports, self.live = set(), {}, [VERSION]
         self.port_open, self.ready, self.stubborn, self.embed_error, self.porcelain = False, True, False, None, ""
-        self.exited = False
+        self.exited, self.rpc_error = False, None
 
     def run(self, cmd, cwd=None, **kw):
         line = " ".join(map(str, cmd))
@@ -110,6 +110,9 @@ class _Fake:
         self.steps.append(f"rpc {name}")
         if name == "initialize":
             result = {"serverInfo": {"name": "eightytwenty"}, "instructions": "Scope: slide design references."}
+        elif name == "find_references" and self.rpc_error:
+            err = {"jsonrpc": "2.0", "id": msg["id"], "error": {"code": -32000, "message": self.rpc_error}}
+            return _Resp(f"event: message\ndata: {json.dumps(err)}\n\n")
         elif name == "find_references":
             version = self.live.pop(0) if len(self.live) > 1 else self.live[0]
             result = {"content": [{"type": "text", "text": f"library_version {version}\n\n1. deck-a-01"}]}
@@ -144,20 +147,18 @@ def fake(monkeypatch, lib):
 
 
 def test_release_runs_every_step_in_order_deploying_before_loading_d1(fake, lib, capsys):
-    fake.porcelain = " M pipeline/release.py\n"
     release.run(lib)
     assert fake.steps == [
-        f"{sys.executable} -m pytest -q pipeline/tests", "npx vitest run", "npx tsc --noEmit -p .",
-        "npx wrangler whoami", "leak-check deck-a", "leak-check deck-b",
+        "git status --porcelain", f"{sys.executable} -m pytest -q pipeline/tests", "npx vitest run",
+        "npx tsc --noEmit -p .", "npx wrangler whoami --json", "leak-check deck-a", "leak-check deck-b",
         "npx wrangler dev --config ../pipeline/embed_worker/wrangler.jsonc", "ready", "embed", "killpg 4242 SIGTERM",
         "package", "npx wrangler deploy",
         f"npx wrangler d1 execute eightytwenty-db --remote --file {lib.resolve() / 'records.sql'} -y",
-        "rpc initialize", "rpc find_references", "rpc get_playbook", "git rev-parse --short HEAD",
-        "git status --porcelain"]
+        "rpc initialize", "rpc find_references", "rpc get_playbook", "git rev-parse --short HEAD"]
     server = release.REPO / "server"
     assert fake.cwds[f"{sys.executable} -m pytest -q pipeline/tests"] == release.REPO
     assert all(cwd == server for line, cwd in fake.cwds.items() if line.startswith("npx"))
-    assert fake.popen_kw == {"cwd": server, "start_new_session": True}
+    assert fake.popen_kw == {"cwd": server, "start_new_session": True, "stdin": subprocess.DEVNULL}  # no tty hotkeys
     req = fake.requests[1]
     assert json.loads(req.data)["params"] == {"name": "find_references",
                                               "arguments": {"purpose": "executive summary", "k": 1}}
@@ -167,13 +168,27 @@ def test_release_runs_every_step_in_order_deploying_before_loading_d1(fake, lib,
     out = capsys.readouterr().out
     assert "Current Version ID: 1234-abcd" in out  # wrangler's own output is still shown
     summary = out.strip().splitlines()[-1]
-    for part in ("3 records", "1 flows", VERSION, "abc1234 dirty", "Current Version ID: 1234-abcd"):
+    for part in ("3 records", "1 flows", VERSION, "git abc1234.", "Current Version ID: 1234-abcd"):
         assert part in summary
 
 
-def test_clean_tree_is_not_flagged_dirty(fake, lib, capsys):
-    release.run(lib)
-    assert "dirty" not in capsys.readouterr().out.strip().splitlines()[-1]
+def test_refuses_uncommitted_changes_before_anything_else_but_a_dry_run_still_checks(fake, lib, capsys):
+    fake.porcelain = " M server/src/app.ts\n"  # what is live must be a commit someone can read
+    with pytest.raises(SystemExit) as e:
+        release.run(lib)
+    assert "uncommitted" in str(e.value.code) and fake.steps == ["git status --porcelain"]
+    fake.steps.clear()
+    release.run(lib, dry_run=True)
+    assert "leak-check deck-b" in fake.steps
+
+
+def test_refuses_published_records_of_a_deck_that_is_no_longer_built(fake, lib, capsys):
+    (lib / "records" / "deck-z-01.json").write_text("{}")  # its work folder is gone, so leak-check never re-checks it
+    (lib / "flows" / "deck-z.json").write_text("{}")
+    with pytest.raises(SystemExit):
+        release.run(lib)
+    out = capsys.readouterr().out
+    assert "deck-z-01: published, but deck-z has no build folder" in out and "deck-z flow: published" in out
 
 
 def test_refuses_while_items_fail_or_wait_for_review_naming_each(fake, lib, capsys):
@@ -296,3 +311,10 @@ def test_a_worker_that_exits_early_fails_at_once_without_hiding_the_reason(fake,
         release.run(lib)
     assert "exited before it was ready" in str(e.value.code)
     assert len(fake.sleeps) <= 1 and not any(step.endswith("deploy") for step in fake.steps)
+
+
+def test_smoke_check_reports_the_servers_own_error_message(fake, lib):
+    fake.rpc_error = "D1 holds library_version old but the bundled vectors are new"
+    with pytest.raises(SystemExit) as e:
+        release.run(lib)
+    assert fake.rpc_error in str(e.value.code) and "KeyError" not in str(e.value.code)
