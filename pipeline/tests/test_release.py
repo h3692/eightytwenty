@@ -57,6 +57,9 @@ class _Proc:
     def __init__(self, fake):
         self.fake = fake
 
+    def poll(self):
+        return 1 if self.fake.exited else None
+
     def wait(self, timeout=None):
         if self.fake.stubborn and timeout:
             raise subprocess.TimeoutExpired("wrangler dev", timeout)
@@ -67,6 +70,7 @@ class _Fake:
         self.lib, self.steps, self.sleeps, self.libraries, self.requests = lib, [], [], [], []
         self.fail, self.reports, self.live = set(), {}, [VERSION]
         self.port_open, self.ready, self.stubborn, self.embed_error, self.porcelain = False, True, False, None, ""
+        self.exited = False
 
     def run(self, cmd, cwd=None, **kw):
         line = " ".join(map(str, cmd))
@@ -82,6 +86,8 @@ class _Fake:
         return _Proc(self)
 
     def killpg(self, pid, sig):
+        if self.exited:
+            raise ProcessLookupError(pid)
         self.steps.append(f"killpg {pid} {signal.Signals(sig).name}")
 
     def connect(self, addr, timeout=None):
@@ -282,3 +288,11 @@ def test_works_from_another_folder_with_the_library_under_the_repo(fake, monkeyp
     assert fake.libraries == [repo / "library"] * 2
     assert fake.cwds[f"{sys.executable} -m pytest -q pipeline/tests"] == repo
     assert fake.cwds["npx vitest run"] == repo / "server"
+
+
+def test_a_worker_that_exits_early_fails_at_once_without_hiding_the_reason(fake, lib):
+    fake.ready, fake.exited = False, True  # wrangler dev died, e.g. an expired login
+    with pytest.raises(SystemExit) as e:
+        release.run(lib)
+    assert "exited before it was ready" in str(e.value.code)
+    assert len(fake.sleeps) <= 1 and not any(step.endswith("deploy") for step in fake.steps)

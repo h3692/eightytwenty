@@ -3,6 +3,7 @@
 Stops at the first failure. Deploy runs before the D1 load: the import is atomic, so a failed load leaves D1 unchanged
 and the new Worker serving the old data until a re-run or `wrangler rollback`.
 """
+import contextlib
 import json
 import os
 import signal
@@ -64,6 +65,8 @@ def _embed(lib):
         ready = urllib.request.Request(f"http://127.0.0.1:{embed.PORT}", json.dumps({"text": ["ready"]}).encode(),
                                        {"Content-Type": "application/json"})
         for _ in range(READY_TRIES):
+            if proc.poll() is not None:  # e.g. an expired wrangler login: say so now, not after the timeout
+                raise SystemExit("The embed Worker exited before it was ready; its output is above.")
             try:
                 with urllib.request.urlopen(ready, timeout=5):
                     break
@@ -73,12 +76,13 @@ def _embed(lib):
             raise SystemExit(f"The embed Worker did not answer on port {embed.PORT} within {READY_TRIES} s.")
         embed.run(lib)
     finally:
-        os.killpg(proc.pid, signal.SIGTERM)
-        try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            os.killpg(proc.pid, signal.SIGKILL)
-            proc.wait()
+        with contextlib.suppress(ProcessLookupError):  # already gone: nothing to stop, keep the real error
+            os.killpg(proc.pid, signal.SIGTERM)
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                os.killpg(proc.pid, signal.SIGKILL)
+                proc.wait()
 
 
 def _rpc(method, params):
