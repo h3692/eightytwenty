@@ -120,6 +120,7 @@ def smoke(version):
 
 
 def run(library, dry_run=False):
+    sys.stdout.reconfigure(line_buffering=True)  # our lines and wrangler's, in the order they happen
     lib, server = Path(library).resolve(), REPO / "server"
     preflight(lib)
     records, flows = (len(list((lib / d).glob("*.json"))) for d in ("records", "flows"))
