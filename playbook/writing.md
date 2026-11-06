@@ -15,7 +15,7 @@
 - Specific numbers over adjectives ("+$4.2M EBITDA by Year 3", not "significant upside").
 - Recommendations use active verbs and a timeframe ("Launch a pilot in 3 stores in one region by Q2").
 - Frameworks are tools, not content: show SWOT, Porter's and the like only when their output drives the claim, and in
-  the modified form that points to an action (`Weaknesses -> Opportunities`).
+  the modified form that points to an action (`Weaknesses | Opportunities`).
 - Light wordplay is fine in moderation; never at the cost of clarity.
 - The tagline is the answer in one line. Bold only for emphasis. Sentence case. If text does not fit, cut words; do not
   shrink the type.

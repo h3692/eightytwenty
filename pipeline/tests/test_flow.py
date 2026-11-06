@@ -28,6 +28,7 @@ def _deck(lib, archetypes=ARCHETYPES, industries=None, renders=False):
             "purpose": f"Purpose of a {a.replace('-', ' ')} slide"}))
         if renders:
             Image.new("RGB", (1280, 720), (40 * (n % 6), 90, 160)).save(work / f"slide-{n:02d}.png")
+    (work / "style.json").write_text(json.dumps({"style": "consulting-structured"}))
     return work
 
 
@@ -126,7 +127,9 @@ def test_build_flow_computes_steps_dividers_pacing_bucket_industry_and_descripti
                              {"section": "problem-analysis", "slides": 1}, {"section": "solution", "slides": 3},
                              {"section": "closing", "slides": 1}, {"section": "appendix", "slides": 1}]
     assert rec["length_bucket"] == "medium" and rec["industry"] == "consumer-retail"
+    assert rec["style"] == "consulting-structured"
     d = rec["description"]
+    assert "Style: consulting structured." in d
     assert not re.search(r"\d", d)
     assert "problem to solution" in d and WHY in d
     assert "cover, hook, executive summary, situation, problem analysis, solution, closing, appendix" in d
@@ -178,6 +181,10 @@ def test_build_flow_refuses_a_missing_or_invalid_flow_or_labels(lib):
     with pytest.raises(SystemExit, match="12"):
         flow.build_flow(DECK, lib)
     _flow(work)
+    for bad in ("", '{"style": "neon-brutalist"}'):  # every flow record carries the deck's style
+        (work / "style.json").write_text(bad)
+        with pytest.raises(SystemExit, match="style.json"):
+            flow.build_flow(DECK, lib)
     (work / "labels" / "slide-03.json").unlink()
     with pytest.raises(SystemExit, match="slide-03"):
         flow.build_flow(DECK, lib)

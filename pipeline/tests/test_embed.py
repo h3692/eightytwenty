@@ -66,8 +66,8 @@ def test_writes_int8_vectors_norms_and_manifest_in_spike_layout(lib, server):
     man = json.loads((lib / "manifest.json").read_text())
     assert man["model"] == "@cf/baai/bge-m3" and man["pooling"] == "cls" and man["dims"] == 1024
     assert man["ids"] == sorted(ids) and man["count"] == 3
-    assert man["description_version"] == "desc-v2" and man["schema_version"] == "design-dna/v1"
-    assert man["library_version"].startswith("bge-m3/desc-v2/")
+    assert man["description_version"] == "desc-v3" and man["schema_version"] == "design-dna/v1"
+    assert man["library_version"].startswith("bge-m3/desc-v3/")
 
 
 def test_library_version_is_deterministic_per_build(lib, server):

@@ -10,12 +10,12 @@ const SCHEMA = [
 	"DROP TABLE IF EXISTS meta",
 	`CREATE TABLE slides (n INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE, deck_id TEXT NOT NULL, archetype TEXT NOT NULL,
   industry TEXT NOT NULL, data_type TEXT NOT NULL, purpose TEXT NOT NULL, why_it_works TEXT NOT NULL,
-  description TEXT NOT NULL, dna TEXT NOT NULL, impact TEXT NOT NULL, layout TEXT NOT NULL)`,
-	"CREATE INDEX slides_filters ON slides (archetype, industry, data_type)",
+  description TEXT NOT NULL, dna TEXT NOT NULL, impact TEXT NOT NULL, layout TEXT NOT NULL, style TEXT NOT NULL)`,
+	"CREATE INDEX slides_filters ON slides (archetype, industry, data_type, style)",
 	"CREATE VIRTUAL TABLE slides_fts USING fts5(purpose, why_it_works, description, tokenize='porter')",
 	`CREATE TABLE flows (n INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE, deck_id TEXT NOT NULL, arc TEXT NOT NULL,
-  length_bucket TEXT NOT NULL, industry TEXT NOT NULL, record TEXT NOT NULL, description TEXT NOT NULL)`,
-	"CREATE INDEX flows_filters ON flows (industry, length_bucket)",
+  length_bucket TEXT NOT NULL, industry TEXT NOT NULL, record TEXT NOT NULL, description TEXT NOT NULL, style TEXT NOT NULL)`,
+	"CREATE INDEX flows_filters ON flows (industry, length_bucket, style)",
 	"CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
 ];
 
@@ -29,8 +29,9 @@ const TOPICS = [
 ];
 const ARCHETYPES = ["chart", "timeline", "comparison"];
 const INDUSTRIES = ["retail", "technology"];
+const STYLES = ["consulting-structured", "bold-pitch", "visual-storytelling", "data-led", "minimal-editorial"];
 
-export type Row = { n: number; id: string; deck_id: string; archetype: string; industry: string; data_type: string; purpose: string; why_it_works: string; description: string; insight_device: string; regions: { i: number; box: { x: number; y: number; w: number; h: number } }[] };
+export type Row = { n: number; id: string; deck_id: string; archetype: string; industry: string; data_type: string; purpose: string; why_it_works: string; style: string; when_to_use: string; effect: string; elements: { component: number; note: string }[]; description: string; insight_device: string; regions: { i: number; box: { x: number; y: number; w: number; h: number } }[] };
 
 function rng(seed: number) {
 	return () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648) * 2 - 1;
@@ -51,6 +52,10 @@ export const rows: Row[] = Array.from({ length: 12 }, (_, n) => ({
 	data_type: n % 4 === 0 ? "kpi-numbers" : "time-series",
 	purpose: `Show the ${TOPICS[n % 6]}`,
 	why_it_works: `One highlighted element carries the ${TOPICS[(n + 1) % 6]} story`,
+	style: STYLES[Math.floor(n / 2) % 5], // one look per deck
+	when_to_use: `When the audience must see the ${TOPICS[n % 6]} at a glance`,
+	effect: "The eye lands on the highlighted figure first",
+	elements: [{ component: 1, note: "The tiles share one baseline" }],
 	description: `${ARCHETYPES[n % 3]} slide about ${TOPICS[n % 6]}`,
 	insight_device: "highlight",
 	regions: [{ i: 0, box: { x: 0, y: 0, w: 1, h: 0.2 } }, { i: 1, box: { x: 0, y: 0.25, w: 1, h: 0.6 } }],
@@ -78,7 +83,7 @@ export const flows = ARCS.map((arc, n) => {
 		steps: sections.map((section, k) => ({ id: `deck${n}-0${k + 1}`, archetype: ARCHETYPES[k], section })),
 		dividers: [],
 		pacing: sections.filter((s, k) => s !== sections[k - 1]).map((section) => ({ section, slides: sections.filter((s) => s === section).length })),
-		length_bucket: LENGTHS[n], industry: INDUSTRIES[n % 2], description: `${LENGTHS[n]} deck, ${arc} arc about ${TOPICS[n]}`,
+		length_bucket: LENGTHS[n], industry: INDUSTRIES[n % 2], style: STYLES[n], description: `${LENGTHS[n]} deck, ${arc} arc about ${TOPICS[n]}`,
 	};
 	return { n, ...record, record };
 });
@@ -119,10 +124,10 @@ export async function seed(db: D1Database, version = manifest.library_version) {
 	await db.batch([
 		...SCHEMA.map((s) => db.prepare(s)),
 		...rows.flatMap((r) => [
-			db.prepare("INSERT INTO slides VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(r.n, r.id, r.deck_id, r.archetype, r.industry, r.data_type, r.purpose, r.why_it_works, r.description, JSON.stringify(r), impacts[r.n], JSON.stringify(layouts[r.n])),
+			db.prepare("INSERT INTO slides VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(r.n, r.id, r.deck_id, r.archetype, r.industry, r.data_type, r.purpose, r.why_it_works, r.description, JSON.stringify(r), impacts[r.n], JSON.stringify(layouts[r.n]), r.style),
 			db.prepare("INSERT INTO slides_fts (rowid, purpose, why_it_works, description) VALUES (?, ?, ?, ?)").bind(r.n, r.purpose, r.why_it_works, r.description),
 		]),
-		...flows.map((f) => db.prepare("INSERT INTO flows VALUES (?, ?, ?, ?, ?, ?, ?, ?)").bind(f.n, f.id, f.deck_id, f.arc, f.length_bucket, f.industry, JSON.stringify(f.record), f.description)),
+		...flows.map((f) => db.prepare("INSERT INTO flows VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(f.n, f.id, f.deck_id, f.arc, f.length_bucket, f.industry, JSON.stringify(f.record), f.description, f.style)),
 		db.prepare("INSERT INTO meta VALUES ('library_version', ?)").bind(version),
 		db.prepare("DELETE FROM search_cache"),
 	]);

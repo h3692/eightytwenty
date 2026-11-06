@@ -9,9 +9,9 @@ A deck flow (work/<deck>/flow-record.json, decks of flow.MIN_SLIDES+ slides) is 
 EVERY slide of the deck, judged with the whole deck, and published to library/flows/ only if at least MIN_SHARE of
 its slides are published too (blank and duplicate slides not counted).
 
-Free-text fields (purpose, why_it_works, description, text patterns) must not contain digits, share a 3-word
-sequence with the slide's original text, contain names (spaCy NER, plus any name found in the slide text), or
-name a brand identity (HUES, BRAND_WORDS, BRAND_PHRASES, a web domain), whatever DESIGN_TERMS says.
+Free-text fields (purpose, why_it_works, when_to_use, effect, element notes, description, text patterns) must not
+contain digits, share a 3-word sequence with the slide's original text, contain names (spaCy NER, plus any name
+found in the slide text), or name a brand identity (HUES, BRAND_WORDS, BRAND_PHRASES, a web domain), whatever DESIGN_TERMS says.
 Numeric and enum DNA fields are exempt. The wireframe draws only from the DNA, so it inherits this check.
 
 NER and title-case slides mistake ordinary words for names, so a word only counts as a name when it is rare
@@ -49,6 +49,17 @@ DESIGN_TERMS = {"kpi", "kpis", "swot", "gantt", "harvey", "roi", "cagr", "mece",
                 "takeaway", "benchmark", "playbook", "scorecard", "dashboard", "wireframe", "mockup", "pillar",
                 "pillars", "workstream", "workstreams", "milestone", "milestones", "synergy", "synergies", "npv",
                 "ebitda", "tam", "sam", "som", "b2b", "b2c", "d2c", "sku", "skus", "go", "to", "market", "gtm"}
+# The verbs and nouns of style notes: never a name unless written like one (a company could be called ReAssure).
+STYLE_TERMS = {"conveys", "reassures", "rigour", "jargon", "mitigation", "mitigations", "constraint", "constraints",
+               "checklist", "checklists", "sizing"}
+# Style notes describe when and why a layout works, never for whom: a sector or audience narrows the source beyond the
+# coarse industry tag.
+SECTOR_WORDS = {"healthcare", "hospital", "hospitals", "clinic", "clinics", "patient", "patients", "pharma",
+                "pharmaceutical", "airline", "airlines", "aviation", "bank", "banks", "banking", "insurer", "insurers",
+                "insurance", "fintech", "nonprofit", "nonprofits", "charity", "charities", "donor", "donors", "retailer",
+                "retailers", "grocery", "restaurant", "restaurants", "hotel", "hotels", "hospitality", "university",
+                "universities", "student", "students", "school", "schools", "government", "telecom", "automaker",
+                "automakers", "utility", "utilities", "mining", "shipping", "farmers", "investors", "regulators"}
 COMMON_ZIPF = 3.5  # wordfreq zipf: 3.5 is about once per 300k words; below it a word may be a name
 FRAMEWORKS = sorted((p.split() for p in (  # standard framework names, as _words() sees them; exact phrases only
     "strengths weaknesses opportunities threats", "strengths weaknesses opportunities and threats",
@@ -100,13 +111,14 @@ def _words(text):
 
 
 def _fixed_lists():
-    """Our own fixed lists as _words() phrases: label, flow and layout enums, the archetype table's ids and slide jobs."""
+    """Our own fixed lists as _words() phrases: label, flow, layout and style enums, the archetype table's ids and
+    slide jobs."""
     schema = {n: json.loads((Path(__file__).parent / "schema" / f"{n}.json").read_text())
               for n in ("labels.v1", "flow.v1", "layout.v3")}
     labels = schema["labels.v1"]
     lists = [labels["properties"][k]["enum"] for k in ("archetype", "argument_shape", "insight_device", "data_type")]
     lists += [labels["$defs"]["role"]["enum"], schema["flow.v1"]["properties"]["sections"]["items"]["enum"],
-              schema["layout.v3"]["$defs"]["component"]["properties"]["kind"]["enum"]]
+              schema["layout.v3"]["$defs"]["component"]["properties"]["kind"]["enum"], build.STYLES]
     table = (Path(__file__).parent.parent / "playbook" / "archetypes.md").read_text()
     lists += re.findall(r"^\| `([a-z-]+)` \| ([^|]+) \|", table, re.M)
     return [_words(v) for v in chain(*lists)]
@@ -116,7 +128,8 @@ def _template_phrases():
     """The fixed scaffold of build.describe ("Why it works:" ...) as _words() phrases: the text between its fields."""
     blank = "\0"
     dna = dict.fromkeys(("archetype", "argument_shape", "insight_device", "data_type", "industry", "purpose",
-                         "why_it_works"), blank) | {"regions": [{"role": blank, "text": {"pattern": blank}}]}
+                         "why_it_works", "style", "when_to_use", "effect"), blank) | {
+        "regions": [{"role": blank, "text": {"pattern": blank}}]}
     return [_words(part) for part in build.describe(dna).split(blank)]
 
 
@@ -165,11 +178,13 @@ def problems_in(text, source, names):
         found.append(f"shared words with slide text: {shared[0]!r}")
     doc = _nlp()(text)
     for e in doc.ents:
-        if e.label_ in NAME_LABELS and not all(t.lower_ in DESIGN_TERMS or (_common(t.lower_) and not _name_like(t))
-                                               for t in e if t.is_alpha):
+        if e.label_ in NAME_LABELS and not all(
+                t.lower_ in DESIGN_TERMS or ((_common(t.lower_) or t.lower_ in STYLE_TERMS) and not _name_like(t))
+                for t in e if t.is_alpha):
             found.append(f"name ({e.label_}): {e.text!r}")
     written_as_name = {w for t in doc if _name_like(t) for w in _words(t.text)}
-    hits = sorted(w for w in names & set(words) if w not in DESIGN_TERMS and (w in written_as_name or not _common(w)))
+    hits = sorted(w for w in names & set(words)
+                  if w not in DESIGN_TERMS and (w in written_as_name or not (_common(w) or w in STYLE_TERMS)))
     if hits:
         found.append(f"name from slide text: {hits[0]!r}")
     brand = {w for w in words if w in BRAND_WORDS} | {" ".join(p) for p in zip(words, words[1:]) if p in BRAND_PHRASES}
@@ -186,10 +201,13 @@ def check(dna, source, deck_names=frozenset()):
     except Exception as e:  # fail closed on any schema problem
         return [f"schema: {e}"]
     names = source_names(source) | deck_names  # a name on any slide of the deck counts
-    fields = {k: dna[k] for k in ("purpose", "why_it_works", "description")}
+    fields = {k: dna[k] for k in ("purpose", "why_it_works", "when_to_use", "effect", "description")}
+    fields |= {f"elements/{i}/note": e["note"] for i, e in enumerate(dna["elements"])}
     fields |= {f"regions/{r['i']}/pattern": r["text"]["pattern"] for r in dna["regions"] if r["text"] and r["text"]["pattern"]}
     for key, text in fields.items():
         problems += [f"{key}: {p}" for p in problems_in(text, source, names)]
+        if key in ("when_to_use", "effect") or key.startswith("elements/"):
+            problems += [f"{key}: sector or audience: {w}" for w in sorted(SECTOR_WORDS & set(_words(text)))]
     return problems
 
 
@@ -201,6 +219,8 @@ def check_flow(record, source):
             raise ValueError(f"fields {sorted(set(record) ^ flow.RECORD_KEYS)}")
         if any(set(s) != flow.STEP_KEYS for s in record["steps"]):
             raise ValueError(f"step fields other than {sorted(flow.STEP_KEYS)}")
+        if record["style"] not in build.STYLES:
+            raise ValueError(f"style {record['style']!r} is not one of {build.STYLES}")
         flow.validate({"sections": [s["section"] for s in record["steps"]], "arc": record["arc"],
                        "why_the_flow_works": record["why_the_flow_works"],
                        "impact": [s["impact"] for s in record["steps"]],
@@ -321,6 +341,10 @@ def run(deck_id, library):
             problems.append("stale mockup: its v3 layout changed after it was built, run mockup")
         else:
             problems += [f"mockup: {p}" for p in mockup_problems(pptx)]
+        if layout.exists():  # element notes index the layout's components: a redrawn layout can leave them pointing elsewhere
+            n = len(json.loads(layout.read_text())["components"])
+            if any(e["component"] >= n for e in dna.get("elements", [])):
+                problems.append("stale build: element notes point outside its v3 layout, rewrite the notes and run build")
         r = report[rid] = {"auto": "fail" if problems else "pass", "problems": problems, "judge": "pending"}
         if problems:  # whatever replaces the problem is judged afresh
             for p in (judge / f"{rid}.json", judge / f"{rid}.png", judge / "verdicts" / f"{rid}.json"):

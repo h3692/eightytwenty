@@ -25,8 +25,9 @@ exceptions rather than averaging them.
 7. **Charts and images**: chart colours (grey plus one highlight, or default palette), label style, image crops (circle,
    full-bleed, overlay), mockup frames.
 8. **Footer**: page number position, source line style, anything else in the footer zone.
-9. **Existing devices**: shapes named `Insight_`, `IMG_`, `MOCKUP_`, hidden Design Options / Design Mock / Research
-   To-Do slides (`show="0"` on the slide). Read them; they carry earlier decisions.
+9. **Existing devices**: shapes named `Insight_`, `IMG_`, `MOCKUP_`. Hidden working slides from older tools (`show="0"`,
+   e.g. Design Options or Research To-Do) carry earlier decisions: read them, carry their open items into the research
+   to-do list in chat, and offer to delete them, since judges can unhide them.
 
 Summarise the spec in a few lines (fonts, sizes, brand hex, header/tracker form, box styles) and state it to the user
 once, so a wrong read is caught early. Then build every new slide to it.

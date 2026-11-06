@@ -1,16 +1,17 @@
 """Stage 2: write one worksheet per slide (labels + component layout in one look at the slide, or the layout alone
-for slides labelled before), and validate the labels written back in the user's session."""
+for slides labelled before), or one style worksheet per deck, and validate the labels written back in the user's
+session."""
 import json
 from pathlib import Path
 
 import jsonschema
 
-from pipeline import layout
+from pipeline import dedupe, layout
 
 HERE = Path(__file__).parent
 SCHEMA = json.loads((HERE / "schema" / "labels.v1.json").read_text())
-TEMPLATE, LAYOUT_ONLY, COMPONENTS = ((HERE / "templates" / f"{n}.txt").read_text()
-                                     for n in ("labeling", "layout", "components"))
+TEMPLATE, LAYOUT_ONLY, COMPONENTS, STYLE = ((HERE / "templates" / f"{n}.txt").read_text()
+                                            for n in ("labeling", "layout", "components", "style"))
 MAX_REGIONS = 40  # busy slides extract 1,000+ regions; a labeler only needs the big ones
 
 
@@ -20,11 +21,34 @@ def worksheet_regions(slide):
     return sorted(big, key=lambda r: r["i"])
 
 
-def run(deck_id, library, slides=None, layouts_only=False):
+def run(deck_id, library, slides=None, layouts_only=False, style=False):
     """Write a worksheet per slide (or only the listed slide numbers) and return its folder: work/<deck>/ for the
-    combined labels + layout pass, layouts/<deck>/ for the layout alone."""
+    combined labels + layout pass, layouts/<deck>/ for the layout alone. style writes and returns
+    work/<deck>/style.prompt.txt instead: the deck's style.json and style notes on its publishable slides."""
     lib = Path(library).absolute()
     work, layouts = lib / "work" / deck_id, lib / "layouts" / deck_id
+    if style:
+        skip, blocks, missing = dedupe.excluded(deck_id, lib), [], []
+        for f in sorted(work.glob("slide-??.json")):
+            if f"{deck_id}-{f.stem[-2:]}" in skip:
+                continue
+            try:
+                labels = json.loads((work / "labels" / f.name).read_text())
+                comps = json.loads((layouts / f"{f.stem}.v3.json").read_text())["components"]
+            except (OSError, ValueError, KeyError):
+                missing.append(f.stem)
+                continue
+            kinds = ", ".join(f"{k} {c['kind']}" for k, c in enumerate(comps))
+            blocks.append(f"{f.stem}  {work / f'{f.stem}.png'}  {work / 'labels' / f.name}\n"
+                          f"  {labels['archetype']}: {labels['purpose']}\n  components: {kinds}")
+        if missing:
+            raise SystemExit(f"No labels or v3 layout for {', '.join(missing)}: label and draw every slide first.")
+        sheet = work / "flow-contact-sheet.png"
+        out = work / "style.prompt.txt"
+        out.write_text(STYLE.format(
+            count=len(blocks), slides="\n".join(blocks), out=work / "style.json", deck=deck_id, library=lib,
+            sheet=f"\nLook at the whole deck first, on its contact sheet: {sheet}" if sheet.exists() else ""))
+        return out
     (work / "labels").mkdir(exist_ok=True)
     layouts.mkdir(parents=True, exist_ok=True)
     p, defs = SCHEMA["properties"], layout.SCHEMA["$defs"]
@@ -77,9 +101,10 @@ def reconcile(deck_id, library):
     return report
 
 
-def validate(labels, slide):
+def validate(labels, slide, components=None):
     """Raise ValueError unless labels match the schema and cover exactly the worksheet's regions (or, for slides
-    labelled before the cap, exactly every extracted region)."""
+    labelled before the cap, exactly every extracted region); given the slide's v3 layout components, its style
+    elements must each name a different one of them."""
     errors = sorted(jsonschema.Draft202012Validator(SCHEMA).iter_errors(labels), key=str)
     if errors:
         raise ValueError("; ".join(f"{'/'.join(map(str, e.path)) or 'labels'}: {e.message}" for e in errors))
@@ -90,3 +115,12 @@ def validate(labels, slide):
     bad = [t["region"] for t in labels["text_patterns"] if t["region"] not in texts]
     if bad:
         raise ValueError(f"text_patterns refer to unlabelled or non-text region(s) {bad}")
+    if components is None:
+        return
+    picked = [e["component"] for e in labels.get("elements", [])]
+    outside = sorted({k for k in picked if k >= len(components)})  # the schema already refused negatives
+    if outside:
+        raise ValueError(f"elements: component(s) {outside} outside the layout's {len(components)} components "
+                         "(indices from 0)")
+    if len(set(picked)) < len(picked):
+        raise ValueError("elements: name each component at most once")

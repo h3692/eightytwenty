@@ -1,5 +1,6 @@
 """Adversarial fixture deck: a client name planted in every channel the extractor must never read, plus body text."""
 import io
+import json
 
 import pytest
 from PIL import Image
@@ -146,4 +147,15 @@ def fixture_labels(slide):
         "why_it_works": "A single dominant statement on a saturated band makes the promise unmissable before any detail",
         "regions": regions,
         "text_patterns": [{"region": texts[0], "pattern": "outcome promise as a short noun phrase", "words": 6}],
+        "when_to_use": "Opening a pitch when one promise must land before any evidence",
+        "effect": "The audience grasps the central promise at a glance and expects proof next",
+        "elements": [{"component": 0, "note": "A single headline block carries the promise with nothing competing"}],
     }
+
+
+STYLE = "bold-pitch"
+
+
+def fixture_style(work):
+    """The deck style a careful labeler would pick for the fixture deck: work/<deck>/style.json."""
+    (work / "style.json").write_text(json.dumps({"style": STYLE}))

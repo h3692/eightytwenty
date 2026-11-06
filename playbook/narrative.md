@@ -5,8 +5,9 @@ slide is a step in that line. Plan the storyline in text first (`workflow`, deck
 
 ## Narrative questions (deck-mode intake)
 
-Send these as one numbered list, each with the assumption you will use if the user does not answer (from the case
-prompt where possible). Skip any the prompt already answers.
+The deck-mode questions in `workflow` (Step 1) ask for the end belief, the target market and the alternatives, one per
+message. The rest of this list you work out yourself from the answers and the prompt, and show in the storyline for the
+user to correct; ask about one only if the answers leave it genuinely open.
 
 1. **The end belief.** What must the judges believe at the end, in one sentence? This is the recommendation plus why it
    wins.

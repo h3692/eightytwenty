@@ -6,7 +6,7 @@ import pytest
 from PIL import Image
 
 from pipeline import build, extract, flow, label_prep, leak_check, mockup
-from pipeline.tests.conftest import CLIENT, EXCLUDED, fixture_labels
+from pipeline.tests.conftest import CLIENT, EXCLUDED, fixture_labels, fixture_style
 from pipeline.tests.test_mockup import SLIDES
 
 LAYOUT = {"version": 3, "components": [{"kind": "logo"}, {"kind": "text", "box": [0, 0, 1, 1], "lines": 3}]}
@@ -32,6 +32,7 @@ def _pipeline(deck, lib, edit=lambda n, labels: None):
         labels = fixture_labels(json.loads(f.read_text()))
         edit(int(f.stem[-2:]), labels)
         (work / "labels" / f.name).write_text(json.dumps(labels))
+    fixture_style(work)
     ids = build.run(deck_id, lib)
     mockups(lib, deck_id)
     return deck_id, ids
@@ -99,6 +100,10 @@ def test_design_vocabulary_is_not_a_name():
     assert leak_check.problems_in("Gantt bars and a SWOT grid with KPI tiles and Harvey balls", "", set()) == []
     # plurals too, even when the deck's text tags the word as a name somewhere
     assert leak_check.problems_in("Two Personas side by side", "Personas", {"personas"}) == []
+    # the verbs and nouns of style notes are design vocabulary, also at the start of a sentence
+    for note in ("Conveys rigour without jargon.", "Reassures the judges that every risk has a mitigation.",
+                 "Sizing, constraints and a checklist on one page."):
+        assert leak_check.problems_in(note, "Mitigation Sizing Checklist Constraint", {"mitigation", "sizing", "checklist", "constraint"}) == [], note
 
 
 def test_names_from_the_slide_text_are_blocked_even_if_ner_misses_them():
@@ -168,10 +173,10 @@ CASE_TERMS = ["financials", "Financials", "deliverables", "storyboard", "Storybo
 
 def _schema_values():
     s = {n: json.loads((leak_check.Path(leak_check.__file__).parent / "schema" / f"{n}.json").read_text())
-         for n in ("labels.v1", "flow.v1", "layout.v3")}
+         for n in ("labels.v1", "flow.v1", "layout.v3", "style.v1")}
     p = s["labels.v1"]["properties"]
     return sorted({v for vs in [*(p[k]["enum"] for k in ("archetype", "argument_shape", "insight_device", "data_type")),
-                                s["labels.v1"]["$defs"]["role"]["enum"],
+                                s["labels.v1"]["$defs"]["role"]["enum"], s["style.v1"]["properties"]["style"]["enum"],
                                 s["flow.v1"]["properties"]["sections"]["items"]["enum"],
                                 s["layout.v3"]["$defs"]["component"]["properties"]["kind"]["enum"]] for v in vs})
 
@@ -194,11 +199,13 @@ def test_standard_framework_phrases_are_not_copied_text(text, source):
     assert leak_check.problems_in(text, source, set()) == []
 
 
-@pytest.mark.parametrize("heading", ["Why it works", "WHY IT WORKS\nPurpose\nLayout", "Why it works: the plan"])
+@pytest.mark.parametrize("heading", ["Why it works", "WHY IT WORKS\nPurpose\nLayout", "Why it works: the plan",
+                                     "When to use: the plan"])
 def test_our_description_template_phrases_are_not_copied_text(heading):
     dna = {"archetype": "situational-analysis", "argument_shape": "evidence-stack", "insight_device": "big-number",
            "data_type": "kpi-numbers", "industry": "travel-hospitality", "purpose": "Open with one bold promise",
-           "why_it_works": "A single dominant statement makes the promise unmissable",
+           "why_it_works": "A single dominant statement makes the promise unmissable", "style": "data-led",
+           "when_to_use": "Opening a pitch on one promise", "effect": "The promise lands first",
            "regions": [{"role": "title", "text": {"pattern": "outcome promise as a short noun phrase"}}]}
     assert ["why", "it", "works"] in leak_check.FRAMEWORKS  # computed from build.describe, not retyped
     assert leak_check.problems_in(build.describe(dna), heading, set()) == []
@@ -370,6 +377,7 @@ def _six_slide_deck(deck, lib, why=FLOW_WHY, with_flow=True):
     label_prep.run(deck_id, lib)
     for f in sorted(work.glob("slide-??.json")):
         (work / "labels" / f.name).write_text(json.dumps(fixture_labels(json.loads(f.read_text()))))
+    fixture_style(work)
     ids = build.run(deck_id, lib)
     mockups(lib, deck_id, slides=range(1, 7))
     if with_flow:
@@ -572,3 +580,93 @@ def test_a_published_record_whose_build_is_gone_is_withdrawn(deck, lib):
     assert ids[1] not in report
     assert not (lib / "records" / f"{ids[1]}.json").exists() and not (lib / "wireframes" / f"{ids[1]}.png").exists()
     assert (lib / "records" / f"{ids[0]}.json").exists() and other.exists()
+
+
+@pytest.mark.parametrize("field, value, problem", [
+    ("when_to_use", "Open on the quillmoor promise first", "name from slide text: 'quillmoor'"),
+    ("when_to_use", "Open with 3 reasons members stay", "digit"),
+    ("when_to_use", "Open on a teal band with the mascot", "brand identity: mascot, teal"),
+    ("effect", "The quillmoor promise lands first", "name from slide text"),
+    ("elements/0/note", "A headline in 2 lines", "digit"),
+])
+def test_style_notes_are_checked_like_any_free_text(deck, lib, field, value, problem):
+    deck_id, ids = _six_slide_deck(deck, lib)  # only slide 5's text names Quillmoor
+    record = lib / "work" / deck_id / "build" / f"{ids[2]}.json"
+    dna = json.loads(record.read_text())
+    if field.startswith("elements"):
+        dna["elements"][0]["note"] = value
+    else:
+        dna[field] = value
+    record.write_text(json.dumps(dna))
+    report = leak_check.run(deck_id, lib)
+    assert report[ids[2]]["auto"] == "fail" and any(p.startswith(f"{field}: ") and problem in p
+                                                    for p in report[ids[2]]["problems"]), report[ids[2]]
+    assert report[ids[1]]["auto"] == "pass"
+
+
+def test_a_record_without_style_notes_fails_closed(deck, lib):
+    deck_id, ids = _pipeline(deck, lib)
+    record = lib / "work" / deck_id / "build" / f"{ids[1]}.json"
+    record.write_text(json.dumps({k: v for k, v in json.loads(record.read_text()).items() if k != "when_to_use"}))
+    report = leak_check.run(deck_id, lib)
+    assert report[ids[1]]["auto"] == "fail" and report[ids[1]]["problems"][0].startswith("schema")
+
+
+@pytest.mark.parametrize("with_style", [True, False])
+def test_blank_or_duplicate_slides_need_no_style_notes_and_are_still_reported_excluded(deck, lib, with_style):
+    def edit(n, labels):
+        if n == 1:
+            for k in ("when_to_use", "effect", "elements"):
+                labels.pop(k)
+    deck_id = extract.run(deck, lib, render=False)
+    work = label_prep.run(deck_id, lib)
+    for f in sorted(work.glob("slide-??.json")):
+        labels = fixture_labels(json.loads(f.read_text()))
+        edit(int(f.stem[-2:]), labels)
+        (work / "labels" / f.name).write_text(json.dumps(labels))
+    (lib / "layouts" / deck_id / "slide-01.v3.json").write_text(json.dumps({"version": 3, "blank": True, "components": []}))
+    if not with_style:  # a publishable slide still needs the deck style
+        with pytest.raises(SystemExit, match="style.json"):
+            build.run(deck_id, lib)
+        return
+    fixture_style(work)
+    ids = build.run(deck_id, lib)
+    mockups(lib, deck_id, slides=(2,))
+    report = leak_check.run(deck_id, lib)
+    assert report[ids[0]] == {"auto": "excluded", "problems": ["blank"], "judge": "excluded", "published": False,
+                              "excluded": "blank"}
+    assert report[ids[1]]["auto"] == "pass"
+
+
+def test_flow_record_without_a_valid_style_fails_closed(deck, lib):
+    deck_id, ids = _six_slide_deck(deck, lib)
+    good = json.loads((lib / "work" / deck_id / "flow-record.json").read_text())
+    assert good["style"] == "bold-pitch" and leak_check.check_flow(good, "") == []
+    for bad in (dict(good, style="neon-brutalist"), {k: v for k, v in good.items() if k != "style"}):
+        assert leak_check.check_flow(bad, "")[0].startswith("schema"), bad
+
+
+def test_style_words_written_as_names_still_count_as_names():
+    assert leak_check.problems_in("The ReAssure header band carries the promise", "ReAssure plc annual results", {"reassure"})
+    assert leak_check.problems_in("Rigor's dashboard tiles explain the pitch", "Rigor monitoring", {"rigor"})
+
+
+def test_style_notes_never_name_a_sector_or_audience(deck, lib):
+    deck_id, ids = _six_slide_deck(deck, lib)
+    record = lib / "work" / deck_id / "build" / f"{ids[1]}.json"
+    dna = json.loads(record.read_text())
+    record.write_text(json.dumps(dict(dna, when_to_use="Use when a hospital board needs the plan on one page")))
+    report = leak_check.run(deck_id, lib)
+    assert report[ids[1]]["auto"] == "fail" and any("sector or audience: hospital" in p for p in report[ids[1]]["problems"])
+    assert leak_check.problems_in("Gives a calm, energetic finish", "", set()) == []  # only notes are checked for sectors
+
+
+def test_element_notes_pointing_outside_the_layout_fail_closed(deck, lib):
+    deck_id, ids = _six_slide_deck(deck, lib)
+    layout = lib / "layouts" / deck_id / "slide-02.v3.json"
+    record = lib / "work" / deck_id / "build" / f"{ids[1]}.json"
+    n = len(json.loads(layout.read_text())["components"])
+    dna = json.loads(record.read_text())
+    record.write_text(json.dumps(dict(dna, elements=[{"component": n, "note": "Use the lead panel to state the answer first"}])))
+    report = leak_check.run(deck_id, lib)
+    assert report[ids[1]]["auto"] == "fail" and any("stale build" in p for p in report[ids[1]]["problems"])

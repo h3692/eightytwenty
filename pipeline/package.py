@@ -17,12 +17,12 @@ DROP TABLE IF EXISTS slides;
 DROP TABLE IF EXISTS meta;
 CREATE TABLE slides (n INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE, deck_id TEXT NOT NULL, archetype TEXT NOT NULL,
   industry TEXT NOT NULL, data_type TEXT NOT NULL, purpose TEXT NOT NULL, why_it_works TEXT NOT NULL,
-  description TEXT NOT NULL, dna TEXT NOT NULL, impact TEXT NOT NULL, layout TEXT NOT NULL);
-CREATE INDEX slides_filters ON slides (archetype, industry, data_type);
+  description TEXT NOT NULL, dna TEXT NOT NULL, impact TEXT NOT NULL, layout TEXT NOT NULL, style TEXT NOT NULL);
+CREATE INDEX slides_filters ON slides (archetype, industry, data_type, style);
 CREATE VIRTUAL TABLE slides_fts USING fts5(purpose, why_it_works, description, tokenize='porter');
 CREATE TABLE flows (n INTEGER PRIMARY KEY, id TEXT NOT NULL UNIQUE, deck_id TEXT NOT NULL, arc TEXT NOT NULL,
-  length_bucket TEXT NOT NULL, industry TEXT NOT NULL, record TEXT NOT NULL, description TEXT NOT NULL);
-CREATE INDEX flows_filters ON flows (industry, length_bucket);
+  length_bucket TEXT NOT NULL, industry TEXT NOT NULL, record TEXT NOT NULL, description TEXT NOT NULL, style TEXT NOT NULL);
+CREATE INDEX flows_filters ON flows (industry, length_bucket, style);
 CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 -- Cached results of the old library can never be served again (the key holds library_version): drop them on load.
 CREATE TABLE IF NOT EXISTS search_cache (key TEXT PRIMARY KEY, results TEXT NOT NULL, library_version TEXT);
@@ -60,7 +60,7 @@ def run(library):
                      regions_shown=f"the {MAX_REGIONS} largest of {len(r['regions'])}, by area")
         cols = [r["id"], r["deck_id"], r["archetype"], r["industry"], r["data_type"], r["purpose"], r["why_it_works"],
                 r["description"], json.dumps(r, separators=(",", ":")), impact.get(r["id"], "none"),
-                json.dumps(lay, separators=(",", ":"))]
+                json.dumps(lay, separators=(",", ":")), r["style"]]
         lines.append(f"INSERT INTO slides VALUES ({n}, {', '.join(map(_q, cols))});")
         if len(lines[-1].encode()) > MAX_STATEMENT:
             raise SystemExit(f"{r['id']}: its row is over D1's {MAX_STATEMENT:,}-byte statement limit; shorten it.")
@@ -68,7 +68,7 @@ def run(library):
                      f"({n}, {_q(r['purpose'])}, {_q(r['why_it_works'])}, {_q(r['description'])});")
     for n, f in enumerate(flows):
         cols = [f["id"], f["deck_id"], f["arc"], f["length_bucket"], f["industry"], json.dumps(f, separators=(",", ":")),
-                f["description"]]
+                f["description"], f["style"]]
         lines.append(f"INSERT INTO flows VALUES ({n}, {', '.join(map(_q, cols))});")
     lines.append(f"INSERT INTO meta VALUES ('library_version', {_q(manifest['library_version'])});")
     (lib / "records.sql").write_text("\n".join(lines) + "\n")

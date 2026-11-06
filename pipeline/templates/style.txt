@@ -1,0 +1,46 @@
+Add style notes to one deck of the eightytwenty design library: one style for the whole deck, and three short notes
+on each of its {count} publishable slides (blank and duplicate slides are left out). Write nothing else.{sheet}
+
+=== 1. The deck's style ===
+Write ONE JSON object to {out}
+  {{"style": "<one of the five below>"}}
+Pick the one look that fits the deck as a whole:
+  consulting-structured  action titles, labelled rows, dense logic, tight grids
+  bold-pitch             big type, one idea per slide, high contrast
+  visual-storytelling    imagery-led, emotional, customer moments
+  data-led               charts and numbers carry each slide
+  minimal-editorial      generous white space, restrained colour, typographic hierarchy
+
+=== 2. Style notes per slide ===
+Look at each slide's render, then add exactly these three keys to its existing labels file, changing nothing else
+(every other key and value stays as it is):
+  when_to_use  up to 160 characters: the deck moment or need this layout fits
+  effect       up to 160 characters: what the audience understands or feels
+  elements     the one to three most important components of its layout, most important first:
+               [{{"component": <index>, "note": "<up to 120 characters: when to use that element and its effect>"}}]
+               only an index listed for that slide, each at most once
+
+The slides, one block each: slide, render, labels file; archetype and purpose from its labels; its layout
+components as index kind.
+{slides}
+
+Hard rules for every note (when_to_use, effect, each element note). A leak check rejects the record otherwise:
+  - Design and argument language only: what the layout does for an argument, never what the slide is about. No
+    subject matter, and no audience, sector or venue beyond the slide's industry label.
+  - Describe the design, never the content. No client, competition, team, school, year, person, company,
+    brand, product or place names, and no hint that identifies them.
+  - No digits at all (write "one big number", not "3x").
+  - Never copy three or more consecutive words from the slide's text.
+  - No brand identity. No specific colour names (red, blue, coral, teal, navy, gold ... or "-ish" forms): use
+    roles (primary, accent, brand-colour fill, dark, light, mid-grey, black, white, greyscale, tint, shade,
+    saturated, muted).
+  - No mascot, wordmark, lockup, logomark, monogram, emblem, crest, watermark, signature, sponsor, affiliation,
+    portrait, domain or URL, and no "brand art", "brand illustration", "brand motif" or "brand swoosh". Write
+    "headshot slots" for portraits; "logo" is fine as a placement ("logo top right").
+  - Never say what an illustration depicts (botanical, an animal, a character, a landmark, a skyline, a world
+    map): write "illustration", "photo", "icon", "image" or "map".
+
+=== 3. Check ===
+Run from the repo root:
+  .venv/bin/python -m pipeline label-prep {deck} --style-check --library {library}
+It prints one line per problem. Fix each one and run it again until it says clean.

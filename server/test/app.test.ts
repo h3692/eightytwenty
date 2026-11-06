@@ -2,6 +2,7 @@ import { env, runInDurableObject } from "cloudflare:test";
 import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import labels from "../../pipeline/schema/labels.v1.json";
+import styles from "../../pipeline/schema/style.v1.json";
 import archetypesMd from "../../playbook/archetypes.md";
 import { app, clientKey, STAGES } from "../src/app";
 import type { Limiter } from "../src/limiter";
@@ -74,15 +75,23 @@ describe("MCP endpoint", () => {
 		expect(p.data_type.enum).toEqual(labels.properties.data_type.enum);
 		expect(p.k.maximum).toBe(8);
 		expect(p.impact.enum).toEqual(["none", "build", "spotlight", "shade_ribbon", "repeat"]);
+		expect(p.style.enum).toEqual(styles.properties.style.enum);
+		expect(p.style.description).toBeTruthy();
 		expect(tools.find_references.description).toMatch(/one per deck/i);
 		expect(tools.find_references.description).toMatch(/impact filter returns few/i);
-		for (const t of [tools.find_references, tools.find_deck_flows]) expect(t.description).toMatch(/deck mode.*after the slide-by-slide storyline is confirmed.*get_playbook/i);
+		// when to use them leads each search description; refusal wording stays out of tool descriptions
+		for (const t of [tools.find_references, tools.find_deck_flows]) {
+			expect(t.description.split(". ")[0]).toMatch(/after .*(claim|end belief).* settled.*get_playbook/i);
+			expect(t.description).not.toMatch(/can't be used/i);
+		}
 		expect(tools.find_references.inputSchema.required).toEqual(["purpose"]);
 		expect(tools.get_playbook.inputSchema.properties.stage.enum).toEqual(STAGES);
 		expect(tools.get_playbook.description).toMatch(/before planning a deck/i);
 		const f = tools.find_deck_flows.inputSchema;
 		expect(f.properties.industry.enum).toEqual(labels.properties.industry.enum);
 		expect(f.properties.length.enum).toEqual(["short", "medium", "long"]);
+		expect(f.properties.style.enum).toEqual(styles.properties.style.enum);
+		expect(f.properties.style.description).toBeTruthy();
 		expect(f.required).toEqual(["purpose"]);
 		expect(tools.find_deck_flows.description).toMatch(/whole deck/i);
 	});
@@ -120,6 +129,36 @@ describe("MCP endpoint", () => {
 	});
 });
 
+describe("server instructions and prompts", () => {
+	it("sends instructions on initialize: scope and the questions, plan, approval, build order up front", async () => {
+		const { body } = await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } });
+		const ins: string = body.result.instructions;
+		expect(ins.length).toBeLessThan(2000);
+		const head = ins.slice(0, 512);
+		for (const s of ["researching and building decks", "get_playbook", "one per message", "approve", "eightytwenty can't be used for that"])
+			expect(head).toContain(s);
+		expect(ins).toMatch(/never as slides/i);
+	});
+
+	it("offers a start prompt that opens the guided flow, with optional context", async () => {
+		const { body: list } = await rpc("prompts/list");
+		const start = list.result.prompts.find((p: { name: string }) => p.name === "start");
+		expect(start.description).toBeTruthy();
+		expect(start.arguments).toEqual([expect.objectContaining({ name: "context", required: false })]);
+		const { body } = await rpc("prompts/get", { name: "start", arguments: { context: "a pitch for a campus food startup" } });
+		const msg = body.result.messages[0];
+		expect(msg.role).toBe("user");
+		for (const s of ["a pitch for a campus food startup", "get_playbook", "one at a time", "approve"]) expect(msg.content.text).toContain(s);
+		const { body: bare } = await rpc("prompts/get", { name: "start", arguments: {} });
+		expect(bare.result.messages[0].content.text).toContain("get_playbook");
+	});
+
+	it("does not count prompts against the tool-call limit", async () => {
+		const e = testEnv({ LIMIT_PER_MINUTE: 1 }), from = nextIp();
+		for (let i = 0; i < 3; i++) expect((await rpc("prompts/get", { name: "start", arguments: {} }, { e, from })).res.status).toBe(200);
+	});
+});
+
 describe("get_playbook", () => {
 	it("bundles one stage per playbook chapter", () => {
 		expect([...STAGES].sort()).toEqual(env.PLAYBOOK_FILES.map((f: string) => f.replace(/\.md$/, "")).sort());
@@ -135,6 +174,24 @@ describe("get_playbook", () => {
 		const text = body.result.content[0].text;
 		for (const s of STAGES) expect(text).toContain(s);
 		expect(text).toContain("# Workflow");
+	});
+
+	it("the workflow puts scope, one question per message, a text plan and approval before any build", async () => {
+		const { body } = await tool("get_playbook");
+		const text = body.result.content[0].text;
+		for (const s of ["eightytwenty can't be used for that.", "One question per message", "Reply **approve**", "Nothing extra in the deck", "Research to-do, in chat"])
+			expect(text).toContain(s);
+		expect(text).not.toMatch(/hidden \*\*Research To-Do\*\* slide|Design Options slide \(hidden\)/);
+		for (const stage of STAGES) {  // no chapter sends anything into the deck or skips the plan
+			const chapter = (await tool("get_playbook", { stage })).body.result.content[0].text;
+			expect(chapter, stage).not.toMatch(/Design Options (slide|asset list)|rough layout/i);
+			if (stage !== "polish") expect(chapter, stage).not.toMatch(/`[^`\n]*(->|→|=>)[^`\n]*`/); // example slide text never carries an arrow
+		}
+		expect(text).toMatch(/only when the user explicitly asks for everything at once/i);
+		expect(text).toMatch(/If a style filter returns nothing, search again without it/);
+		const polish = (await tool("get_playbook", { stage: "polish" })).body.result.content[0].text;
+		expect(polish).toContain("# Density and polish");
+		expect(polish).toMatch(/No arrow characters/);
 	});
 
 	it("returns one chapter", async () => {
@@ -172,8 +229,17 @@ describe("find_references", () => {
 		expect(text).toContain("   Kinds: tracker×5, kpi_row×2, takeaway\n");
 		expect(text).toContain(`   Kinds: tracker×5, kpi_row×${(9 % 3) + 2}, takeaway | impact: shade_ribbon\n`);
 		expect(text).not.toContain("impact: none");
+		expect(text).toContain(`takeaway | impact: shade_ribbon\n   Style: ${rows[9].style} | When to use: ${rows[9].when_to_use}\n`);
 		const spot = await tool("find_references", { purpose: "market share", impact: "spotlight" });
 		expect(spot.body.result.content[0].text.split("\n").filter((l: string) => /^\d\. /.test(l))).toEqual([expect.stringContaining(rows[6].id)]);
+	});
+
+	it("filters by style and rejects an unknown one with the valid values", async () => {
+		const { body } = await tool("find_references", { purpose: "market share", style: "data-led" });
+		expect(body.result.content[0].text.split("\n").filter((l: string) => /^\d\. /.test(l))).toEqual([expect.stringContaining(rows[6].id)]);
+		const bad = await tool("find_references", { purpose: "x", style: "flashy" });
+		expect(bad.body.result?.isError ?? !!bad.body.error).toBe(true);
+		expect(JSON.stringify(bad.body)).toContain("minimal-editorial");
 	});
 
 	it("accepts k up to 8 and rejects an unknown impact", async () => {
@@ -207,10 +273,15 @@ describe("find_deck_flows", () => {
 		const { results } = await searchFlows(testEnv({ AI: fakeAI(() => flowFloats[1]) }), lib, { purpose: "win over the judges" });
 		expect(results).toHaveLength(3);
 		expect(results[0].id).toBe(flows[1].id);
-		expect(text.split("\n").filter((l) => /^\d\. /.test(l))).toEqual(results.map((r, i) => `${i + 1}. ${r.id} | ${r.arc} | ${r.length} deck | ${r.industry} | score ${r.score}`));
+		expect(text.split("\n").filter((l) => /^\d\. /.test(l))).toEqual(results.map((r, i) => `${i + 1}. ${r.id} | ${r.arc} | ${r.length} deck | ${r.industry} | ${r.style} style | score ${r.score}`));
 		for (const s of [manifest.library_version, "Sections: cover > solution > financials", `Why the flow works: ${flows[1].why_the_flow_works}`, "get_reference"]) expect(text).toContain(s);
 		const cached = await env.DB.prepare("SELECT results FROM search_cache").all<{ results: string }>();
 		expect(cached.results.map((r) => JSON.parse(r.results))).toEqual([results]);
+	});
+
+	it("filters by style", async () => {
+		const { body } = await tool("find_deck_flows", { purpose: "x", style: "bold-pitch" });
+		expect(body.result.content[0].text.split("\n").filter((l: string) => /^\d\. /.test(l))).toEqual([expect.stringContaining(`${flows[1].id} | pillars | medium deck | technology | bold-pitch style |`)]);
 	});
 
 	it("rejects an unknown length with the valid values", async () => {

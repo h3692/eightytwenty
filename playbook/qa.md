@@ -17,17 +17,23 @@ Run on every finished slide. Fix what you can without asking; report only what n
 - [ ] Number formats consistent and correct (`25%`, not `%25`; one of `$22M` / `$22 M+`; one currency symbol style).
 - [ ] Tracker shows the right section.
 - [ ] Spelling checked, especially headers and recurring terms.
-- [ ] Style matches the deck spec (or the applied font and colour choice) on every text run, table cell and chart
+- [ ] Style matches the deck spec (the deck font and the applied palette) on every text run, table cell and chart
       element; no application defaults (Calibri/Aptos, default chart colours) leaking in.
-- [ ] Text contrast readable on every fill in the applied colour scheme.
+- [ ] Text contrast readable on every fill in the applied palette.
+- [ ] Density matches the slide's tier (`polish`): Medium for content, High for financials and problem analysis.
+- [ ] Every precision rule in `polish` holds: shared margins, capitalization, matched line counts, quiet footnotes, no
+      arrow characters, title punctuation, centred tracker, full boxes, bottom margin, colour tokens, stats featured
+      once.
 - [ ] Imagery present where the slide type calls for it, absent from analytical slides, within the per-slide budget;
-      every unfilled slot on the asset list; text over photos has an overlay and is readable.
+      every unfilled slot on the research to-do list in chat; text over photos has an overlay and is readable.
 - [ ] Any non-standard font flagged for embedding; any font substituted in a check render flagged.
 - [ ] Body text >= 8pt; nothing overlapping (titles colliding with chart titles is a common bug); no overflow (re-check
       after any font change); edges aligned; footer zone clear.
 - [ ] Composition not reused within the section; not the same grid as both neighbours.
-- [ ] No `[ ]` placeholders remain unless the user knowingly left them, and each remaining one is logged on the hidden
-      Research To-Do slide or the asset list.
+- [ ] No `[ ]` placeholders remain unless the user knowingly left them, and each remaining one is on the research
+      to-do list in chat.
+- [ ] Nothing extra in the deck file: no options, mock or to-do slides, hidden or visible.
+- [ ] What was built matches the approved plan; any change from it was named in chat.
 - [ ] Built natively in the deck's style from any references used; nothing copied wholesale from a reference.
 
 **Narrative checks** (on every slide against its neighbours; across the whole deck in deck mode):
