@@ -2,7 +2,7 @@
 import argparse
 import sys
 
-from pipeline import build, dedupe, embed, extract, flow, label_prep, leak_check, mockup, package
+from pipeline import build, dedupe, embed, extract, flow, label_prep, leak_check, mockup, package, release
 
 
 def main(argv=None):
@@ -37,6 +37,9 @@ def main(argv=None):
     p.add_argument("--slides", help="comma-separated slide numbers, e.g. 05,08 (default: all)")
     for p in sub.choices.values():
         p.add_argument("--library", default="library")
+    p = sub.add_parser("release", help="preflight, embed, package, deploy, load D1 and smoke-check the live server")
+    p.add_argument("--dry-run", action="store_true", help="preflight only: report what would publish")
+    p.add_argument("--library", default=release.REPO / "library")  # from any folder
     a = ap.parse_args(argv)
 
     if a.stage == "extract":
@@ -88,6 +91,8 @@ def main(argv=None):
         else:
             out = label_prep.run(a.deck_id, a.library, slides, layouts_only=True)
             print(f"Draw each layout: in Claude Code, ask it to follow every {out}/slide-NN.prompt.txt")
+    elif a.stage == "release":
+        release.run(a.library, a.dry_run)
 
 
 if __name__ == "__main__":
