@@ -1,0 +1,52 @@
+{
+	"result_count": 29,
+	"page_count": 8,
+	"page_size": 4,
+	"page": 1,
+	"results": [
+		{
+			"id": "1b35fbf7-be7a-4be2-89d4-066ddd081453",
+			"title": "Prague Airport - IMG_2253",
+			"creator": "Nicola since 1972",
+			"license": "by",
+			"license_version": "2.0",
+			"url": "https://live.staticflickr.com/7147/6751791699_26557f7f85_b.jpg",
+			"foreign_landing_url": "https://www.flickr.com/photos/15216811@N06/6751791699",
+			"thumbnail": "https://api.openverse.org/v1/images/1b35fbf7-be7a-4be2-89d4-066ddd081453/thumb/",
+			"attribution": "\"Prague Airport - IMG_2253\" by Nicola since 1972 is licensed under CC BY 2.0. To view a copy of this license, visit https://creativecommons.org/licenses/by/2.0/."
+		},
+		{
+			"id": "ddda179b-55a9-4013-a037-f2bc44da3237",
+			"title": "Fire Drill Boredom",
+			"creator": "Safety Cap",
+			"license": "by",
+			"license_version": "2.0",
+			"url": "https://live.staticflickr.com/2531/3926576282_9920d04232_b.jpg",
+			"foreign_landing_url": "https://www.flickr.com/photos/59634270@N00/3926576282",
+			"thumbnail": "https://api.openverse.org/v1/images/ddda179b-55a9-4013-a037-f2bc44da3237/thumb/",
+			"attribution": "\"Fire Drill Boredom\" by Safety Cap is licensed under CC BY 2.0. To view a copy of this license, visit https://creativecommons.org/licenses/by/2.0/."
+		},
+		{
+			"id": "8527efd3-c442-4d82-abca-5329ab2ffb86",
+			"title": "WW1 Australian Hospital, Harefield, England",
+			"creator": "Aussie~mobs",
+			"license": "pdm",
+			"license_version": "1.0",
+			"url": "https://live.staticflickr.com/7644/16957806488_67d3fe2b9e_b.jpg",
+			"foreign_landing_url": "https://www.flickr.com/photos/70994841@N07/16957806488",
+			"thumbnail": "https://api.openverse.org/v1/images/8527efd3-c442-4d82-abca-5329ab2ffb86/thumb/",
+			"attribution": "\"WW1 Australian Hospital, Harefield, England\" by Aussie~mobs is marked with Public Domain Mark 1.0. To view the terms, visit https://creativecommons.org/publicdomain/mark/1.0/."
+		},
+		{
+			"id": "8843c4cf-df73-448f-9b89-27f2dbc8990f",
+			"title": "Abandoned Hospital",
+			"creator": "Staropramen1969",
+			"license": "pdm",
+			"license_version": "1.0",
+			"url": "https://live.staticflickr.com/1925/44726535184_f53ba578b7_b.jpg",
+			"foreign_landing_url": "https://www.flickr.com/photos/136665246@N05/44726535184",
+			"thumbnail": "https://api.openverse.org/v1/images/8843c4cf-df73-448f-9b89-27f2dbc8990f/thumb/",
+			"attribution": "\"Abandoned Hospital\" by Staropramen1969 is marked with Public Domain Mark 1.0. To view the terms, visit https://creativecommons.org/publicdomain/mark/1.0/."
+		}
+	]
+}
