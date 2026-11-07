@@ -179,7 +179,8 @@ done items struck through. Never put it in the deck.
   `IMG_<role>`, `MOCKUP_<role>`.
 - Set the section tracker to the correct section. Fit the slide to its density tier (`polish`).
 - Native, editable charts (grey plus one highlight, annotations drawn as shapes, chart text in the deck font); image
-  slots with the user's images (cropped to the slot, overlay kept). Every number still missing stays a placeholder
+  slots with sourced images or the user's own (`visual-rules-and-design-options`, Sourcing), cropped to the slot with the
+  overlay kept. Every number still missing stays a placeholder
   (`[X%]`, `[verify: ~X]`) and is on the research to-do list.
 - The tagline must be provable from what is on the slide. Bold 1 to 3 phrases per box that carry the argument. Finish
   the insight device last and run the findability test.

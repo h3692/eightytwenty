@@ -207,6 +207,15 @@ describe("get_playbook", () => {
 		expect(polish).toMatch(/No arrow characters/);
 	});
 
+	it("tells the assistant to source its own images and to credit only when a result carries a credit", async () => {
+		const chapter = (await tool("get_playbook", { stage: "visual-rules-and-design-options" })).body.result.content[0].text;
+		for (const s of ["find_images", "react-icons", "sharp", "cairosvg", "Credit only when the result carries a `credit` line", "s07-hero.jpg", "exempt from the 1 to 2 asks rule"])
+			expect(chapter).toContain(s);
+		expect(chapter).not.toMatch(/Unsplash, Pexels/);
+		const workflow = (await tool("get_playbook", { stage: "workflow" })).body.result.content[0].text;
+		expect(workflow).toContain("sourced images");
+	});
+
 	it("returns one chapter", async () => {
 		const { body } = await tool("get_playbook", { stage: "archetypes" });
 		expect(body.result.content[0].text).toBe(archetypesMd);
