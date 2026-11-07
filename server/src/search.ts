@@ -109,17 +109,17 @@ export function mmr<C extends { n: number; id: string; deck_id: string; score: n
 
 type Found<R = Result> = { results: R[]; library_version: string };
 
-const normalise = (purpose?: string) => (purpose ?? "").normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
+export const normalise = (purpose?: string) => (purpose ?? "").normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
 
-// The cache row for a query: hashed, so the query text is never stored; id[0] tags the search ("slides" | "flows").
-async function cached(env: Pick<Env, "DB">, id: unknown[]): Promise<[key: string, hit: string | null]> {
+// The cache row for a query: hashed, so the query text is never stored; id[0] tags the search ("slides" | "flows" | "images").
+export async function cached(env: Pick<Env, "DB">, id: unknown[]): Promise<[key: string, hit: string | null]> {
 	const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(id)));
 	const key = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 	return [key, await env.DB.prepare("SELECT results FROM search_cache WHERE key = ?").bind(key).first<string>("results")];
 }
 
 // Writes results under key; if an identical query stored its result first, returns that one so both callers agree.
-async function store<R>(env: Pick<Env, "DB">, key: string, results: R[], library_version: string): Promise<R[]> {
+export async function store<R>(env: Pick<Env, "DB">, key: string, results: R, library_version: string): Promise<R> {
 	const { meta } = await env.DB.prepare("INSERT OR IGNORE INTO search_cache (key, results, library_version) VALUES (?, ?, ?)").bind(key, JSON.stringify(results), library_version).run();
 	if (!meta.changes) {
 		const stored = await env.DB.prepare("SELECT results FROM search_cache WHERE key = ?").bind(key).first<string>("results");

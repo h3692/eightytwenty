@@ -10,6 +10,7 @@ export type ImageDeps = { fetch: typeof fetch; openverse?: { clientId: string; c
 
 const UA = "eightytwenty/1.0 (+https://eightytwenty.socratic.workers.dev/docs)";
 const TIMEOUT = 8000, MAX_SVG = 12 * 1024, MAX_THUMB = 40 * 1024, MAX_TEXT = 40 * 1024, THUMBS = 3;
+const MAX_THUMBS = 90_000; // base64 characters of all thumbnails: a response stays well under claude.ai's ~150k-character tool result
 const DEFAULT_K: Record<Kind, number> = { logo: 3, icon: 4, photo: 3 };
 const OPENVERSE = "https://api.openverse.org/";
 const ICON_LICENCES = new Map([["tabler", "MIT"], ["lucide", "ISC"], ["ph", "MIT"], ["mdi", "Apache-2.0"], ["heroicons", "MIT"], ["material-symbols", "Apache-2.0"], ["carbon", "Apache-2.0"], ["simple-icons", "CC0"]]);
@@ -48,22 +49,28 @@ async function commons(deps: ImageDeps, query: string, k: number): Promise<Image
 }
 
 // Iconify search (its minimum is 32 results) sliced to k; only the permissive sets, by a strict id, are fetched.
-async function iconify(deps: ImageDeps, query: string, k: number, prefixes: string): Promise<ImageResult[]> {
+// `exact` ids go first and may not exist (a 404 just drops them), so one extra is fetched for each.
+async function iconify(deps: ImageDeps, query: string, k: number, prefixes: string, exact: string[] = []): Promise<ImageResult[]> {
 	const { icons } = await (await get(deps, `https://api.iconify.design/search?query=${encodeURIComponent(query)}&limit=32&prefixes=${prefixes}`)).json<{ icons: string[] }>();
-	const ids = icons.filter((id) => /^[a-z0-9-]+:[a-z0-9-]+$/.test(id) && ICON_LICENCES.has(id.split(":")[0])).slice(0, k);
+	const ids = [...new Set([...exact, ...icons])].filter((id) => /^[a-z0-9-]+:[a-z0-9-]+$/.test(id) && ICON_LICENCES.has(id.split(":")[0])).slice(0, k + exact.length);
 	const svgs = await Promise.all(ids.map((id) => fetchSvg(deps, `https://api.iconify.design/${id.replace(":", "/")}.svg`)));
-	return ids.flatMap((id, n) => (svgs[n] ? [{ title: id, licence: ICON_LICENCES.get(id.split(":")[0])!, svg: svgs[n] }] : []));
+	return ids.flatMap((id, n) => (svgs[n] ? [{ title: id, licence: ICON_LICENCES.get(id.split(":")[0])!, svg: svgs[n] }] : [])).slice(0, k);
 }
 
-// With app credentials, the OAuth2 client-credentials token, minted again within 60 s of expiry; else anonymous.
+// With app credentials, the OAuth2 client-credentials token, minted again within 60 s of expiry; else, or when minting
+// fails, anonymous (the shared anonymous quota may still answer).
 async function bearer(deps: ImageDeps): Promise<Record<string, string>> {
 	if (!deps.openverse) return {};
 	const token = deps.token ?? {};
 	if (!token.value || Date.now() > (token.expires ?? 0) - 60_000) {
 		const body = new URLSearchParams({ grant_type: "client_credentials", client_id: deps.openverse.clientId, client_secret: deps.openverse.clientSecret });
-		const { access_token, expires_in } = await (await get(deps, `${OPENVERSE}v1/auth_tokens/token/`, { method: "POST", body })).json<{ access_token?: string; expires_in: number }>();
-		if (typeof access_token !== "string") throw new Error("Openverse sent no access token");
-		Object.assign(token, { value: access_token, expires: Date.now() + expires_in * 1000 });
+		try {
+			const { access_token, expires_in } = await (await get(deps, `${OPENVERSE}v1/auth_tokens/token/`, { method: "POST", body })).json<{ access_token?: string; expires_in: number }>();
+			if (typeof access_token !== "string") throw new Error("Openverse sent no access token");
+			Object.assign(token, { value: access_token, expires: Date.now() + expires_in * 1000 });
+		} catch {
+			return {};
+		}
 	}
 	return { authorization: `Bearer ${token.value}` };
 }
@@ -71,7 +78,7 @@ async function bearer(deps: ImageDeps): Promise<Record<string, string>> {
 async function thumbnail(deps: ImageDeps, url: string | null, headers: Record<string, string>): Promise<Thumbnail | null> {
 	if (!url?.startsWith(OPENVERSE)) return null;
 	try {
-		const res = await get(deps, url, { headers });
+		const res = await get(deps, `${url}?compressed=true`, { headers }); // compressed is Openverse's default today; asked for explicitly
 		const bytes = new Uint8Array(await res.arrayBuffer()), mimeType = res.headers.get("content-type") ?? "";
 		return bytes.length <= MAX_THUMB && mimeType.startsWith("image/") ? { data: btoa(String.fromCharCode(...bytes)), mimeType } : null;
 	} catch {
@@ -87,13 +94,14 @@ async function photos(deps: ImageDeps, query: string, k: number): Promise<Omit<I
 	const kept = results.filter((r) => PHOTO_LICENCES.has(r.license)).slice(0, k);
 	const thumbs = await Promise.all(kept.slice(0, THUMBS).map((r) => thumbnail(deps, r.thumbnail, headers)));
 	const thumbnails: Thumbnail[] = [];
+	let room = MAX_THUMBS; // once a thumbnail does not fit, none after it does: they stay in order
 	return {
 		results: kept.map((r, n) => ({
 			title: r.title, creator: r.creator ?? undefined,
 			licence: `${PHOTO_LICENCES.get(r.license)}${r.license_version ? ` ${r.license_version}` : ""}`,
 			download_url: r.url, landing_url: r.foreign_landing_url,
 			...(r.license === "by" && { credit: r.attribution }), // only CC BY requires credit
-			...(thumbs[n] && { thumbnail: thumbnails.push(thumbs[n]) - 1 }), // its position in `thumbnails`
+			...(thumbs[n] && (room -= thumbs[n].data.length) >= 0 && { thumbnail: thumbnails.push(thumbs[n]) - 1 }), // its position in `thumbnails`
 		})),
 		thumbnails,
 	};
@@ -106,7 +114,7 @@ export async function findImages(kind: Kind, query: string, k = DEFAULT_K[kind],
 	if (kind === "photo") found = await tried("photos", photos(deps, query, k), { results: [], thumbnails: [] });
 	else if (kind === "icon") found = { results: await tried("icons", iconify(deps, query, k, [...ICON_LICENCES.keys()].join(",")), []), thumbnails: [] };
 	else {
-		const [c, s] = await Promise.all([tried("Wikimedia Commons", commons(deps, query, k), []), tried("Simple Icons", iconify(deps, query, k, "simple-icons"), [])]);
+		const [c, s] = await Promise.all([tried("Wikimedia Commons", commons(deps, query, k), []), tried("Simple Icons", iconify(deps, query, k, "simple-icons", [`simple-icons:${query.toLowerCase().replace(/[^a-z0-9]/g, "")}`]), [])]);
 		found = { results: [...c, ...s].slice(0, k), thumbnails: [] };
 	}
 	// at most 40 KB of SVG text per response: results stay in order and the rest is dropped

@@ -1,8 +1,8 @@
-// One SQLite Durable Object instance holds every per-client counter and the global daily search budget.
+// One SQLite Durable Object instance holds every per-client counter and the global daily search and photo budgets.
 // Rows are deleted 24 hours after a client's last request, so IPs are never kept longer than that.
 import { DurableObject } from "cloudflare:workers";
 
-export type Limits = { perMinute: number; perMinuteShared: number; dailySearchBudget: number };
+export type Limits = { perMinute: number; perMinuteShared: number; dailySearchBudget: number; dailyPhotoBudget: number };
 export type Verdict = { ok: boolean; message: string; retryAfter: number };
 
 const WINDOW_MS = 60_000, MAX_COOLDOWN_MIN = 60, KEEP_MS = 86_400_000;
@@ -26,7 +26,7 @@ export class Limiter extends DurableObject<Env> {
 		const day = new Date(now).toISOString().slice(0, 10);
 		if (now - this.pruned >= WINDOW_MS) {
 			this.sql.exec("DELETE FROM keys WHERE seen < ?", now - KEEP_MS);
-			this.sql.exec("DELETE FROM budget WHERE day <> ?", day);
+			this.sql.exec("DELETE FROM budget WHERE day < ?", day); // keeps today's rows: "<day>" and "<day>:photos"
 			this.pruned = now;
 		}
 		const row = this.sql.exec<{ window_start: number; count: number; strikes: number; cooldown_until: number }>(
@@ -55,15 +55,19 @@ export class Limiter extends DurableObject<Env> {
 		return { ok: true, message: "ok", retryAfter: 0 };
 	}
 
-	// An uncached search (the Workers AI calls) spends one unit of the global daily budget.
-	spend(key: string, limits: Limits, now = Date.now()): Verdict {
-		const day = new Date(now).toISOString().slice(0, 10);
-		const used = this.sql.exec<{ used: number }>("SELECT used FROM budget WHERE day = ?", day).toArray()[0]?.used ?? 0;
-		if (used >= (key === "anthropic" ? Math.floor(limits.dailySearchBudget * SHARED_SHARE) : limits.dailySearchBudget)) {
+	// An uncached search (the Workers AI calls) spends one unit of the global daily budget; an uncached photo search
+	// (the Openverse calls) one unit of the daily photo budget, in its own "<day>:photos" row.
+	spend(key: string, limits: Limits, now = Date.now(), photos = false): Verdict {
+		const day = new Date(now).toISOString().slice(0, 10), row = photos ? `${day}:photos` : day;
+		const used = this.sql.exec<{ used: number }>("SELECT used FROM budget WHERE day = ?", row).toArray()[0]?.used ?? 0;
+		const cap = photos ? limits.dailyPhotoBudget : limits.dailySearchBudget;
+		if (used >= (key === "anthropic" ? Math.floor(cap * SHARED_SHARE) : cap)) {
 			const retryAfter = Math.ceil((Date.parse(day) + KEEP_MS - now) / 1000);
-			return { ok: false, message: "The shared daily search budget is used up. Try again after 00:00 UTC.", retryAfter };
+			const message = photos ? "Photo search has used today's quota; logos and icons still work. Try photos again after 00:00 UTC."
+				: "The shared daily search budget is used up. Try again after 00:00 UTC.";
+			return { ok: false, message, retryAfter };
 		}
-		this.sql.exec("INSERT OR REPLACE INTO budget VALUES (?, ?)", day, used + 1);
+		this.sql.exec("INSERT OR REPLACE INTO budget VALUES (?, ?)", row, used + 1);
 		return { ok: true, message: "ok", retryAfter: 0 };
 	}
 

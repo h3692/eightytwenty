@@ -1,0 +1,5 @@
+{
+	"url": "https://api.openverse.org/v1/images/1b35fbf7-be7a-4be2-89d4-066ddd081453/thumb/?compressed=true",
+	"status": 200,
+	"headers": { "content-type": "image/jpeg", "content-length": "38482" }
+}

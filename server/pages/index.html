@@ -55,7 +55,7 @@ footer { margin-top: 3rem; color: var(--muted); font-size: .9rem; }
 <pre><code>{ "mcpServers": { "eightytwenty": { "url": "https://eightytwenty.socratic.workers.dev/mcp" } } }</code></pre>
 
 <h2>Tools</h2>
-<p>All four are read-only. There is no way to upload to the library or list all of it.</p>
+<p>All five are read-only. There is no way to upload to the library or list all of it.</p>
 <dl>
 <dt><code>get_playbook(stage?)</code></dt>
 <dd>The methodology: workflow, narrative and impact slides, slide archetypes, anatomy and taglines, distinctive design, visual rules and design options, writing, a QA checklist, and how to audit the style of a deck you attach in chat. With no stage it returns the index and the workflow. Your assistant should call it before planning a deck.</dd>
@@ -65,6 +65,8 @@ footer { margin-top: 3rem; color: var(--muted); font-size: .9rem; }
 <dd>Searches the library's deck flows (how strong decks order their sections) by what a whole deck must achieve, optionally by industry and length (short, medium, long). Returns up to three summaries: deck id, arc, length, industry, section sequence, why the flow works, and a score. Use it after the slide-by-slide storyline is confirmed.</dd>
 <dt><code>get_reference(id)</code></dt>
 <dd>One slide: its labels (purpose, why it works, archetype, insight device, impact), its component layout, its design-DNA record (the 40 largest regions), and its wireframe image where the client shows images. Given a deck id, it returns that deck's flow: its steps in order, each with a slide id, its impact device, and whether that slide is in the library.</dd>
+<dt><code>find_images(kind, query, k?)</code></dt>
+<dd>Sources a logo, icon or photo for a slide being built: public-domain logo SVGs from Wikimedia Commons and Simple Icons, permissive icon SVGs from Iconify, and CC0, public-domain and CC BY photos from Openverse. Returns up to four results (<code>k</code>, default 3, or 4 for icons) with their licence and either the SVG text or the photo's download and page links, plus a credit line only when the licence requires one; photos come with thumbnails. The search terms are sent to those three services; see <a href="/privacy">Privacy</a>.</dd>
 </dl>
 
 <h2>Try asking</h2>
@@ -75,7 +77,7 @@ footer { margin-top: 3rem; color: var(--muted); font-size: .9rem; }
 </ul>
 
 <h2>Limits</h2>
-<p>Each client IP address can make 20 tool calls a minute. Going over starts a cooldown of 1 minute that doubles for repeat bursts, up to an hour. Requests from claude.ai share one larger allowance, and searches across all users share a daily budget that resets at 00:00 UTC.</p>
+<p>Each client IP address can make 20 tool calls a minute. Going over starts a cooldown of 1 minute that doubles for repeat bursts, up to an hour. Requests from claude.ai share one larger allowance, and searches across all users share a daily budget that resets at 00:00 UTC. Photo searches have their own daily budget; when it runs out, logos and icons still work.</p>
 
 <footer><a href="/privacy">Privacy</a> · MIT licensed</footer>
 </main>

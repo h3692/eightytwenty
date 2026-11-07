@@ -1,4 +1,4 @@
-// The public connector: four read-only MCP tools at /mcp (stateless Streamable HTTP, default Origin check), the
+// The public connector: five read-only MCP tools at /mcp (stateless Streamable HTTP, default Origin check), the
 // Limiter in front of every tool call, and the /docs + /privacy pages. index.ts binds it to the bundled library.
 import { DurableObject } from "cloudflare:workers";
 import { McpServer } from "@modelcontextprotocol/server";
@@ -20,7 +20,8 @@ import writing from "../../playbook/writing.md";
 import docs from "../pages/index.html";
 import privacy from "../pages/privacy.html";
 import icon from "../pages/icon.svg";
-import { DEFAULT_FLAGS, LENGTHS, search, searchFlows, uncached, uncachedFlows, type FlowQuery, type Library, type Query } from "./search";
+import { findImages, type Images, type Kind } from "./images";
+import { cached, DEFAULT_FLAGS, LENGTHS, normalise, search, searchFlows, store, uncached, uncachedFlows, type FlowQuery, type Library, type Query } from "./search";
 
 export { Limiter } from "./limiter";
 
@@ -62,6 +63,11 @@ const FLOWS_INPUT = z.object({
 	style: enumOf(style.properties.style.enum).optional().describe("Only decks with this overall look."),
 });
 const REFERENCE_INPUT = z.object({ id: z.string().regex(/^[A-Za-z0-9-]{1,64}$/, "Use an id exactly as find_references or find_deck_flows returned it.") });
+const IMAGES_INPUT = z.object({
+	kind: z.enum(["logo", "icon", "photo"]).describe("logo: a brand's mark; icon: a pictogram of an object; photo: a photograph."),
+	query: z.string().trim().min(1).max(100).describe("A brand name, the object an icon draws (\"truck\", not \"logistics\"), or what a photo shows."),
+	k: z.number().int().min(1).max(4).optional().describe("How many results, 1 to 4 (default 3; 4 for icons)."),
+});
 const DECK_ID = /^[0-9a-f]{16}$/; // slide ids are <deck id>-NN
 const PLAYBOOK_INDEX = `Playbook stages (call get_playbook with one of these as \`stage\`):\n${STAGES.map((s) => `- \`${s}\`: ${PLAYBOOK[s].match(/^# (.+)$/m)?.[1] ?? s}`).join("\n")}\n\n${workflow}`;
 
@@ -79,8 +85,8 @@ const START_INPUT = z.object({ context: z.string().max(500).optional().describe(
 
 function createServer(env: Env, lib: Library, key: string) {
 	// Spends the daily budget only when a search misses the cache, just before the Searcher runs it.
-	const spend = async () => {
-		const v = await env.LIMITER.get(env.LIMITER.idFromName("global")).spend(key, limitsOf(env));
+	const spend = async (photos = false) => {
+		const v = await env.LIMITER.get(env.LIMITER.idFromName("global")).spend(key, limitsOf(env), undefined, photos);
 		if (!v.ok) throw new Error(v.message);
 	};
 
@@ -201,6 +207,42 @@ function createServer(env: Env, lib: Library, key: string) {
 		},
 	);
 
+	server.registerTool(
+		"find_images",
+		{
+			title: "Find images for a slide",
+			description: "Use while building an approved slide to source a logo, icon or photo for an image slot (see get_playbook). " +
+				"Searches public-domain logo SVGs (Wikimedia Commons, Simple Icons), permissive icon SVGs (Iconify) and CC0, public-domain " +
+				"and CC BY photos (Openverse). Returns up to k results, each with its title, licence and either the SVG text or the photo's " +
+				"download and page links, plus a credit line only when the licence requires one; photo thumbnails follow as images.",
+			inputSchema: IMAGES_INPUT,
+			annotations: readOnly,
+		},
+		async ({ kind, query, k }) => {
+			const q = normalise(query);
+			const [key, hit] = await cached(env, ["images", kind, q, k ?? null]);
+			let found: Images;
+			if (hit) found = JSON.parse(hit);
+			else {
+				if (kind === "photo") await spend(true); // only photo searches that miss the cache spend the photo budget
+				found = await env.SEARCHER.get(env.SEARCHER.idFromName("global")).images(kind, q, k, key);
+			}
+			const lines = found.results.map((r, i) => [
+				`${i + 1}. ${r.title} | ${r.licence}${r.note ? ` | note: ${r.note}` : ""}${r.thumbnail === undefined ? "" : ` | thumbnail ${r.thumbnail + 1}`}`,
+				...(r.credit ? [`   Credit: ${r.credit}`] : []),
+				...(r.svg ? [`   SVG: ${r.svg}`] : [`   Download: ${r.download_url}`, `   Page: ${r.landing_url}`]),
+				...(r.creator ? [`   Creator: ${r.creator}`] : []),
+				...(r.png_url ? [`   PNG: ${r.png_url}`] : []),
+			].join("\n"));
+			const summary = [
+				lines.length ? lines.join("\n") : `No ${kind}s found.`,
+				...(found.unavailable.length ? [`Unavailable right now: ${found.unavailable.join(", ")}.`] : []),
+				...(found.thumbnails.length ? ["Thumbnails follow as images, in order: thumbnail 1 first."] : []),
+			].join("\n");
+			return { content: [text(summary), ...found.thumbnails.map((t) => ({ type: "image" as const, ...t }))] };
+		},
+	);
+
 	return server;
 }
 
@@ -236,9 +278,9 @@ async function readCapped(request: Pick<Request, "headers" | "body">): Promise<s
 	return new TextDecoder().decode(all);
 }
 
-const limitsOf = (env: Env) => ({ perMinute: env.LIMIT_PER_MINUTE, perMinuteShared: env.LIMIT_PER_MINUTE_SHARED, dailySearchBudget: env.DAILY_SEARCH_BUDGET });
+const limitsOf = (env: Env) => ({ perMinute: env.LIMIT_PER_MINUTE, perMinuteShared: env.LIMIT_PER_MINUTE_SHARED, dailySearchBudget: env.DAILY_SEARCH_BUDGET, dailyPhotoBudget: env.DAILY_PHOTO_BUDGET });
 
-// Every tools/call counts toward the caller's per-minute limit (uncached searches also spend the daily budget, in createServer).
+// Every tools/call counts toward the caller's per-minute limit (uncached searches and photo searches also spend a daily budget, in createServer).
 async function limit(request: Request, env: Env, body: any, key: string): Promise<Response | null> {
 	const calls = [body].flat().filter((m) => m?.method === "tools/call");
 	if (!calls.length) return null;
@@ -247,14 +289,26 @@ async function limit(request: Request, env: Env, body: any, key: string): Promis
 	return v.ok ? null : rpcError(429, body.id, v.message, { "retry-after": String(v.retryAfter) });
 }
 
-// Uncached searches (embedding, vector scan, FTS, rerank, MMR, cache write; flow searches too) run here: a Durable Object's CPU time is its
-// own, so the Worker stays inside the Free plan's 10 ms per request. The entry exports it bound to the same library.
+// Uncached searches (embedding, vector scan, FTS, rerank, MMR, cache write; flow and image searches too) run here: a Durable Object's CPU
+// time is its own, so the Worker stays inside the Free plan's 10 ms per request. The entry exports it bound to the same library.
 export const searcher = (lib: Library) => class Searcher extends DurableObject<Env> {
+	token: { value?: string; expires?: number } = {}; // the Openverse app token, kept in memory for this instance's lifetime
+
 	search(query: Query, key: string) {
 		return uncached(this.env, lib, query, DEFAULT_FLAGS, key);
 	}
 	flows(query: FlowQuery, key: string) {
 		return uncachedFlows(this.env, lib, query, key);
+	}
+	// An answer with a source unavailable is not cached, so the next call tries that source again.
+	async images(kind: Kind, query: string, k: number | undefined, key: string): Promise<Images> {
+		const { OPENVERSE_CLIENT_ID: clientId, OPENVERSE_CLIENT_SECRET: clientSecret } = this.env;
+		const found = await findImages(kind, query, k, {
+			fetch: (input, init) => fetch(input, init), // not the bare global: Workers reject a fetch called on another object
+			openverse: clientId && clientSecret ? { clientId, clientSecret } : undefined,
+			token: this.token,
+		});
+		return found.unavailable.length ? found : store(this.env, key, found, lib.manifest.library_version);
 	}
 };
 export type Searcher = InstanceType<ReturnType<typeof searcher>>;

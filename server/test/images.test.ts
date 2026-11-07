@@ -9,13 +9,16 @@ import truck from "./fixtures/images/iconify-truck.json";
 import mdiTruckOutline from "./fixtures/images/mdi_truck-outline.svg";
 import mdiTruck from "./fixtures/images/mdi_truck.svg";
 import openverse from "./fixtures/images/openverse-hospital.json";
+import thumb from "./fixtures/images/openverse-thumb.json";
+import cocacola from "./fixtures/images/simple-icons_cocacola.svg";
 import github from "./fixtures/images/simple-icons_github.svg";
 import tablerTruckFilled from "./fixtures/images/tabler_truck-filled.svg";
 import tablerTruck from "./fixtures/images/tabler_truck.svg";
 import company2020 from "./fixtures/images/the-coca-cola-company-2020.svg";
 
 // Fixtures are real responses captured from the three APIs (trimmed); the Coca-Cola search mixes public-domain logos
-// with CC BY 4.0 uploads and two files over 12 KB.
+// with CC BY 4.0 uploads and two files over 12 KB. openverse-thumb.json keeps only the status and headers of a real
+// compressed thumbnail (the JPEG itself is left out).
 const UA = "eightytwenty/1.0 (+https://eightytwenty.socratic.workers.dev/docs)";
 const COMMONS = (q: string) => `https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search&gsrnamespace=6&gsrlimit=10&gsrsearch=${encodeURIComponent(`${q} logo filemime:image/svg+xml`)}&prop=imageinfo&iiprop=url|size|mime|extmetadata&iiurlwidth=500`;
 const SIMPLE = (q: string) => `https://api.iconify.design/search?query=${encodeURIComponent(q)}&limit=32&prefixes=simple-icons`;
@@ -23,6 +26,7 @@ const ICONS = (q: string) => `https://api.iconify.design/search?query=${encodeUR
 const ICON = (id: string) => `https://api.iconify.design/${id.replace(":", "/")}.svg`;
 const PHOTOS = (q: string, k: number) => `https://api.openverse.org/v1/images/?q=${encodeURIComponent(q)}&license=cc0,pdm,by&page_size=${k}`;
 const MINT = "https://api.openverse.org/v1/auth_tokens/token/";
+const THUMB = (url: string) => `${url}?compressed=true`;
 const HOSTS = ["commons.wikimedia.org", "upload.wikimedia.org", "api.iconify.design", "api.openverse.org"];
 
 type Routes = Record<string, (init: RequestInit) => Response | Promise<Response>>;
@@ -63,7 +67,7 @@ const thumbBytes = (n: number) => Uint8Array.from({ length: n }, (_, i) => i % 2
 const base64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
 const photoRoutes = (data = openverse, k = 4): Routes => ({
 	[PHOTOS("busy hospital waiting room", k)]: json(data),
-	...Object.fromEntries(data.results.map((r, i) => [r.thumbnail, jpeg(thumbBytes(100 + i))])),
+	...Object.fromEntries(data.results.map((r, i) => [THUMB(r.thumbnail), jpeg(thumbBytes(100 + i))])),
 });
 
 afterEach(() => vi.restoreAllMocks());
@@ -107,6 +111,19 @@ describe("logos", () => {
 		expect(r.results[2]).toEqual({ title: "simple-icons:github", licence: "CC0", svg: github });
 		expect(r.results.some((x) => "credit" in x)).toBe(false);
 		expect((await findImages("logo", "GitHub", 1, { fetch })).results.map((x) => x.title)).toEqual(["The Coca-Cola Company (2020).svg"]);
+	});
+
+	it("also looks up the Simple Icons id made of the query's letters and digits, fetching each icon once", async () => {
+		const { fetch, calls } = fake({ ...cokeRoutes(), [ICON("simple-icons:cocacola")]: svg(cocacola) });
+		const r = await findImages("logo", "Coca-Cola", 3, { fetch });
+		expect(r.results.map((x) => x.title)).toEqual(["The Coca-Cola Company (2020).svg", "Coca-Cola logo.svg", "simple-icons:cocacola"]);
+		expect(r.results[2]).toEqual({ title: "simple-icons:cocacola", licence: "CC0", svg: cocacola });
+		const gh = fake({ ...githubRoutes, [COMMONS("GitHub")]: json({ batchcomplete: "" }) });
+		expect((await findImages("logo", "GitHub", 3, gh)).results.map((x) => x.title)).toEqual(["simple-icons:github", "simple-icons:githubpages", "simple-icons:githubactions"]);
+		expect(gh.calls.filter((c) => c.url === ICON("simple-icons:github"))).toHaveLength(1);
+		const missing = fake(cokeRoutes()); // no such icon: a 404, and the result is simply absent
+		expect((await findImages("logo", "Coca-Cola", 3, missing)).results).toHaveLength(2);
+		expect(missing.calls.map((c) => c.url)).toContain(ICON("simple-icons:cocacola"));
 	});
 
 	it("defaults to 3 logos", async () => {
@@ -184,7 +201,7 @@ describe("photos", () => {
 		expect(r.results.map((x) => !!x.credit)).toEqual([true, true, false, false]);
 		expect(r.thumbnails).toEqual([0, 1, 2].map((i) => ({ data: base64(thumbBytes(100 + i)), mimeType: "image/jpeg" })));
 		expect(r.unavailable).toEqual([]);
-		expect(calls.map((c) => c.url)).not.toContain(openverse.results[3].thumbnail);
+		expect(calls.map((c) => c.url)).not.toContain(THUMB(openverse.results[3].thumbnail));
 		expect(calls.every((c) => header(c.init, "authorization") === null)).toBe(true);
 	});
 
@@ -213,11 +230,23 @@ describe("photos", () => {
 	it("skips thumbnails over 40 KB and any not on api.openverse.org", async () => {
 		const data = structuredClone(openverse);
 		data.results[1].thumbnail = "https://evil.example/thumb.jpg";
-		const { fetch, calls } = fake({ ...photoRoutes(data), [data.results[0].thumbnail]: jpeg(thumbBytes(40 * 1024 + 1)), [data.results[2].thumbnail]: jpeg(thumbBytes(40 * 1024)) });
+		const { fetch, calls } = fake({ ...photoRoutes(data), [THUMB(data.results[0].thumbnail)]: jpeg(thumbBytes(40 * 1024 + 1)), [THUMB(data.results[2].thumbnail)]: jpeg(thumbBytes(40 * 1024)) });
 		const r = await findImages("photo", "busy hospital waiting room", 4, { fetch });
 		expect(r.thumbnails).toEqual([{ data: base64(thumbBytes(40 * 1024)), mimeType: "image/jpeg" }]);
 		expect(r.results.map((x) => x.thumbnail)).toEqual([undefined, undefined, 0, undefined]);
 		expect(calls.map((c) => c.url)).not.toContain("https://evil.example/thumb.jpg");
+	});
+
+	it("asks for the compressed thumbnail and keeps thumbnails in order while their base64 fits in 90,000 characters", async () => {
+		const real = Number(thumb.headers["content-length"]); // 51,312 base64 characters: a second one would pass 90,000
+		expect(thumb.url).toBe(THUMB(openverse.results[0].thumbnail));
+		const sized = (...sizes: number[]) => fake({ ...photoRoutes(), ...Object.fromEntries(sizes.map((n, i) => [THUMB(openverse.results[i].thumbnail), jpeg(thumbBytes(n))])) });
+		const two = await findImages("photo", "busy hospital waiting room", 4, sized(real, real, 1000));
+		expect(two.thumbnails).toEqual([{ data: base64(thumbBytes(real)), mimeType: thumb.headers["content-type"] }]);
+		expect(two.results.map((x) => x.thumbnail)).toEqual([0, undefined, undefined, undefined]); // the small third would fit, but order is kept
+		const three = await findImages("photo", "busy hospital waiting room", 4, sized(30_000, 30_000, 30_000));
+		expect(three.thumbnails.map((t) => t.data.length)).toEqual([40_000, 40_000]);
+		expect(three.results.map((x) => x.thumbnail)).toEqual([0, 1, undefined, undefined]);
 	});
 
 	it("an Openverse 504 with a plain-text body makes photos unavailable while logos still answer", async () => {
@@ -264,9 +293,12 @@ describe("Openverse app token", () => {
 		}
 	});
 
-	it("a failed token request makes photos unavailable", async () => {
-		const { fetch } = fake({ ...photoRoutes(), [MINT]: () => Response.json({ error: "invalid_client" }, { status: 401 }) });
-		expect((await findImages("photo", "busy hospital waiting room", 4, { fetch, openverse: app, token: {} })).unavailable).toEqual(["photos"]);
+	it("a failed token request falls back to an anonymous search", async () => {
+		const { fetch, calls } = fake({ ...photoRoutes(), [MINT]: () => Response.json({ error: "invalid_client" }, { status: 401 }) });
+		const r = await findImages("photo", "busy hospital waiting room", 4, { fetch, openverse: app, token: {} });
+		expect(r.unavailable).toEqual([]);
+		expect(r.results).toHaveLength(4);
+		expect(calls.filter((c) => c.url !== MINT).every((c) => header(c.init, "authorization") === null)).toBe(true);
 	});
 });
 
