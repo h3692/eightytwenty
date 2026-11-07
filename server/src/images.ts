@@ -22,19 +22,23 @@ const UNSAFE = [/\\/, /<script/i, /foreignObject/i, /\son[a-z]+\s*=/i, /<!DOCTYP
 	/href\s*=\s*(?!["']\s*(#|data:image\/(png|jpe?g|gif|webp)[;,]))/i, /attributeName\s*=\s*["']?[\w:]*href/i];
 // Character references are decoded first (the XML parser does so before CSS sees them); any backslash rejects, since CSS
 // escapes such as \75rl( spell url(.
-const decoded = (svg: string) => svg.replace(/&#(x?)([0-9a-f]+);?/gi, (_, x, n) => String.fromCodePoint(parseInt(n, x ? 16 : 10) || 0));
+// A reference past U+10FFFF is not well-formed XML: it decodes to a backslash, which rejects.
+const decoded = (svg: string) => svg.replace(/&#(x?)([0-9a-f]+);?/gi, (_, x, n) => {
+	const c = parseInt(n, x ? 16 : 10) || 0;
+	return c > 0x10ffff ? "\\" : String.fromCodePoint(c);
+});
 export const safeSvg = (svg: string) => /<svg[\s>/]/i.test(svg) && !UNSAFE.some((re) => re.test(decoded(svg)));
 
 async function get(deps: ImageDeps, url: string, init: RequestInit = {}) {
 	const res = await deps.fetch(url, { ...init, headers: { "user-agent": UA, ...(init.headers as Record<string, string>) }, signal: AbortSignal.timeout(TIMEOUT) });
-	if (!res.ok) throw new Error(`${new URL(url).host} answered ${res.status}`);
+	if (!res.ok) throw Object.assign(new Error(`${new URL(url).host} answered ${res.status}`), { status: res.status });
 	return res;
 }
 
 // The SVG text, or null when it is over 12 KB or unsafe (that one result is dropped). A failed download also drops it,
 // but calls `missed`, so the answer is reported incomplete and not cached.
 const fetchSvg = (deps: ImageDeps, url: string, missed: () => void) =>
-	get(deps, url).then((r) => r.text()).then((s) => (s.length <= MAX_SVG && safeSvg(s) ? s : null), () => (missed(), null));
+	get(deps, url).then((r) => r.text()).then((s) => (s.length <= MAX_SVG && safeSvg(s) ? s : null), (e) => (e.status !== 404 && missed(), null)); // a 404 is a file that does not exist, not a failure
 
 type Page = { title: string; index: number; imageinfo?: { size: number; url: string; thumburl?: string; mime: string; extmetadata?: Record<string, { value: string } | undefined> }[] };
 
@@ -58,8 +62,7 @@ async function commons(deps: ImageDeps, query: string, k: number, missed: () => 
 async function iconify(deps: ImageDeps, query: string, k: number, prefixes: string, missed: () => void, exact: string[] = []): Promise<ImageResult[]> {
 	const { icons } = await (await get(deps, `https://api.iconify.design/search?query=${encodeURIComponent(query)}&limit=32&prefixes=${prefixes}`)).json<{ icons: string[] }>();
 	const ids = [...new Set([...exact, ...icons])].filter((id) => /^[a-z0-9-]+:[a-z0-9-]+$/.test(id) && ICON_LICENCES.has(id.split(":")[0])).slice(0, k + exact.length);
-	// a missing `exact` id is a 404, not a failure
-	const svgs = await Promise.all(ids.map((id) => fetchSvg(deps, `https://api.iconify.design/${id.replace(":", "/")}.svg`, exact.includes(id) ? () => {} : missed)));
+	const svgs = await Promise.all(ids.map((id) => fetchSvg(deps, `https://api.iconify.design/${id.replace(":", "/")}.svg`, missed)));
 	return ids.flatMap((id, n) => (svgs[n] ? [{ title: id, licence: ICON_LICENCES.get(id.split(":")[0])!, svg: svgs[n] }] : [])).slice(0, k);
 }
 

@@ -349,6 +349,18 @@ describe("safeSvg", () => {
 		expect(unsafe.unavailable).toEqual([]);
 	});
 
+	it("only a 404 on the exact Simple Icons id is not a failure; a 503 on it marks the answer incomplete", async () => {
+		const down = fake({ ...githubRoutes, [COMMONS("GitHub")]: json({ query: { pages: {} } }), [ICON("simple-icons:github")]: () => new Response("", { status: 503 }) });
+		expect((await findImages("logo", "GitHub", 3, down)).unavailable).toEqual(["some downloads"]);
+		const gone = fake({ ...githubRoutes, [COMMONS("GitHub")]: json({ query: { pages: {} } }), [ICON("simple-icons:github")]: () => new Response("", { status: 404 }) });
+		expect((await findImages("logo", "GitHub", 3, gone)).unavailable).toEqual([]);
+	});
+
+	it("an out-of-range character reference is rejected, not a crash", () => {
+		expect(safeSvg('<svg><rect fill="&#x110000;"/></svg>')).toBe(false);
+		expect(safeSvg('<svg><rect fill="&#99999999999;"/></svg>')).toBe(false);
+	});
+
 	it.each([
 		["script", "<svg><script>alert(1)</script></svg>"],
 		["foreignObject", "<svg><foreignObject><div/></foreignObject></svg>"],
