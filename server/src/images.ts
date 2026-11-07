@@ -9,7 +9,7 @@ export type Images = { results: ImageResult[]; thumbnails: Thumbnail[]; unavaila
 export type ImageDeps = { fetch: typeof fetch; openverse?: { clientId: string; clientSecret: string }; token?: { value?: string; expires?: number } };
 
 const UA = "eightytwenty/1.0 (+https://eightytwenty.socratic.workers.dev/docs)";
-const TIMEOUT = 8000, MAX_SVG = 12 * 1024, MAX_THUMB = 40 * 1024, MAX_TEXT = 40 * 1024, THUMBS = 3;
+const TIMEOUT = 8000, MAX_SVG = 12 * 1024, MAX_THUMB = 60 * 1024, MAX_TEXT = 40 * 1024, THUMBS = 3;
 const MAX_THUMBS = 90_000; // base64 characters of all thumbnails: a response stays well under claude.ai's ~150k-character tool result
 const DEFAULT_K: Record<Kind, number> = { logo: 3, icon: 4, photo: 3 };
 const OPENVERSE = "https://api.openverse.org/";
@@ -18,9 +18,12 @@ const COMMONS_LICENCES = new Map([["pd", "Public domain"], ["cc0", "CC0"]]);
 const PHOTO_LICENCES = new Map([["cc0", "CC0"], ["pdm", "Public Domain Mark"], ["by", "CC BY"]]); // never BY-SA, NC or ND
 
 // Rasterisers fetch external references, so anything that could reach outside the file rejects the whole SVG.
-const UNSAFE = [/<script/i, /foreignObject/i, /\son[a-z]+\s*=/i, /<!DOCTYPE/i, /<!ENTITY/i, /@import/i, /url\(\s*(?!['"]?#)/i,
+const UNSAFE = [/\\/, /<script/i, /foreignObject/i, /\son[a-z]+\s*=/i, /<!DOCTYPE/i, /<!ENTITY/i, /@import/i, /url\(\s*(?!['"]?#)/i,
 	/href\s*=\s*(?!["']\s*(#|data:image\/(png|jpe?g|gif|webp)[;,]))/i, /attributeName\s*=\s*["']?[\w:]*href/i];
-export const safeSvg = (svg: string) => /<svg[\s>/]/i.test(svg) && !UNSAFE.some((re) => re.test(svg));
+// Character references are decoded first (the XML parser does so before CSS sees them); any backslash rejects, since CSS
+// escapes such as \75rl( spell url(.
+const decoded = (svg: string) => svg.replace(/&#(x?)([0-9a-f]+);?/gi, (_, x, n) => String.fromCodePoint(parseInt(n, x ? 16 : 10) || 0));
+export const safeSvg = (svg: string) => /<svg[\s>/]/i.test(svg) && !UNSAFE.some((re) => re.test(decoded(svg)));
 
 async function get(deps: ImageDeps, url: string, init: RequestInit = {}) {
 	const res = await deps.fetch(url, { ...init, headers: { "user-agent": UA, ...(init.headers as Record<string, string>) }, signal: AbortSignal.timeout(TIMEOUT) });
@@ -28,13 +31,14 @@ async function get(deps: ImageDeps, url: string, init: RequestInit = {}) {
 	return res;
 }
 
-// The SVG text, or null when it fails to arrive, is over 12 KB or is unsafe: that one result is dropped.
-const fetchSvg = (deps: ImageDeps, url: string) =>
-	get(deps, url).then((r) => r.text()).then((s) => (s.length <= MAX_SVG && safeSvg(s) ? s : null), () => null);
+// The SVG text, or null when it is over 12 KB or unsafe (that one result is dropped). A failed download also drops it,
+// but calls `missed`, so the answer is reported incomplete and not cached.
+const fetchSvg = (deps: ImageDeps, url: string, missed: () => void) =>
+	get(deps, url).then((r) => r.text()).then((s) => (s.length <= MAX_SVG && safeSvg(s) ? s : null), () => (missed(), null));
 
 type Page = { title: string; index: number; imageinfo?: { size: number; url: string; thumburl?: string; mime: string; extmetadata?: Record<string, { value: string } | undefined> }[] };
 
-async function commons(deps: ImageDeps, query: string, k: number): Promise<ImageResult[]> {
+async function commons(deps: ImageDeps, query: string, k: number, missed: () => void): Promise<ImageResult[]> {
 	const d = await (await get(deps, `https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search&gsrnamespace=6&gsrlimit=10&gsrsearch=${encodeURIComponent(`${query} logo filemime:image/svg+xml`)}&prop=imageinfo&iiprop=url|size|mime|extmetadata&iiurlwidth=500`))
 		.json<{ error?: { info: string }; query?: { pages: Record<string, Page> } }>();
 	if (d.error) throw new Error(d.error.info);
@@ -42,18 +46,20 @@ async function commons(deps: ImageDeps, query: string, k: number): Promise<Image
 	const files = Object.values(d.query?.pages ?? {}).sort((a, b) => a.index - b.index).flatMap((p) => {
 		const i = p.imageinfo?.[0], m = i?.extmetadata ?? {};
 		const licence = COMMONS_LICENCES.get(m.License?.value.toLowerCase() ?? "");
-		return i && licence && m.Copyrighted?.value === "False" && i.mime === "image/svg+xml" && i.size <= MAX_SVG && new URL(i.url).host === "upload.wikimedia.org" ? [{ p, i, m, licence }] : [];
+		// Commons marks CC0 files Copyrighted (the author holds it and waives it); public-domain ones must be False
+		return i && licence && (licence === "CC0" || m.Copyrighted?.value === "False") && i.mime === "image/svg+xml" && i.size <= MAX_SVG && new URL(i.url).host === "upload.wikimedia.org" ? [{ p, i, m, licence }] : [];
 	}).slice(0, k);
-	const svgs = await Promise.all(files.map(({ i }) => fetchSvg(deps, i.url)));
+	const svgs = await Promise.all(files.map(({ i }) => fetchSvg(deps, i.url, missed)));
 	return files.flatMap(({ p, i, m, licence }, n) => (svgs[n] ? [{ title: p.title.replace(/^File:/, ""), licence, svg: svgs[n], png_url: i.thumburl, ...(m.Restrictions?.value && { note: m.Restrictions.value }) }] : []));
 }
 
 // Iconify search (its minimum is 32 results) sliced to k; only the permissive sets, by a strict id, are fetched.
 // `exact` ids go first and may not exist (a 404 just drops them), so one extra is fetched for each.
-async function iconify(deps: ImageDeps, query: string, k: number, prefixes: string, exact: string[] = []): Promise<ImageResult[]> {
+async function iconify(deps: ImageDeps, query: string, k: number, prefixes: string, missed: () => void, exact: string[] = []): Promise<ImageResult[]> {
 	const { icons } = await (await get(deps, `https://api.iconify.design/search?query=${encodeURIComponent(query)}&limit=32&prefixes=${prefixes}`)).json<{ icons: string[] }>();
 	const ids = [...new Set([...exact, ...icons])].filter((id) => /^[a-z0-9-]+:[a-z0-9-]+$/.test(id) && ICON_LICENCES.has(id.split(":")[0])).slice(0, k + exact.length);
-	const svgs = await Promise.all(ids.map((id) => fetchSvg(deps, `https://api.iconify.design/${id.replace(":", "/")}.svg`)));
+	// a missing `exact` id is a 404, not a failure
+	const svgs = await Promise.all(ids.map((id) => fetchSvg(deps, `https://api.iconify.design/${id.replace(":", "/")}.svg`, exact.includes(id) ? () => {} : missed)));
 	return ids.flatMap((id, n) => (svgs[n] ? [{ title: id, licence: ICON_LICENCES.get(id.split(":")[0])!, svg: svgs[n] }] : [])).slice(0, k);
 }
 
@@ -75,33 +81,35 @@ async function bearer(deps: ImageDeps): Promise<Record<string, string>> {
 	return { authorization: `Bearer ${token.value}` };
 }
 
-async function thumbnail(deps: ImageDeps, url: string | null, headers: Record<string, string>): Promise<Thumbnail | null> {
+async function thumbnail(deps: ImageDeps, url: string | null, headers: Record<string, string>, missed: () => void): Promise<Thumbnail | null> {
 	if (!url?.startsWith(OPENVERSE)) return null;
 	try {
 		const res = await get(deps, `${url}?compressed=true`, { headers }); // compressed is Openverse's default today; asked for explicitly
 		const bytes = new Uint8Array(await res.arrayBuffer()), mimeType = res.headers.get("content-type") ?? "";
 		return bytes.length <= MAX_THUMB && mimeType.startsWith("image/") ? { data: btoa(String.fromCharCode(...bytes)), mimeType } : null;
 	} catch {
+		missed();
 		return null;
 	}
 }
 
 type Photo = { title: string; creator: string | null; license: string; license_version: string | null; url: string; foreign_landing_url: string; thumbnail: string | null; attribution: string };
 
-async function photos(deps: ImageDeps, query: string, k: number): Promise<Omit<Images, "unavailable">> {
+async function photos(deps: ImageDeps, query: string, k: number, missed: () => void): Promise<Omit<Images, "unavailable">> {
 	const headers = await bearer(deps);
 	const { results } = await (await get(deps, `${OPENVERSE}v1/images/?q=${encodeURIComponent(query)}&license=cc0,pdm,by&page_size=${k}`, { headers })).json<{ results: Photo[] }>();
 	const kept = results.filter((r) => PHOTO_LICENCES.has(r.license)).slice(0, k);
-	const thumbs = await Promise.all(kept.slice(0, THUMBS).map((r) => thumbnail(deps, r.thumbnail, headers)));
+	const thumbs = await Promise.all(kept.slice(0, THUMBS).map((r) => thumbnail(deps, r.thumbnail, headers, missed)));
 	const thumbnails: Thumbnail[] = [];
-	let room = MAX_THUMBS; // once a thumbnail does not fit, none after it does: they stay in order
+	let room = MAX_THUMBS;
+	const fits = (t: Thumbnail | null | undefined) => !!t && t.data.length <= room && ((room -= t.data.length), true); // one too big is skipped, later ones may fit
 	return {
 		results: kept.map((r, n) => ({
 			title: r.title, creator: r.creator ?? undefined,
 			licence: `${PHOTO_LICENCES.get(r.license)}${r.license_version ? ` ${r.license_version}` : ""}`,
 			download_url: r.url, landing_url: r.foreign_landing_url,
 			...(r.license === "by" && { credit: r.attribution }), // only CC BY requires credit
-			...(thumbs[n] && (room -= thumbs[n].data.length) >= 0 && { thumbnail: thumbnails.push(thumbs[n]) - 1 }), // its position in `thumbnails`
+			...(fits(thumbs[n]) && { thumbnail: thumbnails.push(thumbs[n]!) - 1 }), // its position in `thumbnails`
 		})),
 		thumbnails,
 	};
@@ -109,12 +117,14 @@ async function photos(deps: ImageDeps, query: string, k: number): Promise<Omit<I
 
 export async function findImages(kind: Kind, query: string, k = DEFAULT_K[kind], deps: ImageDeps): Promise<Images> {
 	const unavailable: string[] = [];
+	let incomplete = false;
+	const missed = () => void (incomplete = true);
 	const tried = <T>(name: string, p: Promise<T>, none: T) => p.catch(() => (unavailable.push(name), none));
 	let found: Omit<Images, "unavailable">;
-	if (kind === "photo") found = await tried("photos", photos(deps, query, k), { results: [], thumbnails: [] });
-	else if (kind === "icon") found = { results: await tried("icons", iconify(deps, query, k, [...ICON_LICENCES.keys()].join(",")), []), thumbnails: [] };
+	if (kind === "photo") found = await tried("photos", photos(deps, query, k, missed), { results: [], thumbnails: [] });
+	else if (kind === "icon") found = { results: await tried("icons", iconify(deps, query, k, [...ICON_LICENCES.keys()].join(","), missed), []), thumbnails: [] };
 	else {
-		const [c, s] = await Promise.all([tried("Wikimedia Commons", commons(deps, query, k), []), tried("Simple Icons", iconify(deps, query, k, "simple-icons", [`simple-icons:${query.toLowerCase().replace(/[^a-z0-9]/g, "")}`]), [])]);
+		const [c, s] = await Promise.all([tried("Wikimedia Commons", commons(deps, query, k, missed), []), tried("Simple Icons", iconify(deps, query, k, "simple-icons", missed, [`simple-icons:${query.toLowerCase().replace(/[^a-z0-9]/g, "")}`]), [])]);
 		found = { results: [...c, ...s].slice(0, k), thumbnails: [] };
 	}
 	// at most 40 KB of SVG text per response: results stay in order and the rest is dropped
@@ -124,5 +134,6 @@ export async function findImages(kind: Kind, query: string, k = DEFAULT_K[kind],
 		if ((size += r.svg?.length ?? 0) > MAX_TEXT) break;
 		results.push(r);
 	}
+	if (incomplete && !unavailable.length) unavailable.push("some downloads"); // a reported gap keeps the answer out of the cache
 	return { results, thumbnails: found.thumbnails, unavailable };
 }

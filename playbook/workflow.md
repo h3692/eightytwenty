@@ -44,7 +44,7 @@ Chapters (stages): `workflow`, `narrative`, `anatomy-and-taglines`, `archetypes`
 
 - **Questions, plan, approval, build.** No slide is built before the user approves the text plan.
 - **One question per message**, numbered ("Question 2 of 5"). Data requests, file and image requests and design choices
-  count as asks too; never more than 1 to 2 asks in a message.
+  count as asks too; never more than 1 to 2 asks in a message (except the one batched photo hand-off, `visual-rules-and-design-options`, Sourcing).
 - **Never invent figures, quotes, client data or case facts.** Public figures you know are marked `[verify: ~X]` until
   sourced.
 - **The case prompt is the source of truth** for client facts, constraints and the ask. If the user's idea conflicts

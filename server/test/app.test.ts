@@ -214,6 +214,7 @@ describe("get_playbook", () => {
 		expect(chapter).not.toMatch(/Unsplash, Pexels/);
 		const workflow = (await tool("get_playbook", { stage: "workflow" })).body.result.content[0].text;
 		expect(workflow).toContain("sourced images");
+		expect(workflow).toContain("except the one batched photo hand-off");
 	});
 
 	it("returns one chapter", async () => {

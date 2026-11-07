@@ -89,9 +89,10 @@ describe("logos", () => {
 			expect(fetched).not.toContain(page(title).url);
 	});
 
-	it("keeps CC0 whatever its case, and only when Copyrighted is False", async () => {
+	it("keeps CC0 whatever its case even though Commons marks CC0 files Copyrighted, and other files only when not copyrighted", async () => {
 		const data = structuredClone(commons);
-		Object.assign(page("Coca-Cola Thailand.svg", data).extmetadata, { License: { value: "CC0" }, Copyrighted: { value: "False" } });
+		// a real CC0 file (File:Hungertent Logo 2021.svg) carries License cc0 with Copyrighted True
+		Object.assign(page("Coca-Cola Thailand.svg", data).extmetadata, { License: { value: "CC0" }, Copyrighted: { value: "True" } });
 		Object.assign(page("The Coca-Cola Company (2020).svg", data).extmetadata, { Copyrighted: { value: "True" } });
 		const { fetch } = fake(cokeRoutes(data));
 		const r = await findImages("logo", "Coca-Cola", 3, { fetch });
@@ -227,23 +228,25 @@ describe("photos", () => {
 		expect(r.results[2].credit).toBeUndefined();
 	});
 
-	it("skips thumbnails over 40 KB and any not on api.openverse.org", async () => {
+	it("skips thumbnails over 60 KB and any not on api.openverse.org", async () => {
 		const data = structuredClone(openverse);
 		data.results[1].thumbnail = "https://evil.example/thumb.jpg";
-		const { fetch, calls } = fake({ ...photoRoutes(data), [THUMB(data.results[0].thumbnail)]: jpeg(thumbBytes(40 * 1024 + 1)), [THUMB(data.results[2].thumbnail)]: jpeg(thumbBytes(40 * 1024)) });
+		const { fetch, calls } = fake({ ...photoRoutes(data), [THUMB(data.results[0].thumbnail)]: jpeg(thumbBytes(60 * 1024 + 1)), [THUMB(data.results[2].thumbnail)]: jpeg(thumbBytes(60 * 1024)) });
 		const r = await findImages("photo", "busy hospital waiting room", 4, { fetch });
-		expect(r.thumbnails).toEqual([{ data: base64(thumbBytes(40 * 1024)), mimeType: "image/jpeg" }]);
+		expect(r.thumbnails).toEqual([{ data: base64(thumbBytes(60 * 1024)), mimeType: "image/jpeg" }]);
 		expect(r.results.map((x) => x.thumbnail)).toEqual([undefined, undefined, 0, undefined]);
 		expect(calls.map((c) => c.url)).not.toContain("https://evil.example/thumb.jpg");
 	});
 
-	it("asks for the compressed thumbnail and keeps thumbnails in order while their base64 fits in 90,000 characters", async () => {
-		const real = Number(thumb.headers["content-length"]); // 51,312 base64 characters: a second one would pass 90,000
+	it("asks for the compressed thumbnail and fits as many as its base64 allows in 90,000 characters, skipping one too big for the rest", async () => {
+		const real = Number(thumb.headers["content-length"]); // 51,312 base64 characters: a second one that size would pass 90,000
 		expect(thumb.url).toBe(THUMB(openverse.results[0].thumbnail));
 		const sized = (...sizes: number[]) => fake({ ...photoRoutes(), ...Object.fromEntries(sizes.map((n, i) => [THUMB(openverse.results[i].thumbnail), jpeg(thumbBytes(n))])) });
 		const two = await findImages("photo", "busy hospital waiting room", 4, sized(real, real, 1000));
-		expect(two.thumbnails).toEqual([{ data: base64(thumbBytes(real)), mimeType: thumb.headers["content-type"] }]);
-		expect(two.results.map((x) => x.thumbnail)).toEqual([0, undefined, undefined, undefined]); // the small third would fit, but order is kept
+		expect(two.thumbnails.map((t) => t.data)).toEqual([base64(thumbBytes(real)), base64(thumbBytes(1000))]);
+		expect(two.results.map((x) => x.thumbnail)).toEqual([0, undefined, 1, undefined]); // the second does not fit, the small third does
+		const live = await findImages("photo", "busy hospital waiting room", 4, sized(38_482, 33_874, 25_304)); // the live sizes for this query
+		expect(live.results.map((x) => x.thumbnail)).toEqual([0, undefined, 1, undefined]);
 		const three = await findImages("photo", "busy hospital waiting room", 4, sized(30_000, 30_000, 30_000));
 		expect(three.thumbnails.map((t) => t.data.length)).toEqual([40_000, 40_000]);
 		expect(three.results.map((x) => x.thumbnail)).toEqual([0, 1, undefined, undefined]);
@@ -334,6 +337,18 @@ describe("safeSvg", () => {
 		expect(safeSvg('<svg><image href="data:image/png;base64,iVBORw0KGgo="/></svg>')).toBe(true);
 	});
 
+	it("a thumbnail or SVG that fails to download marks the answer incomplete, so it is not cached; a rule-dropped one does not", async () => {
+		const failing = fake({ ...photoRoutes(), [THUMB(openverse.results[0].thumbnail)]: () => new Response("", { status: 429 }) });
+		const photo = await findImages("photo", "busy hospital waiting room", 4, failing);
+		expect(photo.unavailable).toEqual(["some downloads"]);
+		expect(photo.results).toHaveLength(4);
+		const icon = await findImages("icon", "truck", 4, fake({ ...truckRoutes, [ICON("mdi:truck")]: () => new Response("", { status: 503 }) }));
+		expect(icon.unavailable).toEqual(["some downloads"]);
+		expect(icon.results.map((r) => r.title)).not.toContain("mdi:truck");
+		const unsafe = await findImages("icon", "truck", 4, fake({ ...truckRoutes, [ICON("mdi:truck")]: svg("<svg><script>x</script></svg>") }));
+		expect(unsafe.unavailable).toEqual([]);
+	});
+
 	it.each([
 		["script", "<svg><script>alert(1)</script></svg>"],
 		["foreignObject", "<svg><foreignObject><div/></foreignObject></svg>"],
@@ -351,5 +366,10 @@ describe("safeSvg", () => {
 		["a data:text/html href", '<svg><a href="data:text/html,<b>x</b>">x</a></svg>'],
 		["an animation retargeting href", '<svg><a href="#a"><set attributeName="href" to="https://evil.example"/></a></svg>'],
 		["text that is not an SVG", "<html><body>Bad gateway</body></html>"],
+		["a CSS-escaped url(", "<svg><style>rect{fill:\\75rl(http://127.0.0.1:9/x.svg#p)}</style></svg>"],
+		["a CSS-escaped @import", '<svg><style>@\\69mport "http://evil.example/a.css";</style></svg>'],
+		["a decimal character reference for (", '<svg><rect style="fill:url&#40;http://evil.example/p)"/></svg>'],
+		["a hex character reference for (", "<svg><style>rect{fill:url&#x28;http://evil.example/p)}</style></svg>"],
+		["a character reference for @", '<svg><style>&#64;import "http://evil.example/a.css";</style></svg>'],
 	])("rejects %s", (_, s) => expect(safeSvg(s)).toBe(false));
 });
