@@ -44,7 +44,7 @@ Chapters (stages): `workflow`, `narrative`, `anatomy-and-taglines`, `archetypes`
 
 - **Questions, plan, approval, build.** No slide is built before the user approves the text plan.
 - **One question per message**, numbered ("Question 2 of 5"). Data requests, file and image requests and design choices
-  count as asks too; never more than 1 to 2 asks in a message.
+  count as asks too; never more than 1 to 2 asks in a message (except the one batched photo hand-off, `visual-rules-and-design-options`, Sourcing).
 - **Never invent figures, quotes, client data or case facts.** Public figures you know are marked `[verify: ~X]` until
   sourced.
 - **The case prompt is the source of truth** for client facts, constraints and the ask. If the user's idea conflicts
@@ -179,7 +179,8 @@ done items struck through. Never put it in the deck.
   `IMG_<role>`, `MOCKUP_<role>`.
 - Set the section tracker to the correct section. Fit the slide to its density tier (`polish`).
 - Native, editable charts (grey plus one highlight, annotations drawn as shapes, chart text in the deck font); image
-  slots with the user's images (cropped to the slot, overlay kept). Every number still missing stays a placeholder
+  slots with sourced images or the user's own (`visual-rules-and-design-options`, Sourcing), cropped to the slot with the
+  overlay kept. Every number still missing stays a placeholder
   (`[X%]`, `[verify: ~X]`) and is on the research to-do list.
 - The tagline must be provable from what is on the slide. Bold 1 to 3 phrases per box that carry the argument. Finish
   the insight device last and run the findability test.

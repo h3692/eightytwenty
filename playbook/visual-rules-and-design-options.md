@@ -100,12 +100,34 @@ the weakest.
   usually be built from a provided image or simple shapes.
 - Log every slot on the research to-do list in chat (`workflow`, Step 5).
 
-**Sourcing** (suggest, don't overwhelm; image requests count toward the 1 to 2 asks):
-- The client's press kit, newsroom, app store screenshots or website for product and brand images.
-- Free licensed stock (e.g. Unsplash, Pexels) for scenes and persona portraits; suggest 2 to 3 search terms per slot.
-- The user's own photos or screenshots.
-- Never pull photos of real public figures from the web; ask the user to supply any such image.
-- Persona portraits must read as illustrative: a stock model, never a real private person.
+**Sourcing** (you find the images; the user is the last resort):
+1. **Icons, and single-colour brand marks:**
+   - In claude.ai, use the preinstalled `react-icons` (Tabler, Lucide, Phosphor, Heroicons, Material, Simple Icons)
+     and render with `sharp`, with no tool call.
+   - Elsewhere, call `find_images(kind: "icon", query)`.
+   - Search by the object drawn ("truck", "clock", "shield"), not the concept ("logistics", "speed", "trust").
+   - One icon family per deck.
+2. **Logos** (the client, partners, competitors): first look for the client's logo in the case files the user gave you,
+   then `find_images(kind: "logo", query: "<company>")`. Logos identify a company; never use them as decoration.
+3. **Photos** (scenes, settings, persona portraits): `find_images(kind: "photo", query)`. Describe the scene, not the
+   argument ("nurse at a hospital reception desk", not "healthcare access"). Look at the thumbnails and pick the one
+   that fits the slot's crop, mood and palette.
+4. **Turn each pick into a file:**
+   - **SVG text** (logos, icons): write it to a `.svg` file and rasterise it to PNG at the slot's size. Use whichever
+     tool your sandbox has: `sharp`, then `cairosvg`, then `rsvg-convert`, then `soffice --convert-to png`. Recolour
+     icons and single-colour marks to the palette's tokens; keep multi-colour logos as they are. Never turn on a
+     rasteriser's unsafe or external-resource options.
+   - **Photos:** download `download_url` inside your sandbox.
+5. **If your sandbox can't download (step two, by hand):** send one message that lists every photo slot. For each, give
+   the photo's title, creator, landing link, direct link, and a file name to save it as (`s07-hero.jpg`), so the
+   user's uploads map back to slots. This one batched ask is exempt from the 1 to 2 asks rule. Keep building everything
+   else, and track open slots on the research to-do list in chat.
+6. **Place it** cropped to the slot shape, with the overlay kept. **Credit only when the result carries a `credit` line**
+   (openly licensed photos that require attribution): put it in the footnote. Logos, icons and public-domain photos
+   need none.
+- The user's own photos and screenshots always win over sourced ones.
+- Never source photos of real public figures; ask the user for any such image.
+- Persona portraits must read as illustrative (a stock model), never a real private person.
 
 ## Default style (blank deck only)
 

@@ -24,12 +24,15 @@ footer { margin-top: 3rem; color: var(--muted); font-size: .9rem; }
 <p>eightytwenty is a read-only connector with no accounts. This page says what it receives and what it keeps.</p>
 
 <h2>What a request sends</h2>
-<p>The tool arguments your assistant passes: the search text and filters for <code>find_references</code> and <code>find_deck_flows</code>, a stage name for <code>get_playbook</code>, or an id for <code>get_reference</code>. Nothing else from your chat or your files is sent.</p>
+<p>The tool arguments your assistant passes: the search text and filters for <code>find_references</code> and <code>find_deck_flows</code>, the kind and search terms for <code>find_images</code>, a stage name for <code>get_playbook</code>, or an id for <code>get_reference</code>. Nothing else from your chat or your files is sent.</p>
+
+<h2>Image search</h2>
+<p>To fetch results, image search terms are sent to Openverse (photos), Wikimedia Commons (logos) and Iconify (icons and Simple Icons logos). Nothing else about you or your request goes with them. Openverse access uses an app registration in the operator's name, which carries no user data.</p>
 
 <h2>What is kept</h2>
 <ul>
 <li><strong>Your IP address</strong> is used only for rate limits. It sits in a request counter that is deleted 24 hours after your last request. Requests that come from claude.ai arrive from Anthropic's servers and share one counter, so your own address is not seen.</li>
-<li><strong>Search text is not logged.</strong> To return identical results for identical searches, results are cached under a one-way hash of the normalised search text and filters, never the text itself. Cached results are dropped when the library is rebuilt.</li>
+<li><strong>Search text is not logged or stored.</strong> To return identical results for identical searches, results (image results too) are cached under a one-way hash of the normalised search text and filters, never the text itself. Cached results are dropped when the library is rebuilt.</li>
 <li><strong>No request logs.</strong> The server's request logging is switched off.</li>
 </ul>
 

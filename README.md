@@ -30,6 +30,9 @@ time, shows you the plan in text, and builds only after you approve it.
   deck length.
 - `get_reference`: the record for one slide result (its 40 largest regions), its layout and wireframe,
   or one deck flow.
+- `find_images`: a logo, icon or photo for a slide being built. Public-domain logo SVGs (Wikimedia
+  Commons, Simple Icons), permissive icon SVGs (Iconify) and CC0, public-domain and CC BY photos
+  (Openverse), with a credit line only when the licence requires one.
 
 All tools are read-only. There is no way to upload to or list the whole library.
 
@@ -37,8 +40,11 @@ All tools are read-only. There is no way to upload to or list the whole library.
 
 - The search text and filters you (or your AI) pass to the tools.
 - Your IP address, which is used only for rate limiting.
+- For `find_images`, the image search terms go to Openverse, Wikimedia Commons and Iconify to fetch
+  results. Openverse access uses an app registration in the operator's name, carrying no user data.
 
-No account, and queries are not logged.
+No account, and queries are not logged. No search text is stored: cached results sit under a one-way
+hash of the search.
 
 ## License
 

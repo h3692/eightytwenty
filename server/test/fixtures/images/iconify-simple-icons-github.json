@@ -1,0 +1,18 @@
+{
+	"icons": [
+		"simple-icons:github",
+		"simple-icons:githubpages",
+		"simple-icons:githubactions",
+		"simple-icons:githubcopilot",
+		"simple-icons:refinedgithub",
+		"simple-icons:githubsponsors"
+	],
+	"total": 6,
+	"limit": 32,
+	"start": 0,
+	"request": {
+		"query": "github",
+		"limit": "32",
+		"prefixes": "simple-icons"
+	}
+}

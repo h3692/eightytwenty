@@ -33,6 +33,8 @@ Run on every finished slide. Fix what you can without asking; report only what n
 - [ ] No `[ ]` placeholders remain unless the user knowingly left them, and each remaining one is on the research
       to-do list in chat.
 - [ ] Nothing extra in the deck file: no options, mock or to-do slides, hidden or visible.
+- [ ] Every sourced photo whose result carried a `credit` line has it in the footnotes; logos, icons and public-domain
+      photos carry none.
 - [ ] What was built matches the approved plan; any change from it was named in chat.
 - [ ] Built natively in the deck's style from any references used; nothing copied wholesale from a reference.
 

@@ -13,6 +13,9 @@ interface Env {
 	LIMIT_PER_MINUTE: number;
 	LIMIT_PER_MINUTE_SHARED: number;
 	DAILY_SEARCH_BUDGET: number;
+	DAILY_PHOTO_BUDGET: number;
+	OPENVERSE_CLIENT_ID?: string; // secrets (wrangler secret put); photos fall back to anonymous Openverse calls without them
+	OPENVERSE_CLIENT_SECRET?: string;
 }
 
 declare namespace Cloudflare {
@@ -25,6 +28,9 @@ declare namespace Cloudflare {
 		LIMIT_PER_MINUTE: number;
 		LIMIT_PER_MINUTE_SHARED: number;
 		DAILY_SEARCH_BUDGET: number;
+		DAILY_PHOTO_BUDGET: number;
+		OPENVERSE_CLIENT_ID?: string;
+		OPENVERSE_CLIENT_SECRET?: string;
 		TEST_MIGRATIONS: import("cloudflare:test").D1Migration[];
 		LIVE_AI: string;
 		PLAYBOOK_FILES: string[];

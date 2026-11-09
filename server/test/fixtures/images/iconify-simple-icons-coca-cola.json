@@ -1,0 +1,11 @@
+{
+	"icons": [],
+	"total": 0,
+	"limit": 32,
+	"start": 0,
+	"request": {
+		"query": "Coca-Cola",
+		"limit": "32",
+		"prefixes": "simple-icons"
+	}
+}

@@ -1,6 +1,6 @@
 import { env, runInDurableObject } from "cloudflare:test";
 import { createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import labels from "../../pipeline/schema/labels.v1.json";
 import styles from "../../pipeline/schema/style.v1.json";
 import archetypesMd from "../../playbook/archetypes.md";
@@ -8,6 +8,11 @@ import { app, clientKey, STAGES } from "../src/app";
 import type { Limiter } from "../src/limiter";
 import { DEFAULT_FLAGS, EMBED_MODEL, RERANK_MODEL, search, searchFlows } from "../src/search";
 import { fakeAI, flowFloats, flows, floats, impacts, layouts, library, manifest, rows, seed } from "./fixture";
+import simpleGithub from "./fixtures/images/iconify-simple-icons-github.json";
+import truck from "./fixtures/images/iconify-truck.json";
+import mdiTruck from "./fixtures/images/mdi_truck.svg";
+import openverse from "./fixtures/images/openverse-hospital.json";
+import github from "./fixtures/images/simple-icons_github.svg";
 
 const lib = library();
 const worker = app(lib);
@@ -60,10 +65,10 @@ describe("MCP endpoint", () => {
 		expect(body.result.serverInfo.name).toBe("eightytwenty");
 	});
 
-	it("lists four read-only, titled tools with enum filters from the label schema", async () => {
+	it("lists five read-only, titled tools with enum filters from the label schema", async () => {
 		const { body } = await rpc("tools/list");
 		const tools = Object.fromEntries(body.result.tools.map((t: any) => [t.name, t]));
-		expect(Object.keys(tools).sort()).toEqual(["find_deck_flows", "find_references", "get_playbook", "get_reference"]);
+		expect(Object.keys(tools).sort()).toEqual(["find_deck_flows", "find_images", "find_references", "get_playbook", "get_reference"]);
 		for (const t of Object.values<any>(tools)) {
 			expect(t.title).toBeTruthy();
 			expect(t.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false });
@@ -94,6 +99,14 @@ describe("MCP endpoint", () => {
 		expect(f.properties.style.description).toBeTruthy();
 		expect(f.required).toEqual(["purpose"]);
 		expect(tools.find_deck_flows.description).toMatch(/whole deck/i);
+		const i = tools.find_images;
+		expect(i.title).toBe("Find images for a slide");
+		expect(i.inputSchema.properties.kind.enum).toEqual(["logo", "icon", "photo"]);
+		expect(i.inputSchema.properties.query).toMatchObject({ type: "string", minLength: 1, maxLength: 100 });
+		expect(i.inputSchema.properties.k).toMatchObject({ type: "integer", minimum: 1, maximum: 4 });
+		expect(i.inputSchema.required).toEqual(["kind", "query"]);
+		expect(i.description).toMatch(/approved slide.*logo, icon or photo.*get_playbook/i);
+		expect(i.description).not.toMatch(/can't be used/i);
 	});
 
 	it("answers newer MCP methods (server/discover, subscriptions/listen) without a server error", async () => {
@@ -192,6 +205,16 @@ describe("get_playbook", () => {
 		const polish = (await tool("get_playbook", { stage: "polish" })).body.result.content[0].text;
 		expect(polish).toContain("# Density and polish");
 		expect(polish).toMatch(/No arrow characters/);
+	});
+
+	it("tells the assistant to source its own images and to credit only when a result carries a credit", async () => {
+		const chapter = (await tool("get_playbook", { stage: "visual-rules-and-design-options" })).body.result.content[0].text;
+		for (const s of ["find_images", "react-icons", "sharp", "cairosvg", "Credit only when the result carries a `credit` line", "s07-hero.jpg", "exempt from the 1 to 2 asks rule"])
+			expect(chapter).toContain(s);
+		expect(chapter).not.toMatch(/Unsplash, Pexels/);
+		const workflow = (await tool("get_playbook", { stage: "workflow" })).body.result.content[0].text;
+		expect(workflow).toContain("sourced images");
+		expect(workflow).toContain("except the one batched photo hand-off");
 	});
 
 	it("returns one chapter", async () => {
@@ -345,6 +368,131 @@ describe("Searcher Durable Object", () => {
 	});
 });
 
+describe("find_images", () => {
+	// The Searcher fetches with the global fetch: every test serves exact URLs only, so nothing reaches the network.
+	const SIMPLE = (q: string) => `https://api.iconify.design/search?query=${encodeURIComponent(q)}&limit=32&prefixes=simple-icons`;
+	const ICONS = (q: string) => `https://api.iconify.design/search?query=${encodeURIComponent(q)}&limit=32&prefixes=tabler,lucide,ph,mdi,heroicons,material-symbols,carbon,simple-icons`;
+	const COMMONS = (q: string) => `https://commons.wikimedia.org/w/api.php?action=query&format=json&generator=search&gsrnamespace=6&gsrlimit=10&gsrsearch=${encodeURIComponent(`${q} logo filemime:image/svg+xml`)}&prop=imageinfo&iiprop=url|size|mime|extmetadata&iiurlwidth=500`;
+	const PHOTOS = (q: string, k = 3) => `https://api.openverse.org/v1/images/?q=${encodeURIComponent(q)}&license=cc0,pdm,by&page_size=${k}`;
+	const ICON = (id: string) => `https://api.iconify.design/${id.replace(":", "/")}.svg`;
+	const MINT = "https://api.openverse.org/v1/auth_tokens/token/";
+	const JPEG = (i: number) => Uint8Array.from({ length: 50 + i }, (_, n) => (n * 7 + i) % 256);
+	const routes: Record<string, () => Response> = {
+		[COMMONS("github")]: () => Response.json({ batchcomplete: "" }),
+		[SIMPLE("github")]: () => Response.json(simpleGithub),
+		...Object.fromEntries(simpleGithub.icons.map((id) => [ICON(id), () => new Response(id === "simple-icons:github" ? github : `<svg xmlns="http://www.w3.org/2000/svg" id="${id}"/>`)])),
+		[ICONS("truck")]: () => Response.json(truck),
+		...Object.fromEntries(truck.icons.map((id) => [ICON(id), () => new Response(mdiTruck)])),
+		[COMMONS("truck")]: () => Response.json({ batchcomplete: "" }),
+		[SIMPLE("truck")]: () => Response.json({ icons: [] }),
+		...Object.fromEntries(["busy hospital waiting room", "hospital"].map((q) => [PHOTOS(q), () => Response.json({ ...openverse, results: openverse.results.slice(0, 3) })])),
+		...Object.fromEntries(openverse.results.map((r, i) => [`${r.thumbnail}?compressed=true`, () => new Response(JPEG(i), { headers: { "content-type": "image/jpeg" } })])),
+		[PHOTOS("down")]: () => new Response("upstream request timeout", { status: 504 }),
+		[MINT]: () => Response.json({ access_token: "tok-1", expires_in: 36000 }),
+	};
+	let fetched: { url: string; init?: RequestInit }[];
+	beforeEach(() => {
+		fetched = [];
+		vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+			const url = String(input instanceof Request ? input.url : input);
+			fetched.push({ url, init });
+			return routes[url]?.() ?? new Response("not found", { status: 404 });
+		});
+	});
+	afterEach(() => vi.restoreAllMocks());
+	const b64 = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes));
+	const photosUsed = () => runInDurableObject(env.LIMITER.get(env.LIMITER.idFromName("global")), (l: Limiter) =>
+		l.sql.exec<{ used: number }>("SELECT used FROM budget WHERE day = ?", `${new Date().toISOString().slice(0, 10)}:photos`).toArray()[0]?.used ?? 0);
+
+	it("returns icons as SVG text in one text block, 4 by default", async () => {
+		const { body } = await tool("find_images", { kind: "icon", query: "Truck" });
+		expect(body.result.isError).toBeFalsy();
+		expect(body.result.content).toHaveLength(1);
+		const text: string = body.result.content[0].text;
+		expect(text.split("\n").filter((l) => /^\d\. /.test(l))).toEqual(["1. mdi:truck | Apache-2.0", "2. mdi:truck-outline | Apache-2.0", "3. tabler:truck | MIT", "4. tabler:truck-filled | MIT"]);
+		expect(text).toContain(`   SVG: ${mdiTruck}`);
+		expect(text).not.toMatch(/credit/i);
+	});
+
+	it("returns logos with their SVG and no credit", async () => {
+		const { body } = await tool("find_images", { kind: "logo", query: "GitHub", k: 2 });
+		const text: string = body.result.content[0].text;
+		expect(text).toContain(`1. simple-icons:github | CC0\n   SVG: ${github}\n2. simple-icons:githubpages | CC0`);
+		expect(text).not.toContain("3. ");
+		expect(text).not.toMatch(/credit|unavailable/i);
+	});
+
+	it("returns photos as links in the text, then their thumbnails as image blocks", async () => {
+		const { body } = await tool("find_images", { kind: "photo", query: "busy hospital waiting room" });
+		const [first, , third] = openverse.results;
+		const [text, ...images] = body.result.content;
+		expect(text.text).toContain(`1. ${first.title} | CC BY 2.0 | thumbnail 1\n   Credit: ${first.attribution}\n   Download: ${first.url}\n   Page: ${first.foreign_landing_url}\n   Creator: ${first.creator}\n`);
+		expect(text.text).toContain(`3. ${third.title} | Public Domain Mark 1.0 | thumbnail 3\n   Download: ${third.url}`);
+		expect(text.text).toMatch(/Thumbnails follow as images/);
+		expect(images).toEqual([0, 1, 2].map((i) => ({ type: "image", data: b64(JPEG(i)), mimeType: "image/jpeg" })));
+	});
+
+	it("serves a repeat from the cache without fetching, keyed by kind, under a hashed key", async () => {
+		const first = await tool("find_images", { kind: "photo", query: "busy hospital waiting room" });
+		const calls = fetched.length;
+		const noDO = { idFromName: () => { throw new Error("Searcher called on a cache hit"); } };
+		const again = await tool("find_images", { kind: "photo", query: "  Busy hospital  waiting room " }, { e: testEnv({ SEARCHER: noDO }) });
+		expect(again.body.result).toEqual(first.body.result);
+		expect(fetched).toHaveLength(calls);
+		await tool("find_images", { kind: "icon", query: "truck" });
+		await tool("find_images", { kind: "logo", query: "truck" });
+		expect(fetched.filter((c) => c.url === SIMPLE("truck"))).toHaveLength(1); // the icon search did not answer for the logo one
+		const keys = await env.DB.prepare("SELECT key, results FROM search_cache").all<{ key: string; results: string }>();
+		expect(keys.results).toHaveLength(3);
+		for (const r of keys.results) expect(r.key).toMatch(/^[0-9a-f]{64}$/);
+		expect(JSON.parse(keys.results[0].results).thumbnails).toHaveLength(3); // the whole output, thumbnails included
+	});
+
+	it("does not cache an answer with a source unavailable, and says which", async () => {
+		for (let i = 0; i < 2; i++) {
+			const { body } = await tool("find_images", { kind: "photo", query: "down" });
+			expect(body.result.content).toEqual([{ type: "text", text: "No photos found.\nUnavailable right now: photos." }]);
+		}
+		expect(fetched.filter((c) => c.url === PHOTOS("down"))).toHaveLength(2);
+	});
+
+	it("spends the daily photo budget only on photo searches that miss the cache; logos and icons go on when it is used up", async () => {
+		const used = await photosUsed();
+		const e = testEnv({ DAILY_PHOTO_BUDGET: used + 1 });
+		for (let i = 0; i < 2; i++) expect((await tool("find_images", { kind: "photo", query: "hospital" }, { e })).body.result.isError).toBeFalsy(); // one miss, one hit
+		expect(await photosUsed()).toBe(used + 1);
+		const { res, body } = await tool("find_images", { kind: "photo", query: "busy hospital waiting room" }, { e });
+		expect(res.status).toBe(200);
+		expect(body.result).toMatchObject({ isError: true, content: [{ text: "Photo search has used today's quota; logos and icons still work. Try photos again after 00:00 UTC." }] });
+		expect(fetched.filter((c) => c.url === PHOTOS("busy hospital waiting room"))).toHaveLength(0);
+		expect((await tool("find_images", { kind: "icon", query: "truck" }, { e })).body.result.isError).toBeFalsy();
+		expect((await tool("find_images", { kind: "logo", query: "github" }, { e })).body.result.isError).toBeFalsy();
+		expect(await photosUsed()).toBe(used + 1);
+	});
+
+	it("uses the Openverse app token from the Searcher's env, minted once and kept in memory", async () => {
+		const creds = (id?: string, secret?: string) => runInDurableObject<Rpc.DurableObjectBranded, void>(searcher(), (s: any) => { s.env = { ...s.env, OPENVERSE_CLIENT_ID: id, OPENVERSE_CLIENT_SECRET: secret }; s.token = {}; });
+		await creds("app-id", "app-key");
+		try {
+			await tool("find_images", { kind: "photo", query: "hospital" });
+			await tool("find_images", { kind: "photo", query: "busy hospital waiting room" });
+		} finally {
+			await creds();
+		}
+		expect(fetched.filter((c) => c.url === MINT)).toHaveLength(1);
+		expect(fetched.filter((c) => c.url !== MINT).every((c) => new Headers(c.init?.headers).get("authorization") === "Bearer tok-1")).toBe(true);
+	});
+
+	it("validates kind, query length and k", async () => {
+		for (const args of [{ kind: "video", query: "x" }, { kind: "icon", query: "" }, { kind: "icon", query: "   " }, { kind: "icon", query: "x".repeat(101) }, { kind: "icon", query: "x", k: 0 }, { kind: "icon", query: "x", k: 5 }, { kind: "icon", query: "x", k: 1.5 }]) {
+			const { body } = await tool("find_images", args);
+			expect(body.result?.isError ?? !!body.error, JSON.stringify(args)).toBe(true);
+		}
+		expect(fetched).toEqual([]);
+		expect((await tool("find_images", { kind: "icon", query: "x".repeat(100), k: 4 })).body.result.isError).toBeFalsy();
+	});
+});
+
 describe("get_reference", () => {
 	it("returns the labels, v3 layout and design DNA as JSON, and the mockup image", async () => {
 		const { body } = await tool("get_reference", { id: rows[0].id });
@@ -400,7 +548,7 @@ describe("rate limits", () => {
 	it("spends the daily search budget only on uncached searches, after validation", async () => {
 		// The global Limiter keeps today's count from earlier tests: allow exactly two more searches.
 		const used = await runInDurableObject(env.LIMITER.get(env.LIMITER.idFromName("global")), (l: Limiter) =>
-			l.sql.exec<{ used: number }>("SELECT used FROM budget").toArray()[0]?.used ?? 0);
+			l.sql.exec<{ used: number }>("SELECT used FROM budget WHERE day = ?", new Date().toISOString().slice(0, 10)).toArray()[0]?.used ?? 0);
 		const e = testEnv({ DAILY_SEARCH_BUDGET: used + 2 });
 		expect((await tool("get_playbook", {}, { e })).body.result.isError).toBeFalsy();
 		expect((await tool("get_reference", { id: flows[0].id }, { e })).body.result.isError).toBeFalsy();
@@ -458,7 +606,7 @@ describe("tool descriptions", () => {
 });
 
 describe("Limiter", () => {
-	const limits = { perMinute: 2, perMinuteShared: 5, dailySearchBudget: 100 };
+	const limits = { perMinute: 2, perMinuteShared: 5, dailySearchBudget: 100, dailyPhotoBudget: 100 };
 	const inDO = <T>(fn: (l: Limiter, state: DurableObjectState) => T) => runInDurableObject(env.LIMITER.get(env.LIMITER.newUniqueId()), fn);
 
 	it("escalates cooldowns for repeat offenders: 1, 2, 4 minutes", async () => {
@@ -487,6 +635,17 @@ describe("Limiter", () => {
 			expect(l.spend("a", b, 0).ok).toBe(true);
 			expect(l.spend("b", b, 1000).message).toMatch(/daily search budget/);
 			expect(l.spend("b", b, day).ok).toBe(true);
+		});
+	});
+
+	it("counts photo searches against their own daily budget, kept across the per-minute pruning", async () => {
+		await inDO((l) => {
+			const b = { ...limits, dailySearchBudget: 1, dailyPhotoBudget: 1 }, day = 86_400_000;
+			expect(l.spend("a", b, 0, true).ok).toBe(true);
+			expect(l.spend("a", b, 0).ok).toBe(true); // the search budget is separate
+			l.check("a", limits, 61_000);
+			expect(l.spend("b", b, 62_000, true)).toMatchObject({ ok: false, message: "Photo search has used today's quota; logos and icons still work. Try photos again after 00:00 UTC." });
+			expect(l.spend("b", b, day, true).ok).toBe(true);
 		});
 	});
 
@@ -529,12 +688,12 @@ describe("pages", () => {
 		expect(res.status).toBe(200);
 		expect(res.headers.get("content-type")).toMatch(/^text\/html/);
 		const html = await res.text();
-		for (const s of ["get_playbook", "find_references", "find_deck_flows", "get_reference", "/mcp", "claude.ai", "Claude Code"]) expect(html).toContain(s);
+		for (const s of ["get_playbook", "find_references", "find_deck_flows", "get_reference", "find_images", "/mcp", "claude.ai", "Claude Code"]) expect(html).toContain(s);
 	});
 
 	it("/privacy states what is sent and kept", async () => {
 		const html = await (await call("/privacy")).text();
-		for (const s of ["rate limit", "24 hours", "cookies", "accounts", "logged"]) expect(html.toLowerCase()).toContain(s);
+		for (const s of ["rate limit", "24 hours", "cookies", "accounts", "logged", "image search terms", "openverse", "wikimedia commons", "iconify", "app registration"]) expect(html.toLowerCase()).toContain(s);
 	});
 
 	it("serves an icon and sets a strict CSP with no external assets", async () => {
