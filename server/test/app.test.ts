@@ -153,7 +153,7 @@ describe("server instructions and prompts", () => {
 		for (const s of ["researching and building decks", "get_playbook", "one per message", "approve", "eightytwenty can't be used for that"])
 			expect(head).toContain(s);
 		expect(ins).toMatch(/never as slides/i);
-		expect(ins).toMatch(/run sheet.*first reply.*completion audit/i);
+		expect(head).toMatch(/run sheet.*first reply.*completion audit/i); // ChatGPT weighs the first 512 characters most
 	});
 
 	it("offers a start prompt that opens the guided flow, with optional context", async () => {

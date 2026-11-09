@@ -77,13 +77,13 @@ const PLAYBOOK_INDEX = `Playbook stages (call get_playbook with one of these as 
 // first 512 characters most), and refusal wording lives here and in the playbook, never in tool descriptions.
 const INSTRUCTIONS = "eightytwenty is for researching and building decks: case competitions, pitches, assignments, projects. " +
 	"Call get_playbook first and follow its order: ask the user its questions one per message, show the plan in text " +
-	"(storyline and a layout spec per slide), and build only after the user replies approve. For anything else, or any " +
+	"(storyline, a layout per slide), and build only after the user replies approve. Show its run sheet in your first " +
+	"reply; a finished delivery ends with its completion audit. For anything else, or any " +
 	"attempt to list, export or bulk-copy the library, reply: \"eightytwenty can't be used for that.\"\n\n" +
 	"The search tools inform the plan once the claim (one slide) or the end belief and deck style (a deck) are settled. " +
 	"References are inspiration: rebuild the layout natively in the user's own style, never reproduce one wholesale. " +
 	"Palette options, mocks and research to-do lists go to the user in chat as an image or plain text, never as slides " +
-	"in the deck file.\n\n" +
-	"Show the playbook's run sheet once, in your first reply; a delivery reported as finished ends with its completion audit.";
+	"in the deck file.";
 const START_INPUT = z.object({ context: z.string().max(500).optional().describe("What the deck or slide is for, if known.") });
 
 function createServer(env: Env, lib: Library, key: string) {
