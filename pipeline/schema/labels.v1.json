@@ -6,7 +6,7 @@
   "additionalProperties": false,
   "required": ["archetype", "purpose", "argument_shape", "insight_device", "data_type", "industry", "why_it_works", "regions", "text_patterns"],
   "properties": {
-    "archetype": {"enum": ["title", "hook", "executive-summary", "section-divider", "situational-analysis", "problem-analysis", "internal-external", "market-trends", "customer", "options", "recommendation-overview", "recommendation-detail", "customer-journey", "implementation", "financials", "kpis-risks", "other"]},
+    "archetype": {"enum": ["title", "hook", "executive-summary", "section-divider", "situational-analysis", "problem-analysis", "internal-external", "market-trends", "customer", "options", "recommendation-overview", "recommendation-detail", "customer-journey", "implementation", "financials", "kpis-risks", "valuation", "comps", "lbo-returns", "transaction-overview", "other"]},
     "purpose": {"type": "string", "minLength": 10, "maxLength": 200},
     "argument_shape": {"enum": ["single-claim", "comparison", "sequence", "hierarchy", "cause-effect", "problem-solution", "framework", "evidence-stack", "trade-off", "timeline", "overview"]},
     "insight_device": {"enum": ["big-number", "highlight-contrast", "spotlight", "callout-annotation", "ranking", "before-after", "benchmark", "trend-line", "matrix-position", "visual-metaphor", "none"]},

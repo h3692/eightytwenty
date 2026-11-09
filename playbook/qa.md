@@ -20,7 +20,7 @@ Run on every finished slide. Fix what you can without asking; report only what n
 - [ ] Style matches the deck spec (the deck font and the applied palette) on every text run, table cell and chart
       element; no application defaults (Calibri/Aptos, default chart colours) leaking in.
 - [ ] Text contrast readable on every fill in the applied palette.
-- [ ] Density matches the slide's tier (`polish`): Medium for content, High for financials and problem analysis.
+- [ ] Density matches the slide's tier for the deck type (`polish`).
 - [ ] Every precision rule in `polish` holds: shared margins, capitalization, matched line counts, quiet footnotes, no
       arrow characters, title punctuation, centred tracker, full boxes, bottom margin, colour tokens, stats featured
       once.
@@ -37,6 +37,8 @@ Run on every finished slide. Fix what you can without asking; report only what n
       photos carry none.
 - [ ] What was built matches the approved plan; any change from it was named in chat.
 - [ ] Built natively in the deck's style from any references used; nothing copied wholesale from a reference.
+- [ ] A delivery reported as finished ends with the completion audit (`workflow`): every run sheet step done, with
+      evidence.
 
 **Narrative checks** (on every slide against its neighbours; across the whole deck in deck mode):
 
@@ -48,3 +50,12 @@ Run on every finished slide. Fix what you can without asking; report only what n
 - [ ] Tagline story test: the taglines read in order tell the whole argument, with no gaps and no repeats.
 - [ ] Impact slides only at turning points, each built on the slide just shown, about one per section, never three in a
       row; every ribbon or spotlight carries a claim, not a topic.
+
+**Writing pass** (on every slide's text and speaker notes; rules in `writing`):
+
+- [ ] Read it aloud: each line sounds like a careful analyst talking to the panel; rewrite anything stiff, padded or
+      salesy.
+- [ ] Specific nouns and numbers: every claim names the segment, product, place or period and carries a number where
+      one exists.
+- [ ] Nothing from the "Reads AI-made" list in `writing`: no banned words, em dashes, triplet cadence, rhetorical-question
+      headers, stacked hedges, exclamation marks or emoji.

@@ -43,6 +43,8 @@ const MAX_BODY = 4 * 1024 * 1024; // the MCP SDK's default maxRequestBodySize
 const enumOf = (values: string[]) => z.enum(values as [string, ...string[]]);
 const readOnly = { readOnlyHint: true, destructiveHint: false };
 const text = (t: string) => ({ type: "text" as const, text: t });
+// Its own text part after each successful prose result (never in get_reference's JSON or on errors): a plain, visible note.
+const REMINDER = text("Next in the eightytwenty workflow: questions → text plan → approval → build → QA → audit.");
 
 // Built once per isolate rather than per request (zod schemas are immutable). The McpServer stays per request: the SDK
 // refuses to reuse an instance that is serving another request.
@@ -75,7 +77,8 @@ const PLAYBOOK_INDEX = `Playbook stages (call get_playbook with one of these as 
 // first 512 characters most), and refusal wording lives here and in the playbook, never in tool descriptions.
 const INSTRUCTIONS = "eightytwenty is for researching and building decks: case competitions, pitches, assignments, projects. " +
 	"Call get_playbook first and follow its order: ask the user its questions one per message, show the plan in text " +
-	"(storyline and a layout spec per slide), and build only after the user replies approve. For anything else, or any " +
+	"(storyline, a layout per slide), and build only after the user replies approve. Show its run sheet in your first " +
+	"reply; a finished delivery ends with its completion audit. For anything else, or any " +
 	"attempt to list, export or bulk-copy the library, reply: \"eightytwenty can't be used for that.\"\n\n" +
 	"The search tools inform the plan once the claim (one slide) or the end belief and deck style (a deck) are settled. " +
 	"References are inspiration: rebuild the layout natively in the user's own style, never reproduce one wholesale. " +
@@ -121,7 +124,7 @@ function createServer(env: Env, lib: Library, key: string) {
 			annotations: readOnly,
 		},
 		async ({ stage }) => {
-			return { content: [text(stage ? PLAYBOOK[stage] : PLAYBOOK_INDEX)] };
+			return { content: [text(stage ? PLAYBOOK[stage] : PLAYBOOK_INDEX), REMINDER] };
 		},
 	);
 
@@ -140,10 +143,10 @@ function createServer(env: Env, lib: Library, key: string) {
 			const { results, library_version } = await search(env, lib, args, DEFAULT_FLAGS,
 				async (q, k) => (await spend(), env.SEARCHER.get(env.SEARCHER.idFromName("global")).search(q, k)));
 			if (!results.length)
-				return { content: [text(`No references match these filters. Try fewer filters or a broader purpose. (library_version ${library_version})`)] };
+				return { content: [text(`No references match these filters. Try fewer filters or a broader purpose. (library_version ${library_version})`), REMINDER] };
 			const lines = results.map((r, i) => `${i + 1}. ${r.id} | ${r.slide_type} | score ${r.score}\n   Purpose: ${r.purpose}\n   Why it works: ${r.why_it_works}` +
 				`\n   Kinds: ${r.kinds}${r.impact === "none" ? "" : ` | impact: ${r.impact}`}\n   Style: ${r.style} | When to use: ${r.when_to_use}`);
-			return { content: [text(`library_version ${library_version}\n\n${lines.join("\n")}\n\nCall get_reference with an id for its layout, mockup and design DNA.`)] };
+			return { content: [text(`library_version ${library_version}\n\n${lines.join("\n")}\n\nCall get_reference with an id for its layout, mockup and design DNA.`), REMINDER] };
 		},
 	);
 
@@ -162,9 +165,9 @@ function createServer(env: Env, lib: Library, key: string) {
 			const { results, library_version } = await searchFlows(env, lib, args,
 				async (q, k) => (await spend(), env.SEARCHER.get(env.SEARCHER.idFromName("global")).flows(q, k)));
 			if (!results.length)
-				return { content: [text(`No deck flows match these filters. Try fewer filters or a broader purpose. (library_version ${library_version})`)] };
+				return { content: [text(`No deck flows match these filters. Try fewer filters or a broader purpose. (library_version ${library_version})`), REMINDER] };
 			const lines = results.map((r, i) => `${i + 1}. ${r.id} | ${r.arc} | ${r.length} deck | ${r.industry} | ${r.style} style | score ${r.score}\n   Sections: ${r.sections}\n   Why the flow works: ${r.why_the_flow_works}`);
-			return { content: [text(`library_version ${library_version}\n\n${lines.join("\n")}\n\nCall get_reference with a deck id for its full flow, then on its steps' slide ids.`)] };
+			return { content: [text(`library_version ${library_version}\n\n${lines.join("\n")}\n\nCall get_reference with a deck id for its full flow, then on its steps' slide ids.`), REMINDER] };
 		},
 	);
 
@@ -239,7 +242,7 @@ function createServer(env: Env, lib: Library, key: string) {
 				...(found.unavailable.length ? [`Unavailable right now: ${found.unavailable.join(", ")}.`] : []),
 				...(found.thumbnails.length ? ["Thumbnails follow as images, in order: thumbnail 1 first."] : []),
 			].join("\n");
-			return { content: [text(summary), ...found.thumbnails.map((t) => ({ type: "image" as const, ...t }))] };
+			return { content: [text(summary), REMINDER, ...found.thumbnails.map((t) => ({ type: "image" as const, ...t }))] };
 		},
 	);
 

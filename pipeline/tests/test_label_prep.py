@@ -24,7 +24,8 @@ def _slide(work, n):
 
 def test_archetype_enum_matches_playbook_ids():
     ids = re.findall(r"^\| `([a-z-]+)` \|", PLAYBOOK.read_text(), re.M)
-    assert len(ids) == 17
+    assert len(ids) == 21
+    assert ids[-5:] == ["valuation", "comps", "lbo-returns", "transaction-overview", "other"]
     assert label_prep.SCHEMA["properties"]["archetype"]["enum"] == ids
 
 
@@ -210,6 +211,8 @@ def test_style_worksheet_lists_publishable_slides_and_asks_for_the_deck_style(st
                    "--style-check", "action titles, labelled rows, dense logic, tight grids",
                    "big type, one idea per slide, high contrast", "imagery-led, emotional, customer moments",
                    "charts and numbers carry each slide", "generous white space, restrained colour, typographic hierarchy",
+                   "dense tables, football fields, returns charts, action titles", "one of the six below",
+                   '"buy-side audience"', '"lender"', '"committee"',
                    *build.STYLES, *LEAK_RULES[1:4], *LEAK_RULES[5:8]):
         assert needed in text, needed
     assert "slide-01" not in text  # blank: never published, so no notes

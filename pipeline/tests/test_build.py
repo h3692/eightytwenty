@@ -66,7 +66,8 @@ def test_dna_merges_geometry_and_labels(built):
 
 def test_style_notes_and_the_deck_style_are_required_so_merge_keeps_them():
     assert {"style", "when_to_use", "effect", "elements"} <= set(build.SCHEMA["required"])
-    assert build.STYLES == ["consulting-structured", "bold-pitch", "visual-storytelling", "data-led", "minimal-editorial"]
+    assert build.STYLES == ["consulting-structured", "bold-pitch", "visual-storytelling", "data-led", "minimal-editorial",
+                            "finance-pitch"]
 
 
 def test_description_uses_fixed_template_without_digits(built):

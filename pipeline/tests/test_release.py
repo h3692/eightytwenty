@@ -203,9 +203,18 @@ def test_refuses_while_items_fail_or_wait_for_review_naming_each(fake, lib, caps
     assert e.value.code
     out = capsys.readouterr().out
     assert "deck-a-02: digits in purpose" in out and "stale mockup" not in out
-    assert "deck-b-01: judge pending" in out and "deck-b-02: judge fail" in out and "deck-b flow: judge pending" in out
+    assert "deck-b-01: judge pending" in out and "deck-b flow: judge pending" in out
     assert "deck-a-01" not in out and "deck-a-03" not in out and "deck-a flow" not in out  # excluded and withheld are fine
+    assert "deck-b-02" not in out  # identified by the judge: withheld for good, never published
     assert fake.steps[-1] == "leak-check deck-b"
+
+
+def test_items_the_judge_identified_are_withheld_and_do_not_block(fake, lib, capsys):
+    fake.reports["deck-b"] = {"deck-b-01": {"auto": "pass", "problems": [], "judge": "fail", "published": False},
+                              "flow": {"auto": "pass", "problems": [], "judge": "fail", "published": False}}
+    release.run(lib, dry_run=True)
+    out = capsys.readouterr().out
+    assert "Release refused" not in out and "2 withheld by the judge" in out
 
 
 def test_dry_run_reports_what_would_publish_and_never_embeds_or_deploys(fake, lib, capsys):
@@ -318,3 +327,10 @@ def test_smoke_check_reports_the_servers_own_error_message(fake, lib):
     with pytest.raises(SystemExit) as e:
         release.run(lib)
     assert fake.rpc_error in str(e.value.code) and "KeyError" not in str(e.value.code)
+
+
+def test_a_malformed_verdict_blocks_naming_the_item(fake, lib, capsys):
+    fake.reports["deck-b"] = {"deck-b-01": {"auto": "pass", "problems": [], "judge": "invalid", "published": False}}
+    with pytest.raises(SystemExit):
+        release.run(lib)
+    assert "deck-b-01: judge invalid" in capsys.readouterr().out

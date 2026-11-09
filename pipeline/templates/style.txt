@@ -3,13 +3,14 @@ on each of its {count} publishable slides (blank and duplicate slides are left o
 
 === 1. The deck's style ===
 Write ONE JSON object to {out}
-  {{"style": "<one of the five below>"}}
+  {{"style": "<one of the six below>"}}
 Pick the one look that fits the deck as a whole:
   consulting-structured  action titles, labelled rows, dense logic, tight grids
   bold-pitch             big type, one idea per slide, high contrast
   visual-storytelling    imagery-led, emotional, customer moments
   data-led               charts and numbers carry each slide
   minimal-editorial      generous white space, restrained colour, typographic hierarchy
+  finance-pitch          dense tables, football fields, returns charts, action titles
 
 === 2. Style notes per slide ===
 Look at each slide's render, then add exactly these three keys to its existing labels file, changing nothing else
@@ -39,6 +40,8 @@ Hard rules for every note (when_to_use, effect, each element note). A leak check
     "headshot slots" for portraits; "logo" is fine as a placement ("logo top right").
   - Never say what an illustration depicts (botanical, an animal, a character, a landmark, a skyline, a world
     map): write "illustration", "photo", "icon", "image" or "map".
+  - Finance decks: write "buy-side audience", "financial buyer", "lender" or "committee", never "investors", "bank",
+    "banking" or "sponsor".
 
 === 3. Check ===
 Run from the repo root:

@@ -48,7 +48,10 @@ DESIGN_TERMS = {"kpi", "kpis", "swot", "gantt", "harvey", "roi", "cagr", "mece",
                 "financials", "deliverables", "storyboard", "faq", "roadmap", "persona", "personas", "agenda", "appendix",
                 "takeaway", "benchmark", "playbook", "scorecard", "dashboard", "wireframe", "mockup", "pillar",
                 "pillars", "workstream", "workstreams", "milestone", "milestones", "synergy", "synergies", "npv",
-                "ebitda", "tam", "sam", "som", "b2b", "b2c", "d2c", "sku", "skus", "go", "to", "market", "gtm"}
+                "ebitda", "tam", "sam", "som", "b2b", "b2c", "d2c", "sku", "skus", "go", "to", "market", "gtm",
+                # standard investment-banking exhibits and metrics
+                "dcf", "irr", "moic", "lbo", "ltm", "ntm", "capex", "wacc", "comps", "comparables", "accretion",
+                "dilution", "multiples", "ev"}
 # The verbs and nouns of style notes: never a name unless written like one (a company could be called ReAssure).
 STYLE_TERMS = {"conveys", "reassures", "rigour", "jargon", "mitigation", "mitigations", "constraint", "constraints",
                "checklist", "checklists", "sizing"}
@@ -67,7 +70,8 @@ FRAMEWORKS = sorted((p.split() for p in (  # standard framework names, as _words
     "bargaining power of suppliers", "bargaining power of buyers", "bargaining power of customers",
     "value chain analysis", "product price place promotion", "product price place and promotion",
     "tam sam som", "go to market", "total addressable market", "serviceable addressable market",
-    "serviceable available market", "serviceable obtainable market", "stars cash cows question marks dogs", "stars cash cows dogs",
+    "serviceable available market", "serviceable obtainable market", "discounted cash flow", "sources and uses",
+    "sum of the parts", "stars cash cows question marks dogs", "stars cash cows dogs",
     "growth share matrix", "market penetration market development product development diversification",
     "market penetration market development product development and diversification",
     "political economic social technological legal environmental",
@@ -114,10 +118,10 @@ def _fixed_lists():
     """Our own fixed lists as _words() phrases: label, flow, layout and style enums, the archetype table's ids and
     slide jobs."""
     schema = {n: json.loads((Path(__file__).parent / "schema" / f"{n}.json").read_text())
-              for n in ("labels.v1", "flow.v1", "layout.v3")}
+              for n in ("labels.v1", "flow.v2", "layout.v3")}
     labels = schema["labels.v1"]
     lists = [labels["properties"][k]["enum"] for k in ("archetype", "argument_shape", "insight_device", "data_type")]
-    lists += [labels["$defs"]["role"]["enum"], schema["flow.v1"]["properties"]["sections"]["items"]["enum"],
+    lists += [labels["$defs"]["role"]["enum"], schema["flow.v2"]["properties"]["sections"]["items"]["enum"],
               schema["layout.v3"]["$defs"]["component"]["properties"]["kind"]["enum"], build.STYLES]
     table = (Path(__file__).parent.parent / "playbook" / "archetypes.md").read_text()
     lists += re.findall(r"^\| `([a-z-]+)` \| ([^|]+) \|", table, re.M)
@@ -295,9 +299,9 @@ def _verdict(path):
         return "pending"
     try:
         v = json.loads(path.read_text())
-        return "pass" if v["identified"] is False else "fail"
+        return "pass" if v["identified"] is False else "fail" if v["identified"] is True else "invalid"
     except (ValueError, KeyError, TypeError):
-        return "fail"
+        return "invalid"  # never published, and release names it, so a typo can't silently drop a record
 
 
 def _copy_for_judge(copies, verdict):

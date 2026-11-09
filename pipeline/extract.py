@@ -36,18 +36,27 @@ SMALL_AREA, MAX_SMALL_POINTS = 0.03, 12
 A = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
 
 
-def run(pptx_path, library, render=True, deck_id=None):
+def run(pptx_path, library, render=True, deck_id=None, render_from=None):
     """Extract one deck into library/work/<deck_id>/ and return the new opaque deck_id.
 
-    With deck_id, re-extract into that existing deck, keeping its labels (and renders unless render is set)."""
+    With deck_id, re-extract into that existing deck, keeping its labels (and renders unless render is set).
+    With render_from (a PDF of the same slides), slide PNGs come from its pages instead of LibreOffice. A .pdf
+    deck is first converted to library/decks/<stem>.pptx for its structure and rendered from itself."""
     work = Path(library) / "work" / (deck_id or "")
     if deck_id and not (work / "text").is_dir():
         raise SystemExit(f"no extracted deck {deck_id} under {Path(library) / 'work'}")
+    if Path(pptx_path).suffix.lower() == ".pdf":
+        render_from, pptx_path = pptx_path, _pdf_to_pptx(pptx_path, Path(library) / "decks")
+    prs = Presentation(str(pptx_path))
+    visible = [s for s in prs.slides if s._element.get("show") != "0"]
+    if render and render_from:
+        with pdfium.PdfDocument(render_from) as pdf:
+            if len(pdf) != len(visible):
+                raise SystemExit(f"the PDF has {len(pdf)} pages but the deck has {len(visible)} visible slides; "
+                                 "refusing to render from it")
     deck_id = deck_id or secrets.token_hex(8)  # random, never derived from the file name
     work = Path(library) / "work" / deck_id
     (work / "text").mkdir(parents=True, exist_ok=True)
-    prs = Presentation(str(pptx_path))
-    visible = [s for s in prs.slides if s._element.get("show") != "0"]
     raw = [_slide(s, prs.slide_width, prs.slide_height) for s in visible]
     palette = _palette(raw)
     for n, (regions, background, text) in enumerate(raw, 1):
@@ -55,16 +64,35 @@ def run(pptx_path, library, render=True, deck_id=None):
                "regions": [_resolve(r, palette) for r in regions]}
         (work / f"slide-{n:02d}.json").write_text(json.dumps(doc, indent=1))
         (work / "text" / f"slide-{n:02d}.txt").write_text("\n".join(text))  # local only, for the leak check
-    if render:
+    if render and render_from:
+        _pdf_to_png(render_from, work, len(visible))
+    elif render:
         _render(pptx_path, work, len(visible))
     return deck_id
 
 
-def _render(pptx_path, work, count):
+def _soffice():
     soffice = shutil.which("soffice") or (str(SOFFICE_APP) if SOFFICE_APP.exists() else None)
     if not soffice:
         raise SystemExit(f"Rendering needs LibreOffice: no soffice on PATH or at {SOFFICE_APP}; "
                          "install it or pass --skip-render.")
+    return soffice
+
+
+def _pdf_to_pptx(pdf_path, decks):
+    out = decks / f"{Path(pdf_path).stem}.pptx"
+    if out.exists():
+        raise SystemExit(f"{out} already exists; rename the PDF, or run reextract on that deck with --render-from")
+    decks.mkdir(parents=True, exist_ok=True)
+    subprocess.run([_soffice(), "--headless", "--infilter=impress_pdf_import", "--convert-to", "pptx", "--outdir",
+                    str(decks), str(pdf_path)], check=True, capture_output=True)
+    if not out.exists():  # soffice exits 0 without converting when another LibreOffice instance is open
+        raise SystemExit(f"LibreOffice wrote no {out.name}; quit LibreOffice and run extract again")
+    return out
+
+
+def _render(pptx_path, work, count):
+    soffice = _soffice()
     with tempfile.TemporaryDirectory() as tmp:
         src = Path(tmp) / "deck.pptx"  # neutral name: the original file name never reaches a render
         shutil.copyfile(pptx_path, src)

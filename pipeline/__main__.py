@@ -8,9 +8,10 @@ from pipeline import build, dedupe, embed, extract, flow, label_prep, leak_check
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="python -m pipeline")
     sub = ap.add_subparsers(dest="stage", required=True)
-    p = sub.add_parser("extract", help="render + extract a .pptx; prints the new deck_id")
-    p.add_argument("deck")
+    p = sub.add_parser("extract", help="render + extract a .pptx (or .pdf); prints the new deck_id")
+    p.add_argument("deck", help=".pptx, or a .pdf: converted to <library>/decks/<stem>.pptx and rendered from the PDF")
     p.add_argument("--skip-render", action="store_true", help="no slide PNGs (when LibreOffice is missing)")
+    p.add_argument("--render-from", metavar="PDF", help="render slide PNGs from this PDF of the same slides")
     p = sub.add_parser("reextract", help="re-extract a deck into its existing deck_id, keeping labels and renders")
     p.add_argument("deck_id")
     p.add_argument("deck")
@@ -43,7 +44,7 @@ def main(argv=None):
     a = ap.parse_args(argv)
 
     if a.stage == "extract":
-        print(f"deck_id {extract.run(a.deck, a.library, render=not a.skip_render)}")
+        print(f"deck_id {extract.run(a.deck, a.library, render=not a.skip_render, render_from=a.render_from)}")
     elif a.stage == "reextract":
         print(f"deck_id {extract.run(a.deck, a.library, render=False, deck_id=a.deck_id)}")
         print("\n".join(label_prep.reconcile(a.deck_id, a.library)) or "labels: all regions still match")

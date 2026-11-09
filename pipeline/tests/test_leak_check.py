@@ -132,13 +132,14 @@ def test_judge_identification_blocks_and_unpromotes(deck, lib):
     assert not (lib / "wireframes" / f"{ids[0]}.png").exists()
 
 
-def test_malformed_verdict_counts_as_fail(deck, lib):
+def test_malformed_verdict_is_invalid_and_never_published(deck, lib):
     deck_id, ids = _pipeline(deck, lib)
     leak_check.run(deck_id, lib)
     v = lib / "judge" / deck_id / "verdicts"
     v.mkdir(exist_ok=True)
     (v / f"{ids[0]}.json").write_text('{"identified": "no"}')
-    assert leak_check.run(deck_id, lib)[ids[0]]["judge"] == "fail"
+    r = leak_check.run(deck_id, lib)[ids[0]]
+    assert (r["judge"], r["published"]) == ("invalid", False)
 
 
 @pytest.mark.parametrize("text", [
@@ -173,11 +174,11 @@ CASE_TERMS = ["financials", "Financials", "deliverables", "storyboard", "Storybo
 
 def _schema_values():
     s = {n: json.loads((leak_check.Path(leak_check.__file__).parent / "schema" / f"{n}.json").read_text())
-         for n in ("labels.v1", "flow.v1", "layout.v3", "style.v1")}
+         for n in ("labels.v1", "flow.v2", "layout.v3", "style.v1")}
     p = s["labels.v1"]["properties"]
     return sorted({v for vs in [*(p[k]["enum"] for k in ("archetype", "argument_shape", "insight_device", "data_type")),
                                 s["labels.v1"]["$defs"]["role"]["enum"], s["style.v1"]["properties"]["style"]["enum"],
-                                s["flow.v1"]["properties"]["sections"]["items"]["enum"],
+                                s["flow.v2"]["properties"]["sections"]["items"]["enum"],
                                 s["layout.v3"]["$defs"]["component"]["properties"]["kind"]["enum"]] for v in vs})
 
 
@@ -661,6 +662,15 @@ def test_style_notes_never_name_a_sector_or_audience(deck, lib):
     assert leak_check.problems_in("Gives a calm, energetic finish", "", set()) == []  # only notes are checked for sectors
 
 
+def test_finance_style_notes_in_the_worksheet_wording_pass(deck, lib):
+    deck_id, ids = _six_slide_deck(deck, lib)
+    record = lib / "work" / deck_id / "build" / f"{ids[1]}.json"
+    dna = json.loads(record.read_text())
+    record.write_text(json.dumps(dict(dna, when_to_use="Use when a buy-side audience, a financial buyer, a lender or a "
+                                                       "committee needs the implied value range on one page")))
+    assert leak_check.run(deck_id, lib)[ids[1]]["auto"] == "pass"
+
+
 def test_element_notes_pointing_outside_the_layout_fail_closed(deck, lib):
     deck_id, ids = _six_slide_deck(deck, lib)
     layout = lib / "layouts" / deck_id / "slide-02.v3.json"
@@ -670,3 +680,19 @@ def test_element_notes_pointing_outside_the_layout_fail_closed(deck, lib):
     record.write_text(json.dumps(dict(dna, elements=[{"component": n, "note": "Use the lead panel to state the answer first"}])))
     report = leak_check.run(deck_id, lib)
     assert report[ids[1]]["auto"] == "fail" and any("stale build" in p for p in report[ids[1]]["problems"])
+
+
+def test_standard_finance_vocabulary_is_design_language():
+    # the names of standard IB exhibits are how a banker searches for a layout, not a client's words
+    source = "Discounted Cash Flow Analysis | Sources and Uses | Football Field | Precedent Transactions | DCF | IRR | MOIC | LTM"
+    names = leak_check.source_names(source)
+    for note in ("A DCF output beside an IRR and MOIC strip.", "A sources and uses table above the returns.",
+                 "A discounted cash flow summary with a football field valuation range.",
+                 "Precedent transactions and trading comparables side by side, LTM and NTM multiples."):
+        assert leak_check.problems_in(note, source, names) == [], note
+
+
+def test_two_word_finance_names_never_hide_copied_words_around_them():
+    # a two-word exhibit name masked as a framework would break every 3-gram it touches
+    source = "Target football field"
+    assert leak_check.problems_in("A target football field wide band", source, leak_check.source_names(source))
