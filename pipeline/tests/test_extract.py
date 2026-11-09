@@ -132,6 +132,41 @@ def test_render_writes_one_png_per_visible_slide(deck, lib):
     assert sorted(p.name for p in (lib / "work" / deck_id).glob("slide-*.png")) == ["slide-01.png", "slide-02.png"]
 
 
+def _pdf(path, colours):
+    pages = [Image.new("RGB", (160, 120), c) for c in colours]  # 4:3, like the IB decks
+    pages[0].save(path, save_all=True, append_images=pages[1:])
+    return path
+
+
+def test_render_from_renders_the_given_pdf_pages_not_libreoffice(deck, lib, tmp_path, monkeypatch):
+    from pipeline.__main__ import main
+    monkeypatch.setattr(extract, "_render", lambda *_: pytest.fail("LibreOffice render used"))
+    pdf = _pdf(tmp_path / "deck.pdf", ("navy", "orange"))
+    main(["extract", str(deck), "--render-from", str(pdf), "--library", str(lib)])
+    pngs = sorted((lib / "work").glob("*/slide-*.png"))
+    assert [p.name for p in pngs] == ["slide-01.png", "slide-02.png"]
+    assert all(Image.open(p).size == (1280, 960) for p in pngs)
+    assert Image.open(pngs[1]).convert("RGB").getpixel((640, 480)) == (255, 165, 0)
+
+
+def test_render_from_refuses_a_pdf_whose_page_count_differs_from_the_slides(deck, lib, tmp_path):
+    pdf = _pdf(tmp_path / "deck.pdf", ("navy", "orange", "white"))
+    with pytest.raises(SystemExit, match="3 pages but the deck has 2 visible slides"):
+        extract.run(deck, lib, render_from=pdf)
+    assert not (lib / "work").exists()  # refused before anything is written
+
+
+@pytest.mark.skipif(not (shutil.which("soffice") or extract.SOFFICE_APP.exists()), reason="LibreOffice not installed")
+def test_a_pdf_deck_is_converted_into_library_decks_and_rendered_from_the_pdf(lib, tmp_path):
+    from pipeline.__main__ import main
+    pdf = _pdf(tmp_path / "deck.pdf", ("navy", "orange"))
+    main(["extract", str(pdf), "--library", str(lib)])
+    assert (lib / "decks" / "deck.pptx").is_file()
+    pngs = sorted((lib / "work").glob("*/slide-*.png"))
+    assert [p.name for p in pngs] == ["slide-01.png", "slide-02.png"]
+    assert Image.open(pngs[0]).size == (1280, 960)
+
+
 def test_dash_presets_python_pptx_cannot_map_still_extract_as_dashed(tmp_path, lib):
     from pptx import Presentation
     from pptx.enum.shapes import MSO_SHAPE
