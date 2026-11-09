@@ -250,6 +250,17 @@ describe("get_playbook", () => {
 		expect(qa).toMatch(/- \[ \] A delivery reported as finished ends with the completion audit/);
 	});
 
+	it("gives writing rules per text type, a reads-AI-made list and a writing pass in QA", async () => {
+		const writing = (await tool("get_playbook", { stage: "writing" })).body.result.content[0].text;
+		expect(writing).toContain("## Reads AI-made");
+		for (const s of ["leverage", "seamless", "delve", "not just X but Y", "em dash", "Moreover"]) expect(writing).toContain(s);
+		for (const s of ["## Slide titles", "## Footnotes and sources", "## Speaker notes", "## IB and finance register"]) expect(writing).toContain(s);
+		const qa = (await tool("get_playbook", { stage: "qa" })).body.result.content[0].text;
+		expect(qa).toMatch(/read it aloud/i);
+		const workflow = (await tool("get_playbook", { stage: "workflow" })).body.result.content[0].text;
+		expect(workflow.slice(workflow.indexOf("## Step 6"), workflow.indexOf("## Step 7"))).toContain("writing pass");
+	});
+
 	it("returns one chapter", async () => {
 		const { body } = await tool("get_playbook", { stage: "archetypes" });
 		expect(body.result.content[0].text).toBe(archetypesMd);

@@ -205,7 +205,7 @@ done items struck through. Never put it in the deck.
 - **Distinctiveness pass** before showing the result: re-run the swap test and signature check on the finished slide.
   With real content in, there is usually a sharper client-specific move than at the plan stage. Make one more push,
   check the guardrails and the clarity test, and report the push in one line.
-- **Polish pass**: every rule in `polish` on the slide.
+- **Polish pass**: every rule in `polish` on the slide, then the writing pass in `qa`.
 - If you change anything from the approved plan, say what and why in one line.
 
 ## Step 7: The rest of the deck

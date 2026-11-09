@@ -50,3 +50,12 @@ Run on every finished slide. Fix what you can without asking; report only what n
 - [ ] Tagline story test: the taglines read in order tell the whole argument, with no gaps and no repeats.
 - [ ] Impact slides only at turning points, each built on the slide just shown, about one per section, never three in a
       row; every ribbon or spotlight carries a claim, not a topic.
+
+**Writing pass** (on every slide's text and speaker notes; rules in `writing`):
+
+- [ ] Read it aloud: each line sounds like a careful analyst talking to the panel; rewrite anything stiff, padded or
+      salesy.
+- [ ] Specific nouns and numbers: every claim names the segment, product, place or period and carries a number where
+      one exists.
+- [ ] Nothing from the "Reads AI-made" list in `writing`: no banned words, em dashes, triplet cadence, rhetorical-question
+      headers, stacked hedges, exclamation marks or emoji.
