@@ -3,16 +3,26 @@
 The details a judge notices in the first minute, and that separate a careful team's deck from an AI-generated one.
 Apply them while building, then again as a polish pass over each slide and over the whole deck before QA.
 
-## Density (fixed)
+## Density, set by the deck type, never asked separately
 
-**Content slides are built at Medium; financials slides and the problem analysis are built at High.** Do not show
-density samples or ask the user to choose. Change a slide's or the deck's density only when the user asks ("make this
-one lighter", "make the whole deck Low"). What separates the tiers is structure more than word count: Medium uses 3 to 4
-boxed panels and several supporting stats around a lead element; Low uses one dominant anchor and open layouts.
+Question 1 in `workflow` decides whether this is a presentation deck or a reading deck, and that sets the density. Do
+not show density samples or ask the user to choose a density.
+
+- **Presentation deck**: content slides at Low; financials and the problem analysis at Medium. Detail cut to fit goes to
+  the speaker notes or the appendix.
+- **Reading deck**: content slides at Medium; financials and the problem analysis at High. The slide must stand on its
+  own.
+
+**Speaker notes** (presentation deck): for each slide, write what to say aloud and the numbers behind the slide that
+were cut from it, in full sentences the presenter can read; never repeat the slide text.
+
+Change a slide's or the deck's density only when the user asks ("make this one lighter", "make the whole deck Low").
+What separates the tiers is structure more than word count: Medium uses 3 to 4 boxed panels and several supporting
+stats around a lead element; Low uses one dominant anchor and open layouts.
 
 Body only (excludes title, tagline, tracker and footnotes); sizes as 13.33in canvas / 10in canvas:
 
-| | **Medium** (content slides) | **High** (financials, problem analysis) | Low (only if asked) |
+| | **Medium** (reading: content; presentation: financials, problem analysis) | **High** (reading: financials, problem analysis) | **Low** (presentation: content) |
 |---|---|---|---|
 | Body words | ~100 to 150 | ~150 to 250 | ~50 to 100 |
 | Content blocks | 3 to 4 | 4 to 6 | 2 to 3 |
@@ -24,12 +34,13 @@ Body only (excludes title, tagline, tracker and footnotes); sizes as 13.33in can
 | White space | A fifth to a third | A tenth to a fifth | A third or more |
 | Numbers shown | ~8 to 20 | 20+ | ~3 to 8 |
 | Insight devices that suit it | Any; rotate freely | Comments sidebar, on-chart annotation, numbered callouts, hero number for the output | Hero number, highlight the one, tagline only |
-| Where cut detail goes | Footnotes and appendix | On the slide | Speaker notes and appendix |
+| Where cut detail goes | Footnotes and appendix (presentation deck: speaker notes and appendix) | On the slide | Speaker notes and appendix |
 
-**High**: every financials slide (revenue build, cost build, unit economics, P&L, NPV / payback, sensitivity,
-transaction or valuation) and the problem analysis; the appendix may use High. **Medium**: every other content slide,
-including the executive summary, situation, market, customer, recommendation, implementation, KPIs / risks and
-conclusion. Title, hook and divider slides are unaffected. Nothing below 8pt on any slide.
+**Financials slides**: revenue build, cost build, unit economics, P&L, NPV / payback, sensitivity, transaction or
+valuation; the problem analysis takes the same tier. **Content slides**: every other content slide, including the
+executive summary, situation, market, customer, recommendation, implementation, KPIs / risks and conclusion. The
+appendix may use High in either deck type. Title, hook and divider slides are unaffected. Nothing below 8pt on any
+slide.
 
 ## Precision rules
 
@@ -65,13 +76,13 @@ conclusion. Title, hook and divider slides are unaffected. Nothing below 8pt on 
    an explicit so-what that names the implication for the client and sets up the recommendation. Vary its form
    (implication sidebar, conclusion column after a cause chain, bridge line under the exhibit, so-what bar); a tagline
    alone is not enough here.
-10. **Problem analysis at expert depth** (High density): a MECE issue or driver tree separating **symptoms** from
-    **root causes**; for each of 3 to 5 root causes, a quantified effect, the evidence and its source, and the
-    **mechanism** behind it (present bias, choice overload, friction cost, missing feedback loops, principal-agent
-    problems), named precisely and briefly; **prioritisation** (impact vs addressability, the causes the recommendation
-    attacks highlighted); **what was ruled out** (1 to 2 plausible hypotheses the evidence rejects, and why); segment
-    differences where they exist; the so-what. Missing evidence for a cause is marked `[verify]` and logged, never
-    replaced with a vaguer cause.
+10. **Problem analysis at expert depth** (at its tier; in a presentation deck the rest goes to the appendix): a MECE
+    issue or driver tree separating **symptoms** from **root causes**; for each of 3 to 5 root causes, a quantified
+    effect, the evidence and its source, and the **mechanism** behind it (present bias, choice overload, friction cost,
+    missing feedback loops, principal-agent problems), named precisely and briefly; **prioritisation** (impact vs
+    addressability, the causes the recommendation attacks highlighted); **what was ruled out** (1 to 2 plausible
+    hypotheses the evidence rejects, and why); segment differences where they exist; the so-what. Missing evidence for a
+    cause is marked `[verify]` and logged, never replaced with a vaguer cause.
 11. **Full boxes.** Text fills a box to roughly 70 to 90% of its height. Under-filled: add a specific number, example or
     sourced fact, or shrink the box and rebalance. Never leave visual holes; keep siblings matched (rule 3).
 12. **Consistent bottom margin.** All columns end on the same bottom line, the same distance above the footnotes and

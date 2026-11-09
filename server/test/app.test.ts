@@ -208,6 +208,21 @@ describe("get_playbook", () => {
 		expect(polish).toMatch(/No arrow characters/);
 	});
 
+	it("sets density by the deck type from question 1, never asked separately", async () => {
+		const workflow = (await tool("get_playbook", { stage: "workflow" })).body.result.content[0].text;
+		expect(workflow).toMatch(/presented live, or sent to be read on its own\? A file handed to judges\s+counts as read\./);
+		expect(workflow).toMatch(/presented live and the file is not handed over means the presentation tiers; anything else means the\s+reading tiers/);
+		expect(workflow).toMatch(/density \(set by the deck type from question 1, never asked separately\)/);
+		expect(workflow).toMatch(/For a presentation deck, take the structure or one section\s+of a dense reference and drop the rest/);
+		expect(workflow).toMatch(/ask the deck-style question \(Step 1, question 3\) too, with whether the deck is presented live\s+or read/);
+		const polish = (await tool("get_playbook", { stage: "polish" })).body.result.content[0].text;
+		expect(polish).not.toContain("Density (fixed)");
+		expect(polish).toContain("## Density, set by the deck type, never asked separately");
+		expect(polish).toMatch(/\*\*Presentation deck\*\*: content slides at Low; financials and the problem analysis at Medium/);
+		expect(polish).toMatch(/\*\*Reading deck\*\*: content slides at Medium; financials and the problem analysis at High/);
+		expect(polish).toMatch(/\*\*Speaker notes\*\*.*what to say aloud.*numbers behind the slide.*full sentences.*never repeat the slide text/s);
+	});
+
 	it("tells the assistant to source its own images and to credit only when a result carries a credit", async () => {
 		const chapter = (await tool("get_playbook", { stage: "visual-rules-and-design-options" })).body.result.content[0].text;
 		for (const s of ["find_images", "react-icons", "sharp", "cairosvg", "Credit only when the result carries a `credit` line", "s07-hero.jpg", "exempt from the 1 to 2 asks rule"])

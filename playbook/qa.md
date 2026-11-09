@@ -20,7 +20,7 @@ Run on every finished slide. Fix what you can without asking; report only what n
 - [ ] Style matches the deck spec (the deck font and the applied palette) on every text run, table cell and chart
       element; no application defaults (Calibri/Aptos, default chart colours) leaking in.
 - [ ] Text contrast readable on every fill in the applied palette.
-- [ ] Density matches the slide's tier (`polish`): Medium for content, High for financials and problem analysis.
+- [ ] Density matches the slide's tier for the deck type (`polish`).
 - [ ] Every precision rule in `polish` holds: shared margins, capitalization, matched line counts, quiet footnotes, no
       arrow characters, title punctuation, centred tracker, full boxes, bottom margin, colour tokens, stats featured
       once.

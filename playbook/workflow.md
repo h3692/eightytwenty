@@ -78,8 +78,11 @@ Ask in this order, skipping anything the prompt or the user already answered. Gi
 the user can accept with "yes".
 
 1. **What the deck is for.** The competition, pitch, assignment or project; the prompt or brief; who judges or decides;
-   the presentation length. If an attached deck uses a font other than Helvetica Neue, add: "Keep [font] or switch to
-   Helvetica Neue?" (mention if it isn't installed by default on Windows or Mac).
+   the presentation length; and is the deck presented live, or sent to be read on its own? A file handed to judges
+   counts as read. Ask the live-or-read part even when the prompt answers the rest. The answer sets the density
+   (`polish`): presented live and the file is not handed over means the presentation tiers; anything else means the
+   reading tiers. If an attached deck uses a font other than Helvetica Neue, add: "Keep [font] or switch to Helvetica
+   Neue?" (mention if it isn't installed by default on Windows or Mac).
 2. **The end belief.** What must the audience believe at the end, in one sentence? Offer 2 to 3 candidate answers.
 3. **The deck style.** Offer the six styles with one line each and recommend one from the prompt and audience:
    - **Consulting-structured**: action titles, labelled rows, dense logic, tight grids (the classic consulting deck).
@@ -112,9 +115,10 @@ a time, ordered by how much the answer changes the slide:
 4. **The benchmark.** Compared to what: competitors, status quo, the client's target, doing nothing?
 5. **The link.** How does this slide connect to the recommendation, and what does the previous slide establish?
 
-If there is no deck yet, ask the deck-style question (Step 1, question 3) too. Never ask "What do you want on the
-slide?", colour preferences (those come in Step 8), density (fixed in `polish`), or anything decidable from the deck,
-the prompt or this playbook.
+If there is no deck yet, ask the deck-style question (Step 1, question 3) too, with whether the deck is presented live
+or read (it sets the density, as in Step 1, question 1). Never ask "What do you want on the slide?", colour preferences
+(those come in Step 8), density (set by the deck type from question 1, never asked separately), or anything decidable
+from the deck, the prompt or this playbook.
 
 ## Step 3: The plan, in text
 
@@ -128,6 +132,8 @@ to inform the options:
   `effect`, and `get_reference(id)` on the strongest: the header and tagline form, the exhibit arrangement, the insight
   device, how the space is split, and the element notes.
 - If a style filter returns nothing, search again without it and keep the chosen style in the layout spec.
+- References are not limited to slides at the deck's density. For a presentation deck, take the structure or one section
+  of a dense reference and drop the rest.
 
 **Deck mode plan**: the storyline table (`narrative`), then one layout spec per slide.
 **Slide mode plan**: 2 to 3 layout options for the slide, each a layout spec with a one-line why. One may be a single
