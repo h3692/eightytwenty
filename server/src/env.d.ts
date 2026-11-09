@@ -16,6 +16,7 @@ interface Env {
 	DAILY_PHOTO_BUDGET: number;
 	OPENVERSE_CLIENT_ID?: string; // secrets (wrangler secret put); photos fall back to anonymous Openverse calls without them
 	OPENVERSE_CLIENT_SECRET?: string;
+	OPENAI_APPS_CHALLENGE?: string; // secret: ChatGPT's domain verification token, served at /.well-known/openai-apps-challenge
 }
 
 declare namespace Cloudflare {
@@ -31,6 +32,7 @@ declare namespace Cloudflare {
 		DAILY_PHOTO_BUDGET: number;
 		OPENVERSE_CLIENT_ID?: string;
 		OPENVERSE_CLIENT_SECRET?: string;
+		OPENAI_APPS_CHALLENGE?: string;
 		TEST_MIGRATIONS: import("cloudflare:test").D1Migration[];
 		LIVE_AI: string;
 		PLAYBOOK_FILES: string[];

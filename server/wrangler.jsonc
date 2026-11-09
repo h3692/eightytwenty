@@ -25,6 +25,7 @@
     "DAILY_SEARCH_BUDGET": 5000,
     // find_images photo searches per UTC day across all clients that miss the cache (sized to Openverse's app quota).
     // OPENVERSE_CLIENT_ID and OPENVERSE_CLIENT_SECRET are secrets: wrangler secret put, never here.
+    // OPENAI_APPS_CHALLENGE (ChatGPT's domain verification token) is a secret too.
     "DAILY_PHOTO_BUDGET": 1000
   }
 }

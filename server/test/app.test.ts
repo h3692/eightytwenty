@@ -31,7 +31,8 @@ const nextIp = () => `203.0.113.${++ip}`;
 
 async function call(path: string, init: RequestInit = {}, e = testEnv()) {
 	const ctx = createExecutionContext();
-	const res = await worker.fetch!(new Request(`https://eightytwenty.test${path}`, init) as any, e, ctx);
+	// a Host header, as Cloudflare sends on every request: /mcp rejects a missing or unknown one
+	const res = await worker.fetch!(new Request(`https://mcp.eightytwenty.tech${path}`, { ...init, headers: { host: "mcp.eightytwenty.tech", ...init.headers } }) as any, e, ctx);
 	await waitOnExecutionContext(ctx);
 	return res;
 }
@@ -140,6 +141,25 @@ describe("MCP endpoint", () => {
 	it("rejects a foreign browser Origin with 403 and accepts requests without an Origin", async () => {
 		expect((await rpc("tools/list", {}, { headers: { origin: "https://evil.example" } })).res.status).toBe(403);
 		expect((await rpc("tools/list")).res.status).toBe(200);
+	});
+
+	it("accepts the custom domain, workers.dev and localhost as Host and Origin, and rejects any other Host", async () => {
+		for (const h of ["mcp.eightytwenty.tech", "eightytwenty.socratic.workers.dev", "localhost", "127.0.0.1"]) {
+			expect((await rpc("tools/list", {}, { headers: { host: h, origin: `https://${h}` } })).res.status).toBe(200);
+			expect((await rpc("tools/list", {}, { headers: { host: h } })).res.status).toBe(200);
+		}
+		expect((await rpc("tools/list", {}, { headers: { host: "evil.example" } })).res.status).toBe(403);
+		expect((await rpc("tools/list", {}, { headers: { host: "mcp.eightytwenty.tech", origin: "https://evil.example" } })).res.status).toBe(403);
+	});
+
+	it("marks every tool titled, read-only and non-destructive, and only find_images as open-world", async () => {
+		const { body } = await rpc("tools/list");
+		for (const t of body.result.tools) {
+			expect(t.title).toBeTruthy();
+			for (const hint of ["readOnlyHint", "destructiveHint", "openWorldHint"]) expect(typeof t.annotations[hint]).toBe("boolean");
+			expect(t.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false });
+		}
+		expect(body.result.tools.filter((t: any) => t.annotations.openWorldHint).map((t: any) => t.name)).toEqual(["find_images"]);
 	});
 });
 
@@ -756,6 +776,36 @@ describe("pages", () => {
 		expect(res.headers.get("content-type")).toMatch(/^text\/html/);
 		const html = await res.text();
 		for (const s of ["get_playbook", "find_references", "find_deck_flows", "get_reference", "find_images", "/mcp", "claude.ai", "Claude Code"]) expect(html).toContain(s);
+	});
+
+	it("/terms states the connector's terms: publisher, acceptable use, image licences, MIT, no warranty, contact", async () => {
+		const res = await call("/terms");
+		expect(res.status).toBe(200);
+		expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
+		expect(res.headers.get("content-security-policy")).toBe((await call("/privacy")).headers.get("content-security-policy"));
+		const html = await res.text();
+		for (const s of ["eightytwenty, an independent project based in Ontario, Canada", "read-only", "no accounts", "bulk-copy", "rate limits",
+			"find_images", "licence", "credit line", "competition's rules", "MIT licence", "as is", "liab", "change", 'href="/privacy"', "eightytwenty.tech@gmail.com"])
+			expect(html).toContain(s);
+		expect(html).not.toContain("—");
+	});
+
+	it.each([["/docs"], ["/privacy"], ["/terms"]])("%s footer links the docs, privacy and terms pages and the support email", async (path) => {
+		const footer = (await (await call(path)).text()).match(/<footer>[\s\S]*<\/footer>/)?.[0] ?? "";
+		for (const s of ['href="/docs"', 'href="/privacy"', 'href="/terms"', 'href="mailto:eightytwenty.tech@gmail.com"']) expect(footer).toContain(s);
+		if (path === "/docs") expect(footer).toContain("MIT licensed");
+	});
+
+	it("serves the ChatGPT domain challenge token from its secret as the exact plain-text body", async () => {
+		const res = await call("/.well-known/openai-apps-challenge", {}, testEnv({ OPENAI_APPS_CHALLENGE: "challenge-token-123" }));
+		expect(res.status).toBe(200);
+		expect(res.headers.get("content-type")).toBe("text/plain; charset=utf-8");
+		expect(await res.text()).toBe("challenge-token-123");
+	});
+
+	it("answers 404 on the challenge path when the secret is unset or empty", async () => {
+		expect((await call("/.well-known/openai-apps-challenge")).status).toBe(404);
+		expect((await call("/.well-known/openai-apps-challenge", {}, testEnv({ OPENAI_APPS_CHALLENGE: "" }))).status).toBe(404);
 	});
 
 	it("/privacy states what is sent and kept", async () => {
