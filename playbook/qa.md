@@ -37,6 +37,8 @@ Run on every finished slide. Fix what you can without asking; report only what n
       photos carry none.
 - [ ] What was built matches the approved plan; any change from it was named in chat.
 - [ ] Built natively in the deck's style from any references used; nothing copied wholesale from a reference.
+- [ ] A delivery reported as finished ends with the completion audit (`workflow`): every run sheet step done, with
+      evidence.
 
 **Narrative checks** (on every slide against its neighbours; across the whole deck in deck mode):
 

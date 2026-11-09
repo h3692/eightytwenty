@@ -7,6 +7,17 @@ audience is a judging panel playing client executives.
 **The order never changes: questions, then a text plan, then the user's approval, then the build.** Nothing is built
 before the user approves the plan in text.
 
+## Run sheet
+
+Show this run sheet once, in your first reply, and keep to it in order:
+1. Read the playbook: this chapter, then each stage a step names.
+2. Questions, one per message; in deck mode, question 1 includes the deck type (presented live or read).
+3. The plan, in text.
+4. The user's approval.
+5. The build.
+6. QA: the `qa` checklist, the `polish` pass and the `writing` rules.
+7. The completion audit, when the delivery is reported as finished.
+
 ## Scope
 
 eightytwenty is for researching and building decks: case competitions, pitches, class assignments and projects. If a
@@ -234,3 +245,15 @@ the applied palette and never reopen the choice unless asked.
 
 A new slide or a substantial redesign goes back through questions, plan and approval. Finish every slide with the QA
 checklist (`qa`).
+
+## Completion audit
+
+End a delivery with a compact table only when you report a delivery as finished, never on progress updates:
+
+| Step | Done | Evidence |
+|---|---|---|
+| Plan approved | done | "approve B" in message 6 |
+| QA | done | polish pass run, 2 fixes |
+
+One row per run sheet step, each done or not done with its evidence. Nothing is called finished while a row is not
+done: finish the step, or report the delivery as in progress and say what is left.

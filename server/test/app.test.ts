@@ -16,6 +16,7 @@ import github from "./fixtures/images/simple-icons_github.svg";
 
 const lib = library();
 const worker = app(lib);
+const REMINDER = "Next in the eightytwenty workflow: questions → text plan → approval → build → QA → audit.";
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
 const assets = {
 	async fetch(req: Request | string) {
@@ -147,11 +148,12 @@ describe("server instructions and prompts", () => {
 	it("sends instructions on initialize: scope and the questions, plan, approval, build order up front", async () => {
 		const { body } = await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } });
 		const ins: string = body.result.instructions;
-		expect(ins.length).toBeLessThan(2000);
+		expect(ins.length).toBeLessThan(1000);
 		const head = ins.slice(0, 512);
 		for (const s of ["researching and building decks", "get_playbook", "one per message", "approve", "eightytwenty can't be used for that"])
 			expect(head).toContain(s);
 		expect(ins).toMatch(/never as slides/i);
+		expect(ins).toMatch(/run sheet.*first reply.*completion audit/i);
 	});
 
 	it("offers a start prompt that opens the guided flow, with optional context", async () => {
@@ -231,6 +233,21 @@ describe("get_playbook", () => {
 		const workflow = (await tool("get_playbook", { stage: "workflow" })).body.result.content[0].text;
 		expect(workflow).toContain("sourced images");
 		expect(workflow).toContain("except the one batched photo hand-off");
+	});
+
+	it("opens the workflow with a run sheet shown once, and ends a finished delivery with a completion audit", async () => {
+		const workflow = (await tool("get_playbook", { stage: "workflow" })).body.result.content[0].text;
+		expect(workflow.indexOf("## Run sheet")).toBeGreaterThan(workflow.indexOf("**The order never changes"));
+		expect(workflow.indexOf("## Run sheet")).toBeLessThan(workflow.indexOf("## Scope"));
+		expect(workflow).toMatch(/Show this run sheet once, in your first reply, and keep to it in order/);
+		for (const s of ["Read the playbook", "question 1", "deck type", "The plan, in text", "approval", "The build", "`polish`", "`writing`", "The completion audit"])
+			expect(workflow.slice(workflow.indexOf("## Run sheet"), workflow.indexOf("## Scope"))).toContain(s);
+		expect(workflow).toContain("## Completion audit");
+		expect(workflow).toMatch(/only when you report a delivery as finished/i);
+		expect(workflow).toContain("| Step | Done | Evidence |");
+		expect(workflow).toMatch(/Nothing is called finished while a row is not\s+done/);
+		const qa = (await tool("get_playbook", { stage: "qa" })).body.result.content[0].text;
+		expect(qa).toMatch(/- \[ \] A delivery reported as finished ends with the completion audit/);
 	});
 
 	it("returns one chapter", async () => {
@@ -423,7 +440,7 @@ describe("find_images", () => {
 	it("returns icons as SVG text in one text block, 4 by default", async () => {
 		const { body } = await tool("find_images", { kind: "icon", query: "Truck" });
 		expect(body.result.isError).toBeFalsy();
-		expect(body.result.content).toHaveLength(1);
+		expect(body.result.content).toEqual([expect.objectContaining({ type: "text" }), { type: "text", text: REMINDER }]);
 		const text: string = body.result.content[0].text;
 		expect(text.split("\n").filter((l) => /^\d\. /.test(l))).toEqual(["1. mdi:truck | Apache-2.0", "2. mdi:truck-outline | Apache-2.0", "3. tabler:truck | MIT", "4. tabler:truck-filled | MIT"]);
 		expect(text).toContain(`   SVG: ${mdiTruck}`);
@@ -441,7 +458,8 @@ describe("find_images", () => {
 	it("returns photos as links in the text, then their thumbnails as image blocks", async () => {
 		const { body } = await tool("find_images", { kind: "photo", query: "busy hospital waiting room" });
 		const [first, , third] = openverse.results;
-		const [text, ...images] = body.result.content;
+		const [text, reminder, ...images] = body.result.content;
+		expect(reminder).toEqual({ type: "text", text: REMINDER }); // before the thumbnails, so "Thumbnails follow" stays true
 		expect(text.text).toContain(`1. ${first.title} | CC BY 2.0 | thumbnail 1\n   Credit: ${first.attribution}\n   Download: ${first.url}\n   Page: ${first.foreign_landing_url}\n   Creator: ${first.creator}\n`);
 		expect(text.text).toContain(`3. ${third.title} | Public Domain Mark 1.0 | thumbnail 3\n   Download: ${third.url}`);
 		expect(text.text).toMatch(/Thumbnails follow as images/);
@@ -467,7 +485,7 @@ describe("find_images", () => {
 	it("does not cache an answer with a source unavailable, and says which", async () => {
 		for (let i = 0; i < 2; i++) {
 			const { body } = await tool("find_images", { kind: "photo", query: "down" });
-			expect(body.result.content).toEqual([{ type: "text", text: "No photos found.\nUnavailable right now: photos." }]);
+			expect(body.result.content).toEqual([{ type: "text", text: "No photos found.\nUnavailable right now: photos." }, { type: "text", text: REMINDER }]);
 		}
 		expect(fetched.filter((c) => c.url === PHOTOS("down"))).toHaveLength(2);
 	});
@@ -506,6 +524,29 @@ describe("find_images", () => {
 		}
 		expect(fetched).toEqual([]);
 		expect((await tool("find_images", { kind: "icon", query: "x".repeat(100), k: 4 })).body.result.isError).toBeFalsy();
+	});
+});
+
+describe("workflow reminder", () => {
+	const last = (r: any) => r.content.at(-1);
+	it("ends every successful prose result with the reminder as its own text part", async () => {
+		for (const [name, args] of [
+			["get_playbook", {}], ["get_playbook", { stage: "qa" }],
+			["find_references", { purpose: "market share", k: 2 }], ["find_references", { purpose: "anything", slide_type: "hook" }],
+			["find_deck_flows", { purpose: "Win over the judges" }], ["find_deck_flows", { purpose: "x", industry: "automotive" }],
+		] as const) {
+			const { result } = (await tool(name, args)).body;
+			expect(result.isError, name).toBeFalsy();
+			expect(result.content, name).toHaveLength(2);
+			expect(last(result), name).toEqual({ type: "text", text: REMINDER });
+			expect(result.content[0].text, name).not.toContain(REMINDER);
+		}
+	});
+
+	it("never adds it to get_reference or to an error result", async () => {
+		for (const id of [rows[0].id, rows[1].id, flows[0].id, "ffffffffffffffff", "0000000000000000-01"])
+			expect(JSON.stringify((await tool("get_reference", { id })).body), id).not.toContain(REMINDER);
+		expect(JSON.stringify((await tool("get_playbook", { stage: "nope" })).body)).not.toContain(REMINDER);
 	});
 });
 
