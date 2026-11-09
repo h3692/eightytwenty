@@ -40,7 +40,7 @@ def preflight(lib):
     _run(["npx", "tsc", "--noEmit", "-p", "."], server)
     # --json: plain `whoami` exits 0 even when logged out
     _run(["npx", "wrangler", "whoami", "--json"], server, "wrangler is not logged in. Log in again: cd server && npx wrangler login")
-    blocking, built = [], {b.parent.name for b in (lib / "work").glob("*/build")}
+    blocking, withheld, built = [], 0, {b.parent.name for b in (lib / "work").glob("*/build")}
     for f in sorted((lib / "records").glob("*.json")) + sorted((lib / "flows").glob("*.json")):  # leak-check can't reach these
         deck = f.stem[:-3] if f.parent.name == "records" else f.stem
         if deck not in built:
@@ -49,10 +49,14 @@ def preflight(lib):
     for build in sorted((lib / "work").glob("*/build")):
         deck = build.parent.name
         for rid, r in leak_check.run(deck, lib).items():
-            # excluded slides and flows withheld by the share rule are designed outcomes, not unfinished work
-            if r["auto"] == "fail" or r["judge"] in ("pending", "fail"):
+            # excluded slides, flows withheld by the share rule and items the judge identified are designed
+            # outcomes, not unfinished work: none of them is ever published
+            if r["auto"] == "fail" or r["judge"] == "pending":
                 why = r["problems"][0] if r["problems"] else f"judge {r['judge']}"
                 blocking.append(f"{deck} flow: {why}" if rid == "flow" else f"{rid}: {why}")
+            withheld += r["auto"] == "pass" and r["judge"] == "fail"
+    if withheld:
+        print(f"{withheld} withheld by the judge (identified; never published)")
     if blocking:
         print("\n".join(blocking))
         raise SystemExit(f"Release refused: {len(blocking)} item(s) failing the leak check or waiting for review.")
