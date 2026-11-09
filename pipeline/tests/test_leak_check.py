@@ -679,3 +679,13 @@ def test_element_notes_pointing_outside_the_layout_fail_closed(deck, lib):
     record.write_text(json.dumps(dict(dna, elements=[{"component": n, "note": "Use the lead panel to state the answer first"}])))
     report = leak_check.run(deck_id, lib)
     assert report[ids[1]]["auto"] == "fail" and any("stale build" in p for p in report[ids[1]]["problems"])
+
+
+def test_standard_finance_vocabulary_is_design_language():
+    # the names of standard IB exhibits are how a banker searches for a layout, not a client's words
+    source = "Discounted Cash Flow Analysis | Sources and Uses | Football Field | Precedent Transactions | DCF | IRR | MOIC | LTM"
+    names = leak_check.source_names(source)
+    for note in ("A DCF output beside an IRR and MOIC strip.", "A sources and uses table above the returns.",
+                 "A discounted cash flow summary with a football field valuation range.",
+                 "Precedent transactions and trading comparables side by side, LTM and NTM multiples."):
+        assert leak_check.problems_in(note, source, names) == [], note
