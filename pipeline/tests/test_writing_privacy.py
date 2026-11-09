@@ -14,7 +14,7 @@ from pipeline import leak_check
 ROOT = Path(__file__).resolve().parents[2]
 WORK = ROOT / "library" / "work"
 # Standard finance abbreviations the IB register teaches by name. Rare words, so the name rule would flag them.
-FINANCE_TERMS = {"ltm", "ntm", "bps", "irr", "moic", "yoy"}
+FINANCE_TERMS = {"bps", "yoy"}
 RUN = 5  # words in a row shared with a slide
 
 pytestmark = pytest.mark.skipif(not WORK.is_dir(), reason="no local library (CI)")

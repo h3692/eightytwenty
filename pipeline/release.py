@@ -51,7 +51,7 @@ def preflight(lib):
         for rid, r in leak_check.run(deck, lib).items():
             # excluded slides, flows withheld by the share rule and items the judge identified are designed
             # outcomes, not unfinished work: none of them is ever published
-            if r["auto"] == "fail" or r["judge"] == "pending":
+            if r["auto"] == "fail" or r["judge"] in ("pending", "invalid"):
                 why = r["problems"][0] if r["problems"] else f"judge {r['judge']}"
                 blocking.append(f"{deck} flow: {why}" if rid == "flow" else f"{rid}: {why}")
             withheld += r["auto"] == "pass" and r["judge"] == "fail"

@@ -132,13 +132,14 @@ def test_judge_identification_blocks_and_unpromotes(deck, lib):
     assert not (lib / "wireframes" / f"{ids[0]}.png").exists()
 
 
-def test_malformed_verdict_counts_as_fail(deck, lib):
+def test_malformed_verdict_is_invalid_and_never_published(deck, lib):
     deck_id, ids = _pipeline(deck, lib)
     leak_check.run(deck_id, lib)
     v = lib / "judge" / deck_id / "verdicts"
     v.mkdir(exist_ok=True)
     (v / f"{ids[0]}.json").write_text('{"identified": "no"}')
-    assert leak_check.run(deck_id, lib)[ids[0]]["judge"] == "fail"
+    r = leak_check.run(deck_id, lib)[ids[0]]
+    assert (r["judge"], r["published"]) == ("invalid", False)
 
 
 @pytest.mark.parametrize("text", [
@@ -689,3 +690,9 @@ def test_standard_finance_vocabulary_is_design_language():
                  "A discounted cash flow summary with a football field valuation range.",
                  "Precedent transactions and trading comparables side by side, LTM and NTM multiples."):
         assert leak_check.problems_in(note, source, names) == [], note
+
+
+def test_two_word_finance_names_never_hide_copied_words_around_them():
+    # a two-word exhibit name masked as a framework would break every 3-gram it touches
+    source = "Target football field"
+    assert leak_check.problems_in("A target football field wide band", source, leak_check.source_names(source))

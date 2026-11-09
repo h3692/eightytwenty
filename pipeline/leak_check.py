@@ -71,7 +71,7 @@ FRAMEWORKS = sorted((p.split() for p in (  # standard framework names, as _words
     "value chain analysis", "product price place promotion", "product price place and promotion",
     "tam sam som", "go to market", "total addressable market", "serviceable addressable market",
     "serviceable available market", "serviceable obtainable market", "discounted cash flow", "sources and uses",
-    "football field", "precedent transactions", "trading comparables", "sum of the parts", "leveraged buyout", "stars cash cows question marks dogs", "stars cash cows dogs",
+    "sum of the parts", "stars cash cows question marks dogs", "stars cash cows dogs",
     "growth share matrix", "market penetration market development product development diversification",
     "market penetration market development product development and diversification",
     "political economic social technological legal environmental",
@@ -299,9 +299,9 @@ def _verdict(path):
         return "pending"
     try:
         v = json.loads(path.read_text())
-        return "pass" if v["identified"] is False else "fail"
+        return "pass" if v["identified"] is False else "fail" if v["identified"] is True else "invalid"
     except (ValueError, KeyError, TypeError):
-        return "fail"
+        return "invalid"  # never published, and release names it, so a typo can't silently drop a record
 
 
 def _copy_for_judge(copies, verdict):

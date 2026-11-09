@@ -156,6 +156,26 @@ def test_render_from_refuses_a_pdf_whose_page_count_differs_from_the_slides(deck
     assert not (lib / "work").exists()  # refused before anything is written
 
 
+def test_pdf_import_never_overwrites_a_deck_file(lib, tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(extract.subprocess, "run", lambda *a, **k: calls.append(a))
+    (lib / "decks").mkdir(parents=True, exist_ok=True)
+    (lib / "decks" / "pitch.pptx").write_bytes(b"original")
+    (tmp_path / "pitch.pdf").write_bytes(b"%PDF")
+    with pytest.raises(SystemExit, match="already"):
+        extract.run(tmp_path / "pitch.pdf", lib)
+    assert calls == [] and (lib / "decks" / "pitch.pptx").read_bytes() == b"original"
+
+
+def test_pdf_import_refuses_when_libreoffice_writes_no_deck(lib, tmp_path, monkeypatch):
+    # soffice exits 0 without converting when another LibreOffice instance is running
+    monkeypatch.setattr(extract, "_soffice", lambda: "soffice")
+    monkeypatch.setattr(extract.subprocess, "run", lambda *a, **k: None)
+    (tmp_path / "pitch.pdf").write_bytes(b"%PDF")
+    with pytest.raises(SystemExit, match="LibreOffice"):
+        extract.run(tmp_path / "pitch.pdf", lib)
+
+
 @pytest.mark.skipif(not (shutil.which("soffice") or extract.SOFFICE_APP.exists()), reason="LibreOffice not installed")
 def test_a_pdf_deck_is_converted_into_library_decks_and_rendered_from_the_pdf(lib, tmp_path):
     from pipeline.__main__ import main

@@ -327,3 +327,10 @@ def test_smoke_check_reports_the_servers_own_error_message(fake, lib):
     with pytest.raises(SystemExit) as e:
         release.run(lib)
     assert fake.rpc_error in str(e.value.code) and "KeyError" not in str(e.value.code)
+
+
+def test_a_malformed_verdict_blocks_naming_the_item(fake, lib, capsys):
+    fake.reports["deck-b"] = {"deck-b-01": {"auto": "pass", "problems": [], "judge": "invalid", "published": False}}
+    with pytest.raises(SystemExit):
+        release.run(lib)
+    assert "deck-b-01: judge invalid" in capsys.readouterr().out

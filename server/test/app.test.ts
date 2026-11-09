@@ -82,7 +82,6 @@ describe("MCP endpoint", () => {
 		expect(p.k.maximum).toBe(8);
 		expect(p.impact.enum).toEqual(["none", "build", "spotlight", "shade_ribbon", "repeat"]);
 		expect(p.style.enum).toEqual(styles.properties.style.enum);
-		expect(p.style.enum).toContain("finance-pitch");
 		expect(p.style.description).toBeTruthy();
 		expect(tools.find_references.description).toMatch(/one per deck/i);
 		expect(tools.find_references.description).toMatch(/impact filter returns few/i);

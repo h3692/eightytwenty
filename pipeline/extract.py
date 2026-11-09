@@ -80,10 +80,15 @@ def _soffice():
 
 
 def _pdf_to_pptx(pdf_path, decks):
+    out = decks / f"{Path(pdf_path).stem}.pptx"
+    if out.exists():
+        raise SystemExit(f"{out} already exists; rename the PDF, or run reextract on that deck with --render-from")
     decks.mkdir(parents=True, exist_ok=True)
     subprocess.run([_soffice(), "--headless", "--infilter=impress_pdf_import", "--convert-to", "pptx", "--outdir",
                     str(decks), str(pdf_path)], check=True, capture_output=True)
-    return decks / f"{Path(pdf_path).stem}.pptx"
+    if not out.exists():  # soffice exits 0 without converting when another LibreOffice instance is open
+        raise SystemExit(f"LibreOffice wrote no {out.name}; quit LibreOffice and run extract again")
+    return out
 
 
 def _render(pptx_path, work, count):
