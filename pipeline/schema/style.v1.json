@@ -6,6 +6,6 @@
   "additionalProperties": false,
   "required": ["style"],
   "properties": {
-    "style": {"enum": ["consulting-structured", "bold-pitch", "visual-storytelling", "data-led", "minimal-editorial"]}
+    "style": {"enum": ["consulting-structured", "bold-pitch", "visual-storytelling", "data-led", "minimal-editorial", "finance-pitch"]}
   }
 }

@@ -44,9 +44,10 @@ def test_flow_schema_is_fixed_lists_and_one_free_text_field():
     assert set(schema["required"]) == {"sections", "arc", "why_the_flow_works"}  # v1 flows stay valid
     assert flow.IMPACTS == ["none", "build", "spotlight", "shade_ribbon", "repeat"]
     assert flow.SECTIONS == ["cover", "hook", "executive-summary", "agenda", "situation", "problem-analysis", "customer",
-                             "competition", "solution", "how-it-works", "implementation", "financials", "risks", "kpis",
-                             "closing", "appendix", "other"]
-    assert flow.ARCS == ["problem-to-solution", "pillars", "journey", "options-to-pick", "chronological", "other"]
+                             "competition", "solution", "how-it-works", "implementation", "financials", "valuation",
+                             "transaction", "financing", "returns", "risks", "kpis", "closing", "appendix", "other"]
+    assert flow.ARCS == ["problem-to-solution", "pillars", "journey", "options-to-pick", "chronological",
+                          "thesis-to-returns", "other"]
     jsonschema.Draft202012Validator.check_schema(schema)
 
 

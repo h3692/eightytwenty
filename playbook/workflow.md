@@ -81,12 +81,13 @@ the user can accept with "yes".
    the presentation length. If an attached deck uses a font other than Helvetica Neue, add: "Keep [font] or switch to
    Helvetica Neue?" (mention if it isn't installed by default on Windows or Mac).
 2. **The end belief.** What must the audience believe at the end, in one sentence? Offer 2 to 3 candidate answers.
-3. **The deck style.** Offer the five styles with one line each and recommend one from the prompt and audience:
+3. **The deck style.** Offer the six styles with one line each and recommend one from the prompt and audience:
    - **Consulting-structured**: action titles, labelled rows, dense logic, tight grids (the classic consulting deck).
    - **Bold pitch**: big type, one idea per slide, high contrast (startup and investor pitches).
    - **Visual storytelling**: imagery-led, emotional, customer moments carry the argument.
    - **Data-led**: charts and numbers carry each slide, annotations do the talking.
    - **Minimal editorial**: generous white space, restrained colour, typographic hierarchy.
+   - **Finance pitch**: dense tables, football fields, returns charts, action titles (banker-style pitch and deal books).
    Or: "attach a deck whose look you want to match". The answer becomes the `style` filter for `find_deck_flows` and
    `find_references`.
 4. **The target market.** Who exactly is the client serving, and what do they need that they are not getting today?

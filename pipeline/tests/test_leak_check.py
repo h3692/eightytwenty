@@ -173,11 +173,11 @@ CASE_TERMS = ["financials", "Financials", "deliverables", "storyboard", "Storybo
 
 def _schema_values():
     s = {n: json.loads((leak_check.Path(leak_check.__file__).parent / "schema" / f"{n}.json").read_text())
-         for n in ("labels.v1", "flow.v1", "layout.v3", "style.v1")}
+         for n in ("labels.v1", "flow.v2", "layout.v3", "style.v1")}
     p = s["labels.v1"]["properties"]
     return sorted({v for vs in [*(p[k]["enum"] for k in ("archetype", "argument_shape", "insight_device", "data_type")),
                                 s["labels.v1"]["$defs"]["role"]["enum"], s["style.v1"]["properties"]["style"]["enum"],
-                                s["flow.v1"]["properties"]["sections"]["items"]["enum"],
+                                s["flow.v2"]["properties"]["sections"]["items"]["enum"],
                                 s["layout.v3"]["$defs"]["component"]["properties"]["kind"]["enum"]] for v in vs})
 
 
@@ -659,6 +659,15 @@ def test_style_notes_never_name_a_sector_or_audience(deck, lib):
     report = leak_check.run(deck_id, lib)
     assert report[ids[1]]["auto"] == "fail" and any("sector or audience: hospital" in p for p in report[ids[1]]["problems"])
     assert leak_check.problems_in("Gives a calm, energetic finish", "", set()) == []  # only notes are checked for sectors
+
+
+def test_finance_style_notes_in_the_worksheet_wording_pass(deck, lib):
+    deck_id, ids = _six_slide_deck(deck, lib)
+    record = lib / "work" / deck_id / "build" / f"{ids[1]}.json"
+    dna = json.loads(record.read_text())
+    record.write_text(json.dumps(dict(dna, when_to_use="Use when a buy-side audience, a financial buyer, a lender or a "
+                                                       "committee needs the implied value range on one page")))
+    assert leak_check.run(deck_id, lib)[ids[1]]["auto"] == "pass"
 
 
 def test_element_notes_pointing_outside_the_layout_fail_closed(deck, lib):

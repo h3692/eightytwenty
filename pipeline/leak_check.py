@@ -114,10 +114,10 @@ def _fixed_lists():
     """Our own fixed lists as _words() phrases: label, flow, layout and style enums, the archetype table's ids and
     slide jobs."""
     schema = {n: json.loads((Path(__file__).parent / "schema" / f"{n}.json").read_text())
-              for n in ("labels.v1", "flow.v1", "layout.v3")}
+              for n in ("labels.v1", "flow.v2", "layout.v3")}
     labels = schema["labels.v1"]
     lists = [labels["properties"][k]["enum"] for k in ("archetype", "argument_shape", "insight_device", "data_type")]
-    lists += [labels["$defs"]["role"]["enum"], schema["flow.v1"]["properties"]["sections"]["items"]["enum"],
+    lists += [labels["$defs"]["role"]["enum"], schema["flow.v2"]["properties"]["sections"]["items"]["enum"],
               schema["layout.v3"]["$defs"]["component"]["properties"]["kind"]["enum"], build.STYLES]
     table = (Path(__file__).parent.parent / "playbook" / "archetypes.md").read_text()
     lists += re.findall(r"^\| `([a-z-]+)` \| ([^|]+) \|", table, re.M)

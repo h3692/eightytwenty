@@ -10,9 +10,9 @@
     "sections": {
       "type": "array",
       "description": "one section per visible slide, in deck order",
-      "items": {"enum": ["cover", "hook", "executive-summary", "agenda", "situation", "problem-analysis", "customer", "competition", "solution", "how-it-works", "implementation", "financials", "risks", "kpis", "closing", "appendix", "other"]}
+      "items": {"enum": ["cover", "hook", "executive-summary", "agenda", "situation", "problem-analysis", "customer", "competition", "solution", "how-it-works", "implementation", "financials", "valuation", "transaction", "financing", "returns", "risks", "kpis", "closing", "appendix", "other"]}
     },
-    "arc": {"enum": ["problem-to-solution", "pillars", "journey", "options-to-pick", "chronological", "other"]},
+    "arc": {"enum": ["problem-to-solution", "pillars", "journey", "options-to-pick", "chronological", "thesis-to-returns", "other"]},
     "why_the_flow_works": {"type": "string", "minLength": 20, "maxLength": 400},
     "impact": {
       "type": "array",

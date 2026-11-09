@@ -29,7 +29,7 @@ const TOPICS = [
 ];
 const ARCHETYPES = ["chart", "timeline", "comparison"];
 const INDUSTRIES = ["retail", "technology"];
-const STYLES = ["consulting-structured", "bold-pitch", "visual-storytelling", "data-led", "minimal-editorial"];
+const STYLES = ["consulting-structured", "bold-pitch", "visual-storytelling", "data-led", "minimal-editorial", "finance-pitch"];
 
 export type Row = { n: number; id: string; deck_id: string; archetype: string; industry: string; data_type: string; purpose: string; why_it_works: string; style: string; when_to_use: string; effect: string; elements: { component: number; note: string }[]; description: string; insight_device: string; regions: { i: number; box: { x: number; y: number; w: number; h: number } }[] };
 
