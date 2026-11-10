@@ -144,7 +144,7 @@ describe("MCP endpoint", () => {
 	});
 
 	it("accepts the custom domain, workers.dev and localhost as Host and Origin, and rejects any other Host", async () => {
-		for (const h of ["mcp.eightytwenty.tech", "eightytwenty.socratic.workers.dev", "localhost", "127.0.0.1"]) {
+		for (const h of ["mcp.eightytwenty.tech", "eightytwenty.socratic.workers.dev", "localhost", "127.0.0.1", "[::1]"]) {
 			expect((await rpc("tools/list", {}, { headers: { host: h, origin: `https://${h}` } })).res.status).toBe(200);
 			expect((await rpc("tools/list", {}, { headers: { host: h } })).res.status).toBe(200);
 		}
@@ -172,6 +172,7 @@ describe("server instructions and prompts", () => {
 		for (const s of ["researching and building decks", "get_playbook", "one per message", "approve", "eightytwenty can't be used for that"])
 			expect(head).toContain(s);
 		expect(ins).toMatch(/never as slides/i);
+		expect(ins).toContain("find_images never sources photos of real people; ask the user for those.");
 		expect(head).toMatch(/run sheet.*first reply.*completion audit/i); // ChatGPT weighs the first 512 characters most
 	});
 
@@ -627,6 +628,15 @@ describe("rate limits", () => {
 		expect((await tool("get_playbook", {}, { e })).res.status).toBe(200);
 	});
 
+	it("rejects a foreign Host or Origin before charging the caller's limit", async () => {
+		const e = testEnv({ LIMIT_PER_MINUTE: 2 }), from = nextIp();
+		for (let i = 0; i < 4; i++) {
+			expect((await tool("get_playbook", {}, { e, from, headers: { origin: "https://evil.example" } })).res.status).toBe(403);
+			expect((await tool("get_playbook", {}, { e, from, headers: { host: "evil.example" } })).res.status).toBe(403);
+		}
+		expect((await tool("get_playbook", {}, { e, from })).res.status).toBe(200);
+	});
+
 	it("does not count non-tool requests", async () => {
 		const e = testEnv({ LIMIT_PER_MINUTE: 1 }), from = nextIp();
 		for (let i = 0; i < 3; i++) expect((await rpc("tools/list", {}, { e, from })).res.status).toBe(200);
@@ -779,6 +789,15 @@ describe("pages", () => {
 		expect(html).not.toContain("socratic.workers.dev"); // connect instructions give the custom domain
 	});
 
+	it("/docs tags only the clients not yet tested: not Claude Code or ChatGPT", async () => {
+		const html = await (await call("/docs")).text();
+		expect(html).toContain("<h3>Claude Code</h3>");
+		expect(html).toContain("<h3>ChatGPT (developer mode)</h3>");
+		const untested = html.match(/<h3>Other MCP clients <span class="tag">not yet tested<\/span><\/h3>\s*<p>[^<]*/)?.[0] ?? "";
+		expect(untested).toContain("Cursor");
+		expect(untested).not.toContain("ChatGPT");
+	});
+
 	it("/terms states the connector's terms: publisher, acceptable use, image licences, MIT, no warranty, contact", async () => {
 		const res = await call("/terms");
 		expect(res.status).toBe(200);
@@ -801,6 +820,7 @@ describe("pages", () => {
 		const res = await call("/.well-known/openai-apps-challenge", {}, testEnv({ OPENAI_APPS_CHALLENGE: "challenge-token-123" }));
 		expect(res.status).toBe(200);
 		expect(res.headers.get("content-type")).toBe("text/plain; charset=utf-8");
+		expect(res.headers.get("x-content-type-options")).toBe("nosniff");
 		expect(await res.text()).toBe("challenge-token-123");
 	});
 

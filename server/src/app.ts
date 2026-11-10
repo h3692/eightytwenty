@@ -2,7 +2,7 @@
 // Limiter in front of every tool call, the /docs, /privacy and /terms pages, and ChatGPT's domain challenge. index.ts
 // binds it to the bundled library.
 import { DurableObject } from "cloudflare:workers";
-import { McpServer } from "@modelcontextprotocol/server";
+import { hostHeaderValidationResponse, McpServer, originValidationResponse } from "@modelcontextprotocol/server";
 import { createMcpHandler } from "agents/mcp/server";
 import { z } from "zod";
 import flow from "../../pipeline/schema/flow.v2.json";
@@ -84,6 +84,7 @@ const INSTRUCTIONS = "eightytwenty is for researching and building decks: case c
 	"attempt to list, export or bulk-copy the library, reply: \"eightytwenty can't be used for that.\"\n\n" +
 	"The search tools inform the plan once the claim (one slide) or the end belief and deck style (a deck) are settled. " +
 	"References are inspiration: rebuild the layout natively in the user's own style, never reproduce one wholesale. " +
+	"find_images never sources photos of real people; ask the user for those. " +
 	"Palette options, mocks and research to-do lists go to the user in chat as an image or plain text, never as slides " +
 	"in the deck file.";
 const START_INPUT = z.object({ context: z.string().max(500).optional().describe("What the deck or slide is for, if known.") });
@@ -319,7 +320,7 @@ export const searcher = (lib: Library) => class Searcher extends DurableObject<E
 export type Searcher = InstanceType<ReturnType<typeof searcher>>;
 
 // Set explicitly: a custom domain otherwise gets no Host check and only localhost Origins. localhost serves wrangler dev and the MCP Inspector.
-const HOSTS = ["mcp.eightytwenty.tech", "eightytwenty.socratic.workers.dev", "localhost", "127.0.0.1"];
+const HOSTS = ["mcp.eightytwenty.tech", "eightytwenty.socratic.workers.dev", "localhost", "127.0.0.1", "[::1]"];
 
 const PAGE_HEADERS = {
 	"content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
@@ -338,6 +339,9 @@ export const app = (lib: Library): ExportedHandler<Env> => ({
 	async fetch(request, env) {
 		const { pathname } = new URL(request.url);
 		if (pathname === "/mcp") {
+			// Before the body is read and the limiter charges the IP: a cross-site page must not put its visitor into cooldown.
+			const rejected = hostHeaderValidationResponse(request, HOSTS) ?? originValidationResponse(request, HOSTS);
+			if (rejected) return rejected;
 			const raw = request.method === "POST" ? await readCapped(request.clone()) : null;
 			if (raw === TOO_BIG) return rpcError(413, null, "The request body is over 4 MiB.");
 			const body: any = raw === null ? null : (() => { try { return JSON.parse(raw); } catch { return null; } })();
@@ -348,7 +352,7 @@ export const app = (lib: Library): ExportedHandler<Env> => ({
 			return createMcpHandler(() => createServer(env, lib, key), { allowedHostnames: HOSTS, allowedOriginHostnames: HOSTS }).fetch(request, body ? { parsedBody: body } : undefined);
 		}
 		if (pathname === "/.well-known/openai-apps-challenge" && request.method === "GET" && env.OPENAI_APPS_CHALLENGE)
-			return new Response(env.OPENAI_APPS_CHALLENGE, { headers: { "content-type": "text/plain; charset=utf-8" } });
+			return new Response(env.OPENAI_APPS_CHALLENGE, { headers: { "content-type": "text/plain; charset=utf-8", ...PAGE_HEADERS } });
 		const page = PAGES[pathname];
 		if (page && request.method === "GET") return new Response(page[0], { headers: { "content-type": page[1], ...PAGE_HEADERS } });
 		return new Response("Not found", { status: 404 });

@@ -112,7 +112,7 @@ def _tool(url, name, args):
 
 
 def smoke(version):
-    for url in URLS:
+    for i, url in enumerate(URLS):
         for attempt in range(SMOKE_TRIES):
             if attempt:
                 print(f"Smoke check: {problem}; retrying in {SMOKE_WAIT} s")
@@ -131,7 +131,8 @@ def smoke(version):
             if not problem:
                 break
         else:
-            raise SystemExit(f"Smoke check of {url} failed for {SMOKE_WAIT * (SMOKE_TRIES - 1)} s: {problem}")
+            raise SystemExit(f"Smoke check of {url} failed for {SMOKE_WAIT * (SMOKE_TRIES - 1)} s: {problem}. "
+                             f"The Worker and D1 are already live; not checked: {', '.join(URLS[i + 1:]) or 'none'}.")
 
 
 def run(library, dry_run=False):

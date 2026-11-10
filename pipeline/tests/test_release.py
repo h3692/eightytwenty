@@ -336,7 +336,17 @@ def test_smoke_check_failing_on_the_second_host_names_it(fake, lib):
         release.run(lib)
     assert fake.requests[0].full_url == CUSTOM  # the custom domain passed first
     assert WORKERS_DEV in str(e.value.code) and CUSTOM not in str(e.value.code) and sum(fake.sleeps) == 90
+    assert "The Worker and D1 are already live; not checked: none." in str(e.value.code)
     assert "git rev-parse --short HEAD" not in fake.steps
+
+
+def test_smoke_check_failing_on_the_first_host_lists_workers_dev_as_not_checked(fake, lib):
+    fake.down = CUSTOM
+    with pytest.raises(SystemExit) as e:
+        release.run(lib)
+    assert WORKERS_DEV not in [r.full_url for r in fake.requests]
+    assert str(e.value.code).startswith(f"Smoke check of {CUSTOM} failed for 90 s: ")
+    assert str(e.value.code).endswith(f"The Worker and D1 are already live; not checked: {WORKERS_DEV}.")
 
 
 def test_smoke_check_reports_the_servers_own_error_message(fake, lib):
