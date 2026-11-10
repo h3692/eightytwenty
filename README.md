@@ -14,10 +14,11 @@
   <img src="https://img.shields.io/badge/sign--in-none-051029?style=flat-square" alt="No sign-in">
   <img src="https://img.shields.io/badge/works%20with-Claude%20%C2%B7%20ChatGPT%20%C2%B7%20any%20MCP%20client-051029?style=flat-square" alt="Works with Claude, ChatGPT and any MCP client">
   <img src="https://img.shields.io/badge/license-MIT-051029?style=flat-square" alt="MIT license">
+  <a href="https://claude.ai/directory/connectors/eightytwenty"><img src="https://img.shields.io/badge/Claude-connector%20directory-051029?style=flat-square" alt="Listed in Claude's connector directory"></a>
 </p>
 
 <p align="center">
-  <a href="https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=eightytwenty&connectorUrl=https%3A%2F%2Fmcp.eightytwenty.tech%2Fmcp"><strong>Add to Claude</strong></a>
+  <a href="https://claude.ai/directory/connectors/eightytwenty"><strong>Add to Claude</strong></a>
   &middot; <a href="#chatgpt">Add to ChatGPT</a>
   &middot; <a href="#other-clients">Other clients</a>
   &middot; <a href="https://mcp.eightytwenty.tech/docs">Docs</a>
@@ -45,9 +46,12 @@ No account, no API key, no sign-in.
 
 ### Claude
 
-**claude.ai and Claude Desktop:** click [Add to Claude](https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=eightytwenty&connectorUrl=https%3A%2F%2Fmcp.eightytwenty.tech%2Fmcp)
-and confirm, or open **Customize > Connectors > Add custom connector**, paste the address, and choose **No sign-in**.
+**claude.ai and Claude Desktop:** eightytwenty is in Claude's connector directory. Open
+[its listing](https://claude.ai/directory/connectors/eightytwenty) and add it, or search for eightytwenty when browsing connectors in Claude.
 On Team and Enterprise plans an owner adds it under **Organization settings > Connectors**.
+
+You can also add it by hand: [prefilled custom connector](https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=eightytwenty&connectorUrl=https%3A%2F%2Fmcp.eightytwenty.tech%2Fmcp),
+or **Customize > Connectors > Add custom connector**, paste the address, and choose **No sign-in**.
 
 **Claude Code:**
 
@@ -121,6 +125,9 @@ flowchart LR
 | `pipeline/` | Extraction, labelling worksheets, the leak check, packaging and the one-command release |
 
 ## What's new
+
+**November 10, 2026**
+- Listed in Claude's connector directory, and served at `mcp.eightytwenty.tech`.
 
 **November 9, 2026**
 - Investment-banking decks: 354 new layouts and 10 deck flows in a `finance-pitch` style, with valuation, comps, LBO
