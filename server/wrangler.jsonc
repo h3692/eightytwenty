@@ -3,7 +3,9 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-11-01",
   "compatibility_flags": ["nodejs_compat"],
+  // Both addresses serve the connector; Cloudflare creates the DNS record and certificate for the custom domain.
   "workers_dev": true,
+  "routes": [{ "pattern": "mcp.eightytwenty.tech", "custom_domain": true }],
   "observability": { "enabled": false },
   "rules": [{ "type": "Text", "globs": ["**/*.md", "**/*.svg"], "fallthrough": true }],
   // Wireframes are read only through the ASSETS binding: run_worker_first sends every request to the Worker,

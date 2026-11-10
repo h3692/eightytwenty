@@ -41,18 +41,18 @@ footer { margin-top: 3rem; color: var(--muted); font-size: .9rem; }
 
 <h2>Connect</h2>
 <p>Server URL (Streamable HTTP, no authentication):</p>
-<p class="url"><code>https://eightytwenty.socratic.workers.dev/mcp</code></p>
+<p class="url"><code>https://mcp.eightytwenty.tech/mcp</code></p>
 
 <h3>claude.ai</h3>
 <p>Customize → Connectors → + Add → Add custom connector. Enter a name and the URL above, choose No sign in, and add it. In a chat, turn it on under + → Connectors, then pick its <code>start</code> prompt there or just ask for help with your deck.</p>
 
 <h3>Claude Code <span class="tag">not yet tested</span></h3>
-<pre><code>claude mcp add --transport http eightytwenty https://eightytwenty.socratic.workers.dev/mcp</code></pre>
+<pre><code>claude mcp add --transport http eightytwenty https://mcp.eightytwenty.tech/mcp</code></pre>
 <p>Then run <code>/eightytwenty:start</code>, or just ask for help with your deck.</p>
 
 <h3>Other MCP clients <span class="tag">not yet tested</span></h3>
 <p>ChatGPT (developer mode), Cursor, VS Code, Gemini CLI and others: add a remote MCP server with the URL above and no authentication. For clients that use an <code>mcpServers</code> JSON file, such as Cursor:</p>
-<pre><code>{ "mcpServers": { "eightytwenty": { "url": "https://eightytwenty.socratic.workers.dev/mcp" } } }</code></pre>
+<pre><code>{ "mcpServers": { "eightytwenty": { "url": "https://mcp.eightytwenty.tech/mcp" } } }</code></pre>
 
 <h2>Tools</h2>
 <p>All five are read-only. There is no way to upload to the library or list all of it.</p>

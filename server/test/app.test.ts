@@ -775,7 +775,8 @@ describe("pages", () => {
 		expect(res.status).toBe(200);
 		expect(res.headers.get("content-type")).toMatch(/^text\/html/);
 		const html = await res.text();
-		for (const s of ["get_playbook", "find_references", "find_deck_flows", "get_reference", "find_images", "/mcp", "claude.ai", "Claude Code"]) expect(html).toContain(s);
+		for (const s of ["get_playbook", "find_references", "find_deck_flows", "get_reference", "find_images", "https://mcp.eightytwenty.tech/mcp", "claude.ai", "Claude Code"]) expect(html).toContain(s);
+		expect(html).not.toContain("socratic.workers.dev"); // connect instructions give the custom domain
 	});
 
 	it("/terms states the connector's terms: publisher, acceptable use, image licences, MIT, no warranty, contact", async () => {

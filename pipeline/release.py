@@ -20,7 +20,7 @@ import certifi
 from pipeline import embed, leak_check, package
 
 REPO = Path(__file__).resolve().parents[1]
-URL = "https://eightytwenty.socratic.workers.dev/mcp"
+URLS = ("https://mcp.eightytwenty.tech/mcp", "https://eightytwenty.socratic.workers.dev/mcp")  # both serve the connector
 HEADERS = {"content-type": "application/json", "accept": "application/json, text/event-stream",
            "mcp-protocol-version": "2025-06-18", "user-agent": "eightytwenty-release"}
 SCOPE = "eightytwenty can't be used for that."
@@ -95,10 +95,10 @@ def _embed(lib):
                 proc.wait()
 
 
-def _rpc(method, params):
+def _rpc(url, method, params):
     body = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params}).encode()
     ctx = ssl.create_default_context(cafile=certifi.where())
-    with urllib.request.urlopen(urllib.request.Request(URL, body, HEADERS), timeout=30, context=ctx) as r:
+    with urllib.request.urlopen(urllib.request.Request(url, body, HEADERS), timeout=30, context=ctx) as r:
         text = r.read().decode()
     data = [line[5:] for line in text.splitlines() if line.startswith("data:")]
     reply = json.loads(data[-1] if data else text)
@@ -107,29 +107,31 @@ def _rpc(method, params):
     return reply["result"]
 
 
-def _tool(name, args):
-    return _rpc("tools/call", {"name": name, "arguments": args})["content"][0]["text"]
+def _tool(url, name, args):
+    return _rpc(url, "tools/call", {"name": name, "arguments": args})["content"][0]["text"]
 
 
 def smoke(version):
-    for attempt in range(SMOKE_TRIES):
-        if attempt:
-            print(f"Smoke check: {problem}; retrying in {SMOKE_WAIT} s")
-            time.sleep(SMOKE_WAIT)
-        try:
-            init = _rpc("initialize", {"protocolVersion": HEADERS["mcp-protocol-version"], "capabilities": {},
-                                       "clientInfo": {"name": "eightytwenty-release", "version": "1"}})
-            found = _tool("find_references", {"purpose": "executive summary", "k": 1})
-            playbook = _tool("get_playbook", {})
-        except (OSError, ValueError, LookupError, TypeError) as e:
-            problem = f"{type(e).__name__}: {e}"
-            continue
-        problem = ("initialize sent no instructions" if not init.get("instructions") else
-                   f"find_references does not serve library_version {version}" if f"library_version {version}" not in found
-                   else "get_playbook lacks the scope line" if SCOPE not in playbook else None)
-        if not problem:
-            return
-    raise SystemExit(f"Smoke check of {URL} failed for {SMOKE_WAIT * (SMOKE_TRIES - 1)} s: {problem}")
+    for url in URLS:
+        for attempt in range(SMOKE_TRIES):
+            if attempt:
+                print(f"Smoke check: {problem}; retrying in {SMOKE_WAIT} s")
+                time.sleep(SMOKE_WAIT)
+            try:
+                init = _rpc(url, "initialize", {"protocolVersion": HEADERS["mcp-protocol-version"], "capabilities": {},
+                                                "clientInfo": {"name": "eightytwenty-release", "version": "1"}})
+                found = _tool(url, "find_references", {"purpose": "executive summary", "k": 1})
+                playbook = _tool(url, "get_playbook", {})
+            except (OSError, ValueError, LookupError, TypeError) as e:
+                problem = f"{type(e).__name__}: {e}"
+                continue
+            problem = ("initialize sent no instructions" if not init.get("instructions") else
+                       f"find_references does not serve library_version {version}" if f"library_version {version}" not in found
+                       else "get_playbook lacks the scope line" if SCOPE not in playbook else None)
+            if not problem:
+                break
+        else:
+            raise SystemExit(f"Smoke check of {url} failed for {SMOKE_WAIT * (SMOKE_TRIES - 1)} s: {problem}")
 
 
 def run(library, dry_run=False):
