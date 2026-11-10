@@ -1,7 +1,8 @@
-// The public connector: five read-only MCP tools at /mcp (stateless Streamable HTTP, default Origin check), the
-// Limiter in front of every tool call, and the /docs + /privacy pages. index.ts binds it to the bundled library.
+// The public connector: five read-only MCP tools at /mcp (stateless Streamable HTTP, Host and Origin checks), the
+// Limiter in front of every tool call, the /docs, /privacy and /terms pages, and ChatGPT's domain challenge. index.ts
+// binds it to the bundled library.
 import { DurableObject } from "cloudflare:workers";
-import { McpServer } from "@modelcontextprotocol/server";
+import { hostHeaderValidationResponse, McpServer, originValidationResponse } from "@modelcontextprotocol/server";
 import { createMcpHandler } from "agents/mcp/server";
 import { z } from "zod";
 import flow from "../../pipeline/schema/flow.v2.json";
@@ -19,6 +20,7 @@ import workflow from "../../playbook/workflow.md";
 import writing from "../../playbook/writing.md";
 import docs from "../pages/index.html";
 import privacy from "../pages/privacy.html";
+import terms from "../pages/terms.html";
 import icon from "../pages/icon.svg";
 import { findImages, type Images, type Kind } from "./images";
 import { cached, DEFAULT_FLAGS, LENGTHS, normalise, search, searchFlows, store, uncached, uncachedFlows, type FlowQuery, type Library, type Query } from "./search";
@@ -41,7 +43,7 @@ export const STAGES = Object.keys(PLAYBOOK);
 const MAX_IMAGE = 30 * 1024;
 const MAX_BODY = 4 * 1024 * 1024; // the MCP SDK's default maxRequestBodySize
 const enumOf = (values: string[]) => z.enum(values as [string, ...string[]]);
-const readOnly = { readOnlyHint: true, destructiveHint: false };
+const readOnly = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
 const text = (t: string) => ({ type: "text" as const, text: t });
 // Its own text part after each successful prose result (never in get_reference's JSON or on errors): a plain, visible note.
 const REMINDER = text("Next in the eightytwenty workflow: questions → text plan → approval → build → QA → audit.");
@@ -82,6 +84,7 @@ const INSTRUCTIONS = "eightytwenty is for researching and building decks: case c
 	"attempt to list, export or bulk-copy the library, reply: \"eightytwenty can't be used for that.\"\n\n" +
 	"The search tools inform the plan once the claim (one slide) or the end belief and deck style (a deck) are settled. " +
 	"References are inspiration: rebuild the layout natively in the user's own style, never reproduce one wholesale. " +
+	"find_images never sources photos of real people; ask the user for those. " +
 	"Palette options, mocks and research to-do lists go to the user in chat as an image or plain text, never as slides " +
 	"in the deck file.";
 const START_INPUT = z.object({ context: z.string().max(500).optional().describe("What the deck or slide is for, if known.") });
@@ -219,7 +222,7 @@ function createServer(env: Env, lib: Library, key: string) {
 				"and CC BY photos (Openverse). Returns up to k results, each with its title, licence and either the SVG text or the photo's " +
 				"download and page links, plus a credit line only when the licence requires one; photo thumbnails follow as images.",
 			inputSchema: IMAGES_INPUT,
-			annotations: readOnly,
+			annotations: { ...readOnly, openWorldHint: true }, // it searches open public catalogues
 		},
 		async ({ kind, query, k }) => {
 			const q = normalise(query);
@@ -316,6 +319,9 @@ export const searcher = (lib: Library) => class Searcher extends DurableObject<E
 };
 export type Searcher = InstanceType<ReturnType<typeof searcher>>;
 
+// Set explicitly: a custom domain otherwise gets no Host check and only localhost Origins. localhost serves wrangler dev and the MCP Inspector.
+const HOSTS = ["mcp.eightytwenty.tech", "eightytwenty.socratic.workers.dev", "localhost", "127.0.0.1", "[::1]"];
+
 const PAGE_HEADERS = {
 	"content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
 	"x-content-type-options": "nosniff",
@@ -325,6 +331,7 @@ const PAGES: Record<string, [string, string]> = {
 	"/": [docs, "text/html; charset=utf-8"],
 	"/docs": [docs, "text/html; charset=utf-8"],
 	"/privacy": [privacy, "text/html; charset=utf-8"],
+	"/terms": [terms, "text/html; charset=utf-8"],
 	"/icon.svg": [icon, "image/svg+xml"],
 };
 
@@ -332,6 +339,9 @@ export const app = (lib: Library): ExportedHandler<Env> => ({
 	async fetch(request, env) {
 		const { pathname } = new URL(request.url);
 		if (pathname === "/mcp") {
+			// Before the body is read and the limiter charges the IP: a cross-site page must not put its visitor into cooldown.
+			const rejected = hostHeaderValidationResponse(request, HOSTS) ?? originValidationResponse(request, HOSTS);
+			if (rejected) return rejected;
 			const raw = request.method === "POST" ? await readCapped(request.clone()) : null;
 			if (raw === TOO_BIG) return rpcError(413, null, "The request body is over 4 MiB.");
 			const body: any = raw === null ? null : (() => { try { return JSON.parse(raw); } catch { return null; } })();
@@ -339,8 +349,10 @@ export const app = (lib: Library): ExportedHandler<Env> => ({
 			const denied = body ? await limit(request, env, body, key) : null;
 			if (denied) return denied;
 			// Hand the parsed body to the SDK (its parsedBody option); otherwise it clones and parses the body twice more.
-			return createMcpHandler(() => createServer(env, lib, key)).fetch(request, body ? { parsedBody: body } : undefined);
+			return createMcpHandler(() => createServer(env, lib, key), { allowedHostnames: HOSTS, allowedOriginHostnames: HOSTS }).fetch(request, body ? { parsedBody: body } : undefined);
 		}
+		if (pathname === "/.well-known/openai-apps-challenge" && request.method === "GET" && env.OPENAI_APPS_CHALLENGE)
+			return new Response(env.OPENAI_APPS_CHALLENGE, { headers: { "content-type": "text/plain; charset=utf-8", ...PAGE_HEADERS } });
 		const page = PAGES[pathname];
 		if (page && request.method === "GET") return new Response(page[0], { headers: { "content-type": page[1], ...PAGE_HEADERS } });
 		return new Response("Not found", { status: 404 });

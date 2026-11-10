@@ -3,7 +3,9 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-11-01",
   "compatibility_flags": ["nodejs_compat"],
+  // Both addresses serve the connector; Cloudflare creates the DNS record and certificate for the custom domain.
   "workers_dev": true,
+  "routes": [{ "pattern": "mcp.eightytwenty.tech", "custom_domain": true }],
   "observability": { "enabled": false },
   "rules": [{ "type": "Text", "globs": ["**/*.md", "**/*.svg"], "fallthrough": true }],
   // Wireframes are read only through the ASSETS binding: run_worker_first sends every request to the Worker,
@@ -25,6 +27,7 @@
     "DAILY_SEARCH_BUDGET": 5000,
     // find_images photo searches per UTC day across all clients that miss the cache (sized to Openverse's app quota).
     // OPENVERSE_CLIENT_ID and OPENVERSE_CLIENT_SECRET are secrets: wrangler secret put, never here.
+    // OPENAI_APPS_CHALLENGE (ChatGPT's domain verification token) is a secret too.
     "DAILY_PHOTO_BUDGET": 1000
   }
 }

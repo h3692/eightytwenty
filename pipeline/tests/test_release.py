@@ -13,6 +13,7 @@ from pipeline import release
 from pipeline.__main__ import main
 
 VERSION = "bge-m3/desc-v1/abc123"
+CUSTOM, WORKERS_DEV = "https://mcp.eightytwenty.tech/mcp", "https://eightytwenty.socratic.workers.dev/mcp"
 DEPLOY_OUT = "Uploaded eightytwenty (3.1 sec)\nDeployed eightytwenty triggers\nCurrent Version ID: 1234-abcd\n"
 CLEAN = {"deck-a-01": {"auto": "pass", "problems": [], "judge": "pass", "published": True},
          "deck-a-03": {"auto": "excluded", "problems": ["blank"], "judge": "excluded", "published": False,
@@ -70,7 +71,7 @@ class _Fake:
         self.lib, self.steps, self.sleeps, self.libraries, self.requests = lib, [], [], [], []
         self.fail, self.reports, self.live = set(), {}, [VERSION]
         self.port_open, self.ready, self.stubborn, self.embed_error, self.porcelain = False, True, False, None, ""
-        self.exited, self.rpc_error = False, None
+        self.exited, self.rpc_error, self.down = False, None, None
 
     def run(self, cmd, cwd=None, **kw):
         line = " ".join(map(str, cmd))
@@ -103,8 +104,10 @@ class _Fake:
                 raise urllib.error.URLError("Connection refused")
             self.steps.append("ready")
             return _Resp("{}")
-        assert req.full_url == "https://eightytwenty.socratic.workers.dev/mcp" and isinstance(context, ssl.SSLContext)
+        assert req.full_url in (CUSTOM, WORKERS_DEV) and isinstance(context, ssl.SSLContext)
         self.requests.append(req)
+        if req.full_url == self.down:
+            raise urllib.error.URLError("Connection refused")
         msg = json.loads(req.data)
         name = msg["params"].get("name", msg["method"])
         self.steps.append(f"rpc {name}")
@@ -154,7 +157,7 @@ def test_release_runs_every_step_in_order_deploying_before_loading_d1(fake, lib,
         "npx wrangler dev --config ../pipeline/embed_worker/wrangler.jsonc", "ready", "embed", "killpg 4242 SIGTERM",
         "package", "npx wrangler deploy",
         f"npx wrangler d1 execute eightytwenty-db --remote --file {lib.resolve() / 'records.sql'} -y",
-        "rpc initialize", "rpc find_references", "rpc get_playbook", "git rev-parse --short HEAD"]
+        *["rpc initialize", "rpc find_references", "rpc get_playbook"] * 2, "git rev-parse --short HEAD"]
     server = release.REPO / "server"
     assert fake.cwds[f"{sys.executable} -m pytest -q pipeline/tests"] == release.REPO
     assert all(cwd == server for line, cwd in fake.cwds.items() if line.startswith("npx"))
@@ -320,6 +323,30 @@ def test_a_worker_that_exits_early_fails_at_once_without_hiding_the_reason(fake,
         release.run(lib)
     assert "exited before it was ready" in str(e.value.code)
     assert len(fake.sleeps) <= 1 and not any(step.endswith("deploy") for step in fake.steps)
+
+
+def test_smoke_check_covers_the_custom_domain_then_workers_dev(fake, lib):
+    release.run(lib)
+    assert [r.full_url for r in fake.requests] == [CUSTOM] * 3 + [WORKERS_DEV] * 3
+
+
+def test_smoke_check_failing_on_the_second_host_names_it(fake, lib):
+    fake.down = WORKERS_DEV
+    with pytest.raises(SystemExit) as e:
+        release.run(lib)
+    assert fake.requests[0].full_url == CUSTOM  # the custom domain passed first
+    assert WORKERS_DEV in str(e.value.code) and CUSTOM not in str(e.value.code) and sum(fake.sleeps) == 90
+    assert "The Worker and D1 are already live; not checked: none." in str(e.value.code)
+    assert "git rev-parse --short HEAD" not in fake.steps
+
+
+def test_smoke_check_failing_on_the_first_host_lists_workers_dev_as_not_checked(fake, lib):
+    fake.down = CUSTOM
+    with pytest.raises(SystemExit) as e:
+        release.run(lib)
+    assert WORKERS_DEV not in [r.full_url for r in fake.requests]
+    assert str(e.value.code).startswith(f"Smoke check of {CUSTOM} failed for 90 s: ")
+    assert str(e.value.code).endswith(f"The Worker and D1 are already live; not checked: {WORKERS_DEV}.")
 
 
 def test_smoke_check_reports_the_servers_own_error_message(fake, lib):
