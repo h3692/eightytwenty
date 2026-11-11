@@ -26,7 +26,7 @@ export function toolEvent(name: string, args: Record<string, unknown>, outcome: 
 	if (outcome.error) delete filters.id; // get_reference accepts any id, so one that was not found may be user text
 	return {
 		event: "$mcp_tool_call",
-		distinct_id: crypto.randomUUID(), // a new anonymous id per call: calls cannot be linked
+		distinct_id: crypto.randomUUID(), // a new anonymous id per call: calls are not linked
 		properties: {
 			$mcp_tool_name: name,
 			$mcp_duration_ms: outcome.ms,
@@ -45,13 +45,15 @@ export function toolEvent(name: string, args: Record<string, unknown>, outcome: 
 	};
 }
 
-const clean = (s?: string) => s?.replace(/[^\w.\-]/g, "").slice(0, 64) || "unknown";
+const clean = (s?: string) => s?.replace(/[^\w.\-]/g, "").slice(0, 32) || "unknown";
+// Only the numeric prefix of the raw version (1.0.0-beta.1 -> 1.0.0), so no free text gets through.
+const numeric = (s?: string) => s?.match(/^v?(\d{1,5}(?:\.\d{1,5}){0,3})/)?.[1] ?? "unknown";
 
 // The AI app's announced clientInfo, else the first name/version product token of its User-Agent.
 export function clientName(info?: { name?: string; version?: string }, userAgent?: string | null): Client {
-	if (info?.name) return { name: clean(info.name), version: clean(info.version) };
+	if (info?.name) return { name: clean(info.name), version: numeric(info.version) };
 	const [, name, version] = userAgent?.match(/^\s*([^\s/]+)\/(\S+)/) ?? [];
-	return { name: clean(name), version: clean(version) };
+	return { name: clean(name), version: numeric(version) };
 }
 
 // Fire and forget: the delivery never delays, changes or fails the tool response.

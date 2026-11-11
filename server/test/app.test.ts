@@ -910,9 +910,9 @@ describe("pages", () => {
 		expect(html).not.toContain("—");
 	});
 
-	it.each([["/docs"], ["/privacy"], ["/terms"]])("%s footer links the docs, privacy and terms pages and the support email", async (path) => {
+	it.each([["/docs"], ["/privacy"], ["/terms"]])("%s footer links the docs, privacy and terms pages, the website and the support email", async (path) => {
 		const footer = (await (await call(path)).text()).match(/<footer>[\s\S]*<\/footer>/)?.[0] ?? "";
-		for (const s of ['href="/docs"', 'href="/privacy"', 'href="/terms"', 'href="mailto:eightytwenty.tech@gmail.com"']) expect(footer).toContain(s);
+		for (const s of ['href="/docs"', 'href="/privacy"', 'href="/terms"', 'href="mailto:eightytwenty.tech@gmail.com"', 'href="https://www.eightytwenty.tech/">eightytwenty</a>']) expect(footer).toContain(s);
 		if (path === "/docs") expect(footer).toContain("MIT licensed");
 	});
 
@@ -943,7 +943,9 @@ describe("pages", () => {
 	it("/privacy covers the connector's anonymous usage statistics and qualifies request logs", async () => {
 		const html = (await (await call("/privacy")).text()).toLowerCase();
 		for (const s of ["usage statistics", "posthog", "random id", "do not track", "global privacy control", "never sent", "ip address", "cookies", "accounts", "24 hours",
-			"cloudflare's request logging stays switched off. the only record of a call is the anonymous usage statistic above."]) expect(html).toContain(s);
+			"cloudflare's request logging stays switched off. beyond the rate-limit counter and cache above, the only record of a call is the anonymous usage statistic.",
+			"library id", "are not linked", "fixed labels"]) expect(html).toContain(s);
+		for (const s of ["layout id", "cannot be linked"]) expect(html).not.toContain(s);
 		expect(html).not.toContain("the server's request logging is switched off.");
 	});
 

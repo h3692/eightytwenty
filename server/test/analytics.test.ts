@@ -88,9 +88,15 @@ describe("clientName", () => {
 	});
 
 	it("sanitises and truncates", () => {
-		expect(clientName({ name: "<script>alert(1)</script>", version: "1.0;rm -rf" })).toEqual({ name: "scriptalert1script", version: "1.0rm-rf" });
+		expect(clientName({ name: "<script>alert(1)</script>", version: "1.0;rm -rf" })).toEqual({ name: "scriptalert1script", version: "1.0" });
 		const long = clientName({ name: "a".repeat(200), version: "1".repeat(200) });
-		expect(long).toEqual({ name: "a".repeat(64), version: "1".repeat(64) });
+		expect(long).toEqual({ name: "a".repeat(32), version: "11111" });
+	});
+
+	it("keeps only the numeric prefix of the version", () => {
+		for (const [raw, version] of [["1.0.0-beta.1", "1.0.0"], ["v1.2.3", "1.2.3"], ["2025-06-18", "2025"], ["1.0;rm -rf", "1.0"], ["abc", "unknown"], ["1.2.3.4.5", "1.2.3.4"]])
+			expect(clientName({ name: "x", version: raw }).version).toBe(version);
+		expect(clientName(undefined, "Claude-User/1.0-rc1 (+x)").version).toBe("1.0");
 	});
 });
 
