@@ -940,6 +940,13 @@ describe("pages", () => {
 		expect(html).not.toContain("no analytics or tracking, and no third-party scripts, fonts or images on these pages");
 	});
 
+	it("/privacy covers the connector's anonymous usage statistics and qualifies request logs", async () => {
+		const html = (await (await call("/privacy")).text()).toLowerCase();
+		for (const s of ["usage statistics", "posthog", "random id", "do not track", "global privacy control", "never sent", "ip address", "cookies", "accounts", "24 hours",
+			"cloudflare's request logging stays switched off. the only record of a call is the anonymous usage statistic above."]) expect(html).toContain(s);
+		expect(html).not.toContain("the server's request logging is switched off.");
+	});
+
 	it("serves an icon and sets a strict CSP with no external assets", async () => {
 		const res = await call("/icon.svg");
 		expect(res.headers.get("content-type")).toBe("image/svg+xml");
