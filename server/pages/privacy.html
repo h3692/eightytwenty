@@ -21,7 +21,7 @@ footer { margin-top: 3rem; color: var(--muted); font-size: .9rem; }
 <body>
 <main>
 <h1>Privacy</h1>
-<p>eightytwenty is a read-only connector with no accounts. This page says what it receives and what it keeps.</p>
+<p>eightytwenty is a read-only connector with no accounts. This page says what it receives and what it keeps, and what the website at eightytwenty.tech collects.</p>
 
 <h2>What a request sends</h2>
 <p>The tool arguments your assistant passes: the search text and filters for <code>find_references</code> and <code>find_deck_flows</code>, the kind and search terms for <code>find_images</code>, a stage name for <code>get_playbook</code>, or an id for <code>get_reference</code>. Nothing else from your chat or your files is sent.</p>
@@ -37,7 +37,16 @@ footer { margin-top: 3rem; color: var(--muted); font-size: .9rem; }
 </ul>
 
 <h2>What is not used</h2>
-<p>No accounts, no cookies, no analytics or tracking, and no third-party scripts, fonts or images on these pages.</p>
+<p>The connector has no accounts. These pages (docs, privacy and terms) set no cookies and run no analytics, tracking or third-party scripts, fonts or images.</p>
+
+<h2>The website</h2>
+<ul>
+<li><strong>Visits are counted with PostHog in cookieless mode.</strong> Nothing is stored in your browser: no cookies, local storage or session storage. PostHog counts visitors with a daily hash it works out on its own servers, so you are not followed from one day to the next. It records page views, which buttons and links are clicked (such as Try the plugin, Add to Claude, the install tabs and the links to these pages), how far down the page you scroll, and whether the contact form was sent or failed. It never records what you type into the form. Session recording and surveys are off.</li>
+<li><strong>Do Not Track and Global Privacy Control are honoured.</strong> If your browser sends either, the analytics code is not loaded and nothing is sent.</li>
+<li><strong>Analytics data goes to PostHog's US cloud</strong> through eightytwenty.tech/ingest, and PostHog processes it under its own privacy policy.</li>
+<li><strong>The contact form</strong> sends your name, email, school or company (if you give one), topic and message to Formspree, which emails them to eightytwenty.tech@gmail.com. They are used only to reply to you. Formspree processes them under its own privacy policy.</li>
+<li><strong>Hosting.</strong> The website is hosted on Vercel and served through Cloudflare, which process each request to deliver it.</li>
+</ul>
 
 <h2>Infrastructure</h2>
 <p>The connector runs on Cloudflare Workers. Cloudflare processes each request to deliver it and may keep its own operational data under its privacy policy.</p>
