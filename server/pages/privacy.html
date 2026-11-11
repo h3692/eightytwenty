@@ -33,7 +33,8 @@ footer { margin-top: 3rem; color: var(--muted); font-size: .9rem; }
 <ul>
 <li><strong>Your IP address</strong> is used only for rate limits. It sits in a request counter that is deleted 24 hours after your last request. Requests that come from claude.ai arrive from Anthropic's servers and share one counter, so your own address is not seen.</li>
 <li><strong>Search text is not logged or stored.</strong> To return identical results for identical searches, results (image results too) are cached under a one-way hash of the normalised search text and filters, never the text itself. Cached results are dropped when the library is rebuilt.</li>
-<li><strong>No request logs.</strong> The server's request logging is switched off.</li>
+<li><strong>Usage statistics.</strong> For each tool call, one anonymous record goes to PostHog's US cloud. It holds only: the tool name; whether the call succeeded and, if not, the error type (budget, not found or other); how long it took; how many results a search returned; the options picked from fixed lists (slide type, industry, data type, impact, style, deck length, image kind, number of results asked for, playbook stage) and a library id only when that id exists in the library; the name and version your AI app announces; the server's name and version; and fixed labels identifying the source as this connector. Never sent: your search text or image search terms, the context you give, results, error text, your IP address or anything derived from it, or anything that identifies you. Each record gets a fresh random id, so records are not linked to each other or to you. If your client sends Do Not Track or Global Privacy Control, nothing is sent. PostHog notes the network address each record arrives from, which is Cloudflare's server, not yours.</li>
+<li><strong>No request logs.</strong> Cloudflare's request logging stays switched off. Beyond the rate-limit counter and cache above, the only record of a call is the anonymous usage statistic.</li>
 </ul>
 
 <h2>What is not used</h2>
@@ -49,9 +50,9 @@ footer { margin-top: 3rem; color: var(--muted); font-size: .9rem; }
 </ul>
 
 <h2>Infrastructure</h2>
-<p>The connector runs on Cloudflare Workers. Cloudflare processes each request to deliver it and may keep its own operational data under its privacy policy.</p>
+<p>The connector runs on Cloudflare Workers. Cloudflare processes each request to deliver it and may keep its own operational data under its privacy policy. Usage statistics go to PostHog, which processes them under its own privacy policy.</p>
 
-<footer><a href="/docs">Docs</a> · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="mailto:eightytwenty.tech@gmail.com">eightytwenty.tech@gmail.com</a></footer>
+<footer><a href="/docs">Docs</a> · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="https://www.eightytwenty.tech/">eightytwenty</a> · <a href="mailto:eightytwenty.tech@gmail.com">eightytwenty.tech@gmail.com</a></footer>
 </main>
 </body>
 </html>

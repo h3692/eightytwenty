@@ -22,6 +22,7 @@ import docs from "../pages/index.html";
 import privacy from "../pages/privacy.html";
 import terms from "../pages/terms.html";
 import icon from "../pages/icon.svg";
+import { clientName, SERVER_VERSION, tracked } from "./analytics";
 import { findImages, type Images, type Kind } from "./images";
 import { cached, DEFAULT_FLAGS, LENGTHS, normalise, search, searchFlows, store, uncached, uncachedFlows, type FlowQuery, type Library, type Query } from "./search";
 
@@ -89,14 +90,21 @@ const INSTRUCTIONS = "eightytwenty is for researching and building decks: case c
 	"in the deck file.";
 const START_INPUT = z.object({ context: z.string().max(500).optional().describe("What the deck or slide is for, if known.") });
 
-function createServer(env: Env, lib: Library, key: string) {
+function createServer(env: Env, lib: Library, key: string, ctx: ExecutionContext, hints: { dnt: boolean; userAgent: string | null }) {
+	// Per request (createServer runs once per request): what the usage event needs beyond the arguments.
+	const meta: { errorType?: string; result_count?: number } = {};
 	// Spends the daily budget only when a search misses the cache, just before the Searcher runs it.
 	const spend = async (photos = false) => {
 		const v = await env.LIMITER.get(env.LIMITER.idFromName("global")).spend(key, limitsOf(env), undefined, photos);
-		if (!v.ok) throw new Error(v.message);
+		if (!v.ok) {
+			meta.errorType = "budget";
+			throw new Error(v.message);
+		}
 	};
 
-	const server = new McpServer({ name: "eightytwenty", version: "1.0.0" }, { instructions: INSTRUCTIONS });
+	const server = new McpServer({ name: "eightytwenty", version: SERVER_VERSION }, { instructions: INSTRUCTIONS });
+	// Wraps each tool callback: one anonymous usage event per call (src/analytics.ts).
+	const deps = { env, ctx, hints, meta, client: () => clientName(server.server.getClientVersion(), hints.userAgent) };
 
 	server.registerPrompt(
 		"start",
@@ -126,9 +134,9 @@ function createServer(env: Env, lib: Library, key: string) {
 			inputSchema: PLAYBOOK_INPUT,
 			annotations: readOnly,
 		},
-		async ({ stage }) => {
+		tracked("get_playbook", async ({ stage }) => {
 			return { content: [text(stage ? PLAYBOOK[stage] : PLAYBOOK_INDEX), REMINDER] };
-		},
+		}, deps),
 	);
 
 	server.registerTool(
@@ -142,15 +150,16 @@ function createServer(env: Env, lib: Library, key: string) {
 			inputSchema: FIND_INPUT,
 			annotations: readOnly,
 		},
-		async (args) => {
+		tracked("find_references", async (args) => {
 			const { results, library_version } = await search(env, lib, args, DEFAULT_FLAGS,
 				async (q, k) => (await spend(), env.SEARCHER.get(env.SEARCHER.idFromName("global")).search(q, k)));
+			meta.result_count = results.length;
 			if (!results.length)
 				return { content: [text(`No references match these filters. Try fewer filters or a broader purpose. (library_version ${library_version})`), REMINDER] };
 			const lines = results.map((r, i) => `${i + 1}. ${r.id} | ${r.slide_type} | score ${r.score}\n   Purpose: ${r.purpose}\n   Why it works: ${r.why_it_works}` +
 				`\n   Kinds: ${r.kinds}${r.impact === "none" ? "" : ` | impact: ${r.impact}`}\n   Style: ${r.style} | When to use: ${r.when_to_use}`);
 			return { content: [text(`library_version ${library_version}\n\n${lines.join("\n")}\n\nCall get_reference with an id for its layout, mockup and design DNA.`), REMINDER] };
-		},
+		}, deps),
 	);
 
 	server.registerTool(
@@ -164,14 +173,15 @@ function createServer(env: Env, lib: Library, key: string) {
 			inputSchema: FLOWS_INPUT,
 			annotations: readOnly,
 		},
-		async (args) => {
+		tracked("find_deck_flows", async (args) => {
 			const { results, library_version } = await searchFlows(env, lib, args,
 				async (q, k) => (await spend(), env.SEARCHER.get(env.SEARCHER.idFromName("global")).flows(q, k)));
+			meta.result_count = results.length;
 			if (!results.length)
 				return { content: [text(`No deck flows match these filters. Try fewer filters or a broader purpose. (library_version ${library_version})`), REMINDER] };
 			const lines = results.map((r, i) => `${i + 1}. ${r.id} | ${r.arc} | ${r.length} deck | ${r.industry} | ${r.style} style | score ${r.score}\n   Sections: ${r.sections}\n   Why the flow works: ${r.why_the_flow_works}`);
 			return { content: [text(`library_version ${library_version}\n\n${lines.join("\n")}\n\nCall get_reference with a deck id for its full flow, then on its steps' slide ids.`), REMINDER] };
-		},
+		}, deps),
 	);
 
 	server.registerTool(
@@ -186,7 +196,7 @@ function createServer(env: Env, lib: Library, key: string) {
 			inputSchema: REFERENCE_INPUT,
 			annotations: readOnly,
 		},
-		async ({ id }) => {
+		tracked("get_reference", async ({ id }) => {
 			if (DECK_ID.test(id)) {
 				const [flow, published] = await env.DB.batch<{ record?: string; id?: string }>([
 					env.DB.prepare("SELECT record FROM flows WHERE id = ?").bind(id),
@@ -210,7 +220,7 @@ function createServer(env: Env, lib: Library, key: string) {
 			let bin = "";
 			for (const b of bytes) bin += String.fromCharCode(b);
 			return { content: [text(dna), { type: "image" as const, data: btoa(bin), mimeType: "image/png" }] };
-		},
+		}, deps),
 	);
 
 	server.registerTool(
@@ -224,7 +234,7 @@ function createServer(env: Env, lib: Library, key: string) {
 			inputSchema: IMAGES_INPUT,
 			annotations: { ...readOnly, openWorldHint: true }, // it searches open public catalogues
 		},
-		async ({ kind, query, k }) => {
+		tracked("find_images", async ({ kind, query, k }) => {
 			const q = normalise(query);
 			const [key, hit] = await cached(env, ["images", kind, q, k ?? null]);
 			let found: Images;
@@ -233,6 +243,7 @@ function createServer(env: Env, lib: Library, key: string) {
 				if (kind === "photo") await spend(true); // only photo searches that miss the cache spend the photo budget
 				found = await env.SEARCHER.get(env.SEARCHER.idFromName("global")).images(kind, q, k, key);
 			}
+			meta.result_count = found.results.length;
 			const lines = found.results.map((r, i) => [
 				`${i + 1}. ${r.title} | ${r.licence}${r.note ? ` | note: ${r.note}` : ""}${r.thumbnail === undefined ? "" : ` | thumbnail ${r.thumbnail + 1}`}`,
 				...(r.credit ? [`   Credit: ${r.credit}`] : []),
@@ -246,7 +257,7 @@ function createServer(env: Env, lib: Library, key: string) {
 				...(found.thumbnails.length ? ["Thumbnails follow as images, in order: thumbnail 1 first."] : []),
 			].join("\n");
 			return { content: [text(summary), REMINDER, ...found.thumbnails.map((t) => ({ type: "image" as const, ...t }))] };
-		},
+		}, deps),
 	);
 
 	return server;
@@ -336,7 +347,7 @@ const PAGES: Record<string, [string, string]> = {
 };
 
 export const app = (lib: Library): ExportedHandler<Env> => ({
-	async fetch(request, env) {
+	async fetch(request, env, ctx) {
 		const { pathname } = new URL(request.url);
 		if (pathname === "/mcp") {
 			// Before the body is read and the limiter charges the IP: a cross-site page must not put its visitor into cooldown.
@@ -348,8 +359,9 @@ export const app = (lib: Library): ExportedHandler<Env> => ({
 			const key = clientKey(request.headers.get("cf-connecting-ip"));
 			const denied = body ? await limit(request, env, body, key) : null;
 			if (denied) return denied;
+			const hints = { dnt: request.headers.get("dnt") === "1" || request.headers.get("sec-gpc") === "1", userAgent: request.headers.get("user-agent") };
 			// Hand the parsed body to the SDK (its parsedBody option); otherwise it clones and parses the body twice more.
-			return createMcpHandler(() => createServer(env, lib, key), { allowedHostnames: HOSTS, allowedOriginHostnames: HOSTS }).fetch(request, body ? { parsedBody: body } : undefined);
+			return createMcpHandler(() => createServer(env, lib, key, ctx, hints), { allowedHostnames: HOSTS, allowedOriginHostnames: HOSTS }).fetch(request, body ? { parsedBody: body } : undefined);
 		}
 		if (pathname === "/.well-known/openai-apps-challenge" && request.method === "GET" && env.OPENAI_APPS_CHALLENGE)
 			return new Response(env.OPENAI_APPS_CHALLENGE, { headers: { "content-type": "text/plain; charset=utf-8", ...PAGE_HEADERS } });
