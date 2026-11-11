@@ -834,6 +834,12 @@ describe("pages", () => {
 		for (const s of ["rate limit", "24 hours", "cookies", "accounts", "logged", "image search terms", "openverse", "wikimedia commons", "iconify", "app registration"]) expect(html.toLowerCase()).toContain(s);
 	});
 
+	it("/privacy covers the website's cookieless analytics and contact form", async () => {
+		const html = (await (await call("/privacy")).text()).toLowerCase();
+		for (const s of ["eightytwenty.tech", "posthog", "cookieless", "do not track", "global privacy control", "never records what you type", "formspree", "eightytwenty.tech@gmail.com", "vercel"]) expect(html).toContain(s);
+		expect(html).not.toContain("no analytics or tracking, and no third-party scripts, fonts or images on these pages");
+	});
+
 	it("serves an icon and sets a strict CSP with no external assets", async () => {
 		const res = await call("/icon.svg");
 		expect(res.headers.get("content-type")).toBe("image/svg+xml");
