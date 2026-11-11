@@ -25,6 +25,7 @@
 </p>
 
 ---
+https://www.eightytwenty.tech/
 
 eightytwenty gives your assistant the method strong case-competition teams use to build decks. It asks the right questions
 first, writes the storyline and a plan for every slide, waits for your approval, then builds and checks the deck. While it
