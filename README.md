@@ -22,10 +22,10 @@
   &middot; <a href="#chatgpt">Add to ChatGPT</a>
   &middot; <a href="#other-clients">Other clients</a>
   &middot; <a href="https://mcp.eightytwenty.tech/docs">Docs</a>
+  &middot; <a href="https://www.eightytwenty.tech/"> Website </a>
 </p>
 
 ---
-<p allign="center" https://www.eightytwenty.tech/ />
 
 eightytwenty gives your assistant the method strong case-competition teams use to build decks. It asks the right questions
 first, writes the storyline and a plan for every slide, waits for your approval, then builds and checks the deck. While it
