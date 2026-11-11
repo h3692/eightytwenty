@@ -204,6 +204,18 @@ describe("tracked", () => {
 		expect(sent().map((p) => p.$mcp_error_type)).toEqual(["exception", "budget"]);
 	});
 
+	it("never lets a failing event build replace the tool's result or error", async () => {
+		spyFetch();
+		const ctx = fakeCtx();
+		const broken = { ...deps(ctx), client: () => { throw new Error("client failed"); } };
+		const result = { content: [] };
+		expect(await tracked("get_playbook", async (_args: object) => result, broken)({}, {})).toBe(result);
+		const error = new Error("tool failed");
+		await expect(tracked("get_playbook", async (_args: object) => { throw error; }, broken)({}, {})).rejects.toBe(error);
+		await ctx.settle();
+		expect(fetched).toEqual([]);
+	});
+
 	it("reads the client lazily, at call time", async () => {
 		spyFetch();
 		const ctx = fakeCtx();

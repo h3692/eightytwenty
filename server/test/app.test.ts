@@ -673,6 +673,106 @@ describe("rate limits", () => {
 	});
 });
 
+describe("usage statistics", () => {
+	const PH = "https://ph.test/i/v0/e/";
+	const on = (over: Record<string, unknown> = {}) => testEnv({ POSTHOG_PROJECT_TOKEN: "phc_test", POSTHOG_HOST: "https://ph.test", ...over });
+	const CALLS = [
+		["get_playbook", { stage: "qa" }],
+		["find_references", { purpose: "SECRET-PURPOSE market share", industry: "technology", k: 2 }],
+		["find_deck_flows", { purpose: "SECRET-PURPOSE win the judges", style: "bold-pitch" }],
+		["get_reference", { id: rows[0].id }],
+		["find_images", { kind: "icon", query: "SECRET-QUERY truck", k: 2 }],
+	] as const;
+	let fetched: { url: string; body: string }[];
+	let posthog: () => Promise<Response>;
+	beforeEach(() => {
+		fetched = [];
+		posthog = async () => new Response(null, { status: 200 });
+		vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+			const url = String(input instanceof Request ? input.url : input);
+			fetched.push({ url, body: String(init?.body ?? "") });
+			return url === PH ? posthog() : new Response("not found", { status: 404 }); // image sources answer 404: find_images still succeeds
+		});
+	});
+	afterEach(() => vi.restoreAllMocks());
+	const sent = () => fetched.filter((f) => f.url === PH);
+	const events = () => sent().map((f) => JSON.parse(f.body));
+	const used = () => runInDurableObject(env.LIMITER.get(env.LIMITER.idFromName("global")), (l: Limiter) =>
+		l.sql.exec<{ used: number }>("SELECT used FROM budget WHERE day = ?", new Date().toISOString().slice(0, 10)).toArray()[0]?.used ?? 0);
+
+	it("sends one $mcp_tool_call per tool call with only its allowlisted filters, never free text or the IP", async () => {
+		const from = nextIp();
+		const filters = [{ stage: "qa" }, { industry: "technology", k: 2, result_count: 2 }, { style: "bold-pitch", result_count: 1 }, { id: rows[0].id }, { kind: "icon", k: 2, result_count: 0 }];
+		for (const [i, [name, args]] of CALLS.entries()) {
+			fetched = [];
+			expect((await tool(name, args, { e: on(), from })).body.result.isError, name).toBeFalsy();
+			const [event, ...rest] = events();
+			expect(rest, name).toEqual([]);
+			expect(event, name).toMatchObject({ api_key: "phc_test", event: "$mcp_tool_call", properties: { $mcp_tool_name: name, $mcp_is_error: false, $mcp_server_version: "1.0.0", ...filters[i] } });
+			expect(Object.keys(event.properties).filter((k) => !k.startsWith("$")).sort(), name).toEqual(Object.keys(filters[i]).sort());
+			expect(sent()[0].body, name).not.toMatch(/SECRET|203\.0\.113\./);
+		}
+	});
+
+	it("classifies not_found, budget and exception, and sends get_reference's id only when it was found", async () => {
+		await tool("get_reference", { id: "0000000000000000-01" }, { e: on() });
+		await tool("get_reference", { id: "ffffffffffffffff" }, { e: on() });
+		expect((await tool("find_references", { purpose: "an uncached budget probe" }, { e: on({ DAILY_SEARCH_BUDGET: await used() }) })).body.result.isError).toBe(true);
+		await seed(env.DB, "bge-m3/desc-v1/other"); // the library_version mismatch makes the search throw
+		expect((await tool("find_references", { purpose: "market share" }, { e: on() })).body.result.isError).toBe(true);
+		const props = events().map((e) => e.properties);
+		expect(props.map((p) => [p.$mcp_tool_name, p.$mcp_is_error, p.$mcp_error_type])).toEqual([
+			["get_reference", true, "not_found"], ["get_reference", true, "not_found"], ["find_references", true, "budget"], ["find_references", true, "exception"],
+		]);
+		expect(props[0]).not.toHaveProperty("id");
+		expect(props[1]).not.toHaveProperty("id");
+		expect(JSON.stringify(sent())).not.toMatch(/0000000000000000-01|ffffffffffffffff|budget is used up|library_version/);
+	});
+
+	it("sends nothing for invalid arguments, an unknown tool, a prompt, DNT or GPC, or a 429", async () => {
+		expect((await tool("find_references", { purpose: "SECRET", k: 9 }, { e: on() })).body.result?.isError ?? true).toBe(true);
+		await tool("no_such_tool", {}, { e: on() });
+		await rpc("prompts/get", { name: "start", arguments: { context: "SECRET-CONTEXT" } }, { e: on() });
+		expect((await tool("get_playbook", {}, { e: on(), headers: { dnt: "1" } })).body.result.isError).toBeFalsy();
+		expect((await tool("get_playbook", {}, { e: on(), headers: { "sec-gpc": "1" } })).body.result.isError).toBeFalsy();
+		expect(sent()).toEqual([]);
+		const e = on({ LIMIT_PER_MINUTE: 1 }), from = nextIp();
+		expect((await tool("get_playbook", {}, { e, from })).res.status).toBe(200);
+		expect((await tool("get_playbook", {}, { e, from })).res.status).toBe(429);
+		expect(sent()).toHaveLength(1);
+	});
+
+	it("names the client from its per-request clientInfo, else from the User-Agent", async () => {
+		const meta = { "io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientInfo": { name: "claude-ai", version: "0.9.1" }, "io.modelcontextprotocol/clientCapabilities": {} };
+		const headers = { "user-agent": "python-httpx/0.28.1 (extra)" };
+		expect((await rpc("tools/call", { name: "get_playbook", arguments: {}, _meta: meta }, { e: on(), headers: { ...headers, "mcp-protocol-version": "2026-07-28", "mcp-method": "tools/call", "mcp-name": "get_playbook" } })).body.result.isError).toBeFalsy();
+		expect((await tool("get_playbook", {}, { e: on(), headers })).body.result.isError).toBeFalsy();
+		expect(events().map((e) => [e.properties.$mcp_client_name, e.properties.$mcp_client_version])).toEqual([["claude-ai", "0.9.1"], ["python-httpx", "0.28.1"]]);
+	});
+
+	it("sends nothing to PostHog without a token", async () => {
+		for (const [name, args] of CALLS) await tool(name, args);
+		expect(fetched.filter((f) => /posthog|ph\.test/.test(f.url))).toEqual([]);
+	});
+
+	it("returns the same response with and without a token, and when PostHog rejects or answers 500", async () => {
+		const answer = async (name: string, args: Record<string, unknown>, e: Env) => {
+			const { res, body } = await tool(name, args, { e });
+			return { status: res.status, type: res.headers.get("content-type"), body };
+		};
+		for (const [name, args] of [...CALLS, ["get_reference", { id: "0000000000000000-01" }]] as const) {
+			const expected = await answer(name, args, testEnv());
+			expect(await answer(name, args, on()), name).toEqual(expected);
+			posthog = async () => { throw new Error("network down"); };
+			expect(await answer(name, args, on()), name).toEqual(expected);
+			posthog = async () => new Response("oops", { status: 500 });
+			expect(await answer(name, args, on()), name).toEqual(expected);
+			posthog = async () => new Response(null, { status: 200 });
+		}
+		expect(sent()).toHaveLength(18);
+	});
+});
+
 describe("clientKey", () => {
 	it("puts Anthropic egress ranges in one shared bucket", () => {
 		expect(clientKey("160.79.104.1")).toBe("anthropic");

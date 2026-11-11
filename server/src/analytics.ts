@@ -78,7 +78,9 @@ export function tracked<A extends Record<string, unknown>, C, R extends object>(
 			error = deps.meta.errorType ?? "exception";
 			throw e;
 		} finally {
-			send(deps.env, deps.ctx, deps.hints, toolEvent(name, args, { ms: Date.now() - start, error }, deps.meta, deps.client()));
+			try {
+				send(deps.env, deps.ctx, deps.hints, toolEvent(name, args, { ms: Date.now() - start, error }, deps.meta, deps.client()));
+			} catch {} // analytics never replaces the tool's result or error
 		}
 	};
 }
