@@ -28,6 +28,7 @@
     // find_images photo searches per UTC day across all clients that miss the cache (sized to Openverse's app quota).
     // OPENVERSE_CLIENT_ID and OPENVERSE_CLIENT_SECRET are secrets: wrangler secret put, never here.
     // OPENAI_APPS_CHALLENGE (ChatGPT's domain verification token) is a secret too.
+    // GLAMA_CLAIM (the Glama connector claim JSON) is a secret too.
     "DAILY_PHOTO_BUDGET": 1000,
     // Anonymous usage statistics go here. POSTHOG_PROJECT_TOKEN is a secret (wrangler secret put); unset, nothing is sent.
     "POSTHOG_HOST": "https://us.i.posthog.com"
