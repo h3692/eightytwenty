@@ -1,0 +1,18 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.h3692/eightytwenty",
+  "title": "eightytwenty",
+  "description": "Builds case-competition and pitch decks in PowerPoint from the layouts behind winning decks.",
+  "websiteUrl": "https://www.eightytwenty.tech",
+  "repository": {
+    "url": "https://github.com/h3692/eightytwenty",
+    "source": "github"
+  },
+  "version": "1.0.0",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp.eightytwenty.tech/mcp"
+    }
+  ]
+}
