@@ -365,6 +365,8 @@ export const app = (lib: Library): ExportedHandler<Env> => ({
 		}
 		if (pathname === "/.well-known/openai-apps-challenge" && request.method === "GET" && env.OPENAI_APPS_CHALLENGE)
 			return new Response(env.OPENAI_APPS_CHALLENGE, { headers: { "content-type": "text/plain; charset=utf-8", ...PAGE_HEADERS } });
+		if (pathname === "/.well-known/glama.json" && request.method === "GET" && env.GLAMA_CLAIM)
+			return new Response(env.GLAMA_CLAIM, { headers: { "content-type": "application/json; charset=utf-8", ...PAGE_HEADERS } });
 		const page = PAGES[pathname];
 		if (page && request.method === "GET") return new Response(page[0], { headers: { "content-type": page[1], ...PAGE_HEADERS } });
 		return new Response("Not found", { status: 404 });

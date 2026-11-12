@@ -929,6 +929,20 @@ describe("pages", () => {
 		expect((await call("/.well-known/openai-apps-challenge", {}, testEnv({ OPENAI_APPS_CHALLENGE: "" }))).status).toBe(404);
 	});
 
+	it("serves the Glama connector claim from its secret as JSON", async () => {
+		const claim = '{"$schema":"https://glama.ai/mcp/schemas/connector.json","claim":"glama_claim_test"}';
+		const res = await call("/.well-known/glama.json", {}, testEnv({ GLAMA_CLAIM: claim }));
+		expect(res.status).toBe(200);
+		expect(res.headers.get("content-type")).toBe("application/json; charset=utf-8");
+		expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+		expect(await res.text()).toBe(claim);
+	});
+
+	it("answers 404 on the Glama claim path when the secret is unset or empty", async () => {
+		expect((await call("/.well-known/glama.json")).status).toBe(404);
+		expect((await call("/.well-known/glama.json", {}, testEnv({ GLAMA_CLAIM: "" }))).status).toBe(404);
+	});
+
 	it("/privacy states what is sent and kept", async () => {
 		const html = await (await call("/privacy")).text();
 		for (const s of ["rate limit", "24 hours", "cookies", "accounts", "logged", "image search terms", "openverse", "wikimedia commons", "iconify", "app registration"]) expect(html.toLowerCase()).toContain(s);
