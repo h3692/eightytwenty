@@ -62,10 +62,12 @@ Chapters (stages): `workflow`, `narrative`, `anatomy-and-taglines`, `archetypes`
   with it, flag that before planning.
 - **Read before you edit.** Before any change, read the slide's current content and formatting from the latest deck
   file. The user may have edited it by hand.
-- **Distinctive by default.** Run `distinctive-design` on every slide without being asked.
+- **Distinctive by default.** Run `distinctive-design` on every slide without being asked (in finance-pitch decks,
+  within `polish`, Finance pitch decks).
 - **Rotate how the key insight is shown** (`distinctive-design`, insight devices).
 - **Nothing extra in the deck.** Design options, mocks, research to-dos and asset lists go to the user in chat, as an
-  image or plain text, never as slides (hidden or not) in the deck file.
+  image or plain text, never as slides (hidden or not) in the deck file. The one exception: the user's own originals
+  kept beside a new version they asked for (Step 9).
 - **Pictures with discretion.** Image slots only where strong decks use them; data slides stay clean.
 - No em dashes and no arrow characters in slide text (`polish`).
 
@@ -90,10 +92,11 @@ the user can accept with "yes".
 
 1. **What the deck is for.** The competition, pitch, assignment or project; the prompt or brief; who judges or decides;
    the presentation length; and is the deck presented live, or sent to be read on its own? A file handed to judges
-   counts as read. Ask the live-or-read part even when the prompt answers the rest. The answer sets the density
-   (`polish`): presented live and the file is not handed over means the presentation tiers; anything else means the
-   reading tiers. If an attached deck uses a font other than Helvetica Neue, add: "Keep [font] or switch to Helvetica
-   Neue?" (mention if it isn't installed by default on Windows or Mac).
+   counts as read. Ask the live-or-read part even when the prompt answers the rest. The answer sets the speaker notes
+   (`polish`); density is fixed by slide type, never by this answer. If an attached deck uses a font other than
+   Helvetica Neue, add: "Keep [font] or switch to Helvetica Neue?"; never convert a font silently. Flag once that
+   Helvetica Neue is not installed on Windows and usually cannot be embedded, so a PDF export is safest for
+   presentation day.
 2. **The end belief.** What must the audience believe at the end, in one sentence? Offer 2 to 3 candidate answers.
 3. **The deck style.** Offer the six styles with one line each and recommend one from the prompt and audience:
    - **Consulting-structured**: action titles, labelled rows, dense logic, tight grids (the classic consulting deck).
@@ -102,6 +105,7 @@ the user can accept with "yes".
    - **Data-led**: charts and numbers carry each slide, annotations do the talking.
    - **Minimal editorial**: generous white space, restrained colour, typographic hierarchy.
    - **Finance pitch**: dense tables, football fields, returns charts, action titles (banker-style pitch and deal books).
+     Its own rules apply (`polish`, Finance pitch decks).
    Or: "attach a deck whose look you want to match". The answer becomes the `style` filter for `find_deck_flows` and
    `find_references`.
 4. **The target market.** Who exactly is the client serving, and what do they need that they are not getting today?
@@ -117,8 +121,9 @@ answer covers a later question, drop it and adjust the count.
 ## Step 2: Questions (slide mode)
 
 Read the slide the user names, its neighbours and the deck's style (3 to 5 content slides: fonts, sizes by role, brand
-colour, header and tracker form, margins). Say how many questions (usually 3 to 5, never more than 6), then ask one at
-a time, ordered by how much the answer changes the slide:
+colour, header and tracker form, margins, and whether it is a banker pitch or deal book, which makes it `finance-pitch`
+as in `attached-decks`). Say how many questions (usually 3 to 5, never more than 6), then ask one at a time, ordered
+by how much the answer changes the slide:
 
 1. **The claim.** What should the audience believe after this slide? Offer 2 to 3 candidate taglines. Always first.
 2. **The proof.** Which single number or fact carries it? It becomes the insight device.
@@ -127,9 +132,10 @@ a time, ordered by how much the answer changes the slide:
 5. **The link.** How does this slide connect to the recommendation, and what does the previous slide establish?
 
 If there is no deck yet, ask the deck-style question (Step 1, question 3) too, with whether the deck is presented live
-or read (it sets the density, as in Step 1, question 1). Never ask "What do you want on the slide?", colour preferences
-(those come in Step 8), density (set by the deck type from question 1, never asked separately), or anything decidable
-from the deck, the prompt or this playbook.
+or read (it sets the speaker notes, as in Step 1, question 1). If the deck's font is not Helvetica Neue, ask whether
+to keep it or switch, as in Step 1, question 1; never convert it silently. Never ask "What do you want on the
+slide?", colour preferences (those come in Step 8), density (fixed by slide type in `polish`, never asked), or anything
+decidable from the deck, the prompt or this playbook.
 
 ## Step 3: The plan, in text
 
@@ -143,8 +149,8 @@ to inform the options:
   `effect`, and `get_reference(id)` on the strongest: the header and tagline form, the exhibit arrangement, the insight
   device, how the space is split, and the element notes.
 - If a style filter returns nothing, search again without it and keep the chosen style in the layout spec.
-- References are not limited to slides at the deck's density. For a presentation deck, take the structure or one section
-  of a dense reference and drop the rest.
+- References are not limited to slides at the slide's density. For a Medium slide, take the structure or one section
+  of a denser reference and drop the rest.
 
 **Deck mode plan**: the storyline table (`narrative`), then one layout spec per slide.
 **Slide mode plan**: 2 to 3 layout options for the slide, each a layout spec with a one-line why. One may be a single
@@ -200,8 +206,8 @@ done items struck through. Never put it in the deck.
   slots with sourced images or the user's own (`visual-rules-and-design-options`, Sourcing), cropped to the slot with the
   overlay kept. Every number still missing stays a placeholder
   (`[X%]`, `[verify: ~X]`) and is on the research to-do list.
-- The tagline must be provable from what is on the slide. Bold 1 to 3 phrases per box that carry the argument. Finish
-  the insight device last and run the findability test.
+- The tagline must be provable from what is on the slide. Bold 1 to 3 phrases per box that carry the argument (not in
+  finance-pitch decks). Finish the insight device last and run the findability test.
 - **Distinctiveness pass** before showing the result: re-run the swap test and signature check on the finished slide.
   With real content in, there is usually a sharper client-specific move than at the plan stage. Make one more push,
   check the guardrails and the clarity test, and report the push in one line.
@@ -217,6 +223,10 @@ write the strongest defensible version and flag it. Then a deck-wide polish pass
 the slides built, the open research to-do and image slots, flagged weak claims, and the top 1 to 2 gaps to ask for. A
 slide the storyline did not include needs its own plan and approval first.
 
+After the first full deck pass, offer a bolder alternate of each slide; if the user wants
+them, deliver them in a separate alternates file so they can pick per slide, never in the deck. Not in finance-pitch
+decks (`polish`, Finance pitch decks).
+
 ## Step 8: Design options (after the first finished slide)
 
 The first time a slide is finished in this deck, offer the palette options (`visual-rules-and-design-options`) as an
@@ -227,7 +237,10 @@ the applied palette and never reopen the choice unless asked.
 ## Step 9: Edits (every later turn)
 
 1. Read the current slide first (content, positions, formatting).
-2. Make the minimal change that achieves the request; preserve everything else.
+2. Make the minimal change that achieves the request; preserve everything else. Never move, resize or restyle anything
+   the request did not name (making a chart full width leaves the rows below it as they were). When the user asks for a
+   new or merged version of existing slides, add it after the originals instead of overwriting them, and list the kept
+   originals in your report so they can be removed before submission.
 3. If the change touches something echoed elsewhere (an exec summary outcome number, a recommendation name, a conclusion
    recap, a spotlight copy), update or flag every copy.
 4. If the request would weaken the slide (a fifth panel, a topic tagline, shrinking text to fit, a photo on a financials
@@ -241,7 +254,8 @@ the applied palette and never reopen the choice unless asked.
    convert every text run deck-wide in one pass and re-check overflow and line counts.
 8. A different density (one slide or the whole deck): re-fit to the `polish` tier; anything cut goes to footnotes,
    appendix or speaker notes.
-9. After any edit, re-run `polish` on the edited slide and on anything it touches deck-wide.
+9. After any edit, re-run `polish` on the edited slide and on anything it touches deck-wide. Fix what the edit itself
+   broke; report anything else it finds in one line instead of changing it.
 
 A new slide or a substantial redesign goes back through questions, plan and approval. Finish every slide with the QA
 checklist (`qa`).

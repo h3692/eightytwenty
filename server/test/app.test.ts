@@ -221,6 +221,7 @@ describe("get_playbook", () => {
 		for (const stage of STAGES) {  // no chapter sends anything into the deck or skips the plan
 			const chapter = (await tool("get_playbook", { stage })).body.result.content[0].text;
 			expect(chapter, stage).not.toMatch(/Design Options (slide|asset list)|rough layout/i);
+			expect(chapter, stage).not.toMatch(/ALL CAPS only|small caps with|large caps|gradient background|brand gradient|6 to 7pt/); // designer QA: caps, gradients and tiny footnotes read as AI-made
 			if (stage !== "polish") expect(chapter, stage).not.toMatch(/`[^`\n]*(->|→|=>)[^`\n]*`/); // example slide text never carries an arrow
 		}
 		expect(text).toMatch(/only when the user explicitly asks for everything at once/i);
@@ -230,18 +231,25 @@ describe("get_playbook", () => {
 		expect(polish).toMatch(/No arrow characters/);
 	});
 
-	it("sets density by the deck type from question 1, never asked separately", async () => {
+	it("fixes density by slide type; the live-or-read answer only sets the speaker notes", async () => {
 		const workflow = (await tool("get_playbook", { stage: "workflow" })).body.result.content[0].text;
 		expect(workflow).toMatch(/presented live, or sent to be read on its own\? A file handed to judges\s+counts as read\./);
-		expect(workflow).toMatch(/presented live and the file is not handed over means the presentation tiers; anything else means the\s+reading tiers/);
-		expect(workflow).toMatch(/density \(set by the deck type from question 1, never asked separately\)/);
-		expect(workflow).toMatch(/For a presentation deck, take the structure or one section\s+of a dense reference and drop the rest/);
+		expect(workflow).toMatch(/The answer sets the speaker notes\s+\(`polish`\); density is fixed by slide type,\s+never by this answer/);
+		expect(workflow).not.toMatch(/presentation tiers|reading tiers/);
+		expect(workflow).toMatch(/density \(fixed by slide type in `polish`, never asked\)/);
+		expect(workflow).toMatch(/For a Medium slide, take the structure or one section\s+of a denser reference and drop the rest/);
 		expect(workflow).toMatch(/ask the deck-style question \(Step 1, question 3\) too, with whether the deck is presented live\s+or read/);
 		const polish = (await tool("get_playbook", { stage: "polish" })).body.result.content[0].text;
 		expect(polish).not.toContain("Density (fixed)");
-		expect(polish).toContain("## Density, set by the deck type, never asked separately");
-		expect(polish).toMatch(/\*\*Presentation deck\*\*: content slides at Low; financials and the problem analysis at Medium/);
-		expect(polish).toMatch(/\*\*Reading deck\*\*: content slides at Medium; financials and the problem analysis at High/);
+		expect(polish).toContain("## Density, set by the slide type, never asked");
+		expect(polish).toMatch(/\*\*Content slides\*\* at Medium/);
+		expect(polish).toMatch(/\*\*Financials and the problem analysis\*\* at High/);
+		expect(polish).toMatch(/\*\*Finance-pitch decks\*\*.*content slides at High/);
+		expect(polish).toMatch(/\*\*Low\*\* only when the user asks/);
+		expect(polish).not.toMatch(/\*\*(Presentation|Reading) deck\*\*/);
+		expect(polish).toContain("## Finance pitch decks (style `finance-pitch`)"); // banker rules win only for this style
+		expect(polish).toMatch(/no new\s+hues/);
+		expect(polish).toMatch(/Never all caps, small caps or\s+letter-spaced caps/);
 		expect(polish).toMatch(/\*\*Speaker notes\*\*.*what to say aloud.*numbers behind the slide.*full sentences.*never repeat the slide text/s);
 	});
 

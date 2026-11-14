@@ -3,13 +3,15 @@
 ## Visual rules
 
 - **Palette**: the client's brand colour as the single primary, plus black/dark grey text, mid and light grey fills,
-  white. Red/green only for explicit bad/good (weaknesses vs strengths, check/cross, heat maps). No second accent unless
-  the deck already has one or the approved palette adds one. Use only the palette's named tokens (`polish`).
+  white. Take the primary from the client's logo in the case files, then their published brand colour, then the
+  prompt's tone, and apply it from the first slide. Red/green only for explicit bad/good (weaknesses vs strengths,
+  check/cross, heat maps). No second accent unless the logo has one, the deck already has one, or the approved palette
+  adds one. Use only the palette's named tokens (`polish`).
 - **Type: one deck font.** Helvetica Neue by default, or the deck's existing font if the user chose to keep it
   (`workflow`, question 1). Bold for titles, header bars, card titles and big numbers; regular for body; light for
   taglines and secondary text (if the font has no light weight, regular in the secondary grey). Titles ~18pt, taglines
-  ~11 to 12pt, body size by the density tier (`polish`), card numbers 20 to 30pt (hero numbers larger), footnotes 6 to
-  7pt. Charts, tables and pasted text are converted to the deck font too; no Calibri, Aptos or stray Arial.
+  ~11 to 12pt, body size by the density tier (`polish`), card numbers 24 to 30pt (hero numbers larger), footnotes 7pt.
+  Charts, tables and pasted text are converted to the deck font too; no Calibri, Aptos or stray Arial.
 - **Box semantics**: brand-colour filled header bar = label; outlined box = content; light grey fill = context or
   assumptions; brand colour on a single element = "this is the point"; numbered circles = cross-reference between a
   visual and its explanation.
@@ -18,7 +20,7 @@
   matrix for choosing.
 - **Imagery**: see image slots below. Every image carries meaning; no decorative stock.
 
-## Palette options -> mock -> apply (after the first finished slide)
+## Palette options, mock, apply (after the first finished slide)
 
 Decks that stand out look like they belong to their client and prompt, not to a generic consulting template. A
 healthcare foundation, a youth-focused gifting campaign and an airline's self-service rollout should not share a look.
@@ -43,13 +45,15 @@ text**. It holds:
    - **C3, Neutral**: restrained greys, charcoal and off-white, the brand colour used sparingly as the only accent.
    - **C4, Monochrome**: tints and shades of the brand colour only, plus white and near-black; hierarchy from lightness.
    - **C5, Bold**: high contrast; the brand colour (or its darkest shade) as full backgrounds on title, divider and
-     hero-number slides, one saturated complementary accent; content slides stay on white.
-   Every palette is anchored on the client's brand colour and chosen for this prompt. Check text contrast on every fill;
-   drop or adjust any palette that fails.
+     hero-number slides, one saturated complementary accent; content slides stay on white. Dividers still differ from
+     the title slide in composition and background treatment (`polish` rule 15).
+   Every palette is anchored on the client's brand colour and chosen for this prompt. Check text contrast on every fill
+   (`polish` rule 16); drop or adjust any palette that fails. Finance-pitch decks get only C0, C3 and C4, shades of the
+   deck's own palette with no new hues (`polish`, Finance pitch decks).
 3. **Image and mockup slots**: the open rows of the research to-do list (`workflow`, Step 5).
 
-Ask one question: "Which palette: C0 no change, C1 warm, C2 cool, C3 neutral, C4 monochrome or C5 bold?" If the user
-picks C0, skip to the next slide.
+Ask one question: "Which palette: C0 no change, C1 warm, C2 cool, C3 neutral, C4 monochrome or C5 bold?" (finance-pitch:
+offer only C0, C3 and C4). If the user picks C0, skip to the next slide.
 
 **Stage 2: Mock, in chat.** Restyle a copy of the most representative finished slide (a header bar, a card, a big number
 and a chart is ideal) in the chosen palette, with the shape language and image treatment that fit it (corner radius,
@@ -75,7 +79,7 @@ clean.
 |---|---|---|
 | Title | **Always** | Full-bleed photo of the client's world (aircraft wing, store front, skyline, home move) with a dark or brand-tinted overlay behind the title. Team headshots in circles optional. |
 | Hook / opener | Usually | One striking image per slide, little or no text. |
-| Section divider | Often | Darkened full-bleed photo or brand gradient; alternate the two. |
+| Section divider | Often | A darkened client-world photo, or no photo and a split screen with the key number and the question; never the title slide's composition. |
 | Persona / customer | **Always** | Circular-cropped portrait, or a full-bleed persona photo on a tinted card. Same person reused through the journey. |
 | Recommendation overview | Often | Darkened background photo behind the rec cards. |
 | Recommendation detail | **Usually** | Phone or laptop mockups of the proposed product, photos of the activation (events, store displays), partner screenshots, 3 photos above 3 description columns. |
@@ -135,9 +139,11 @@ Only when the deck has no content slides and no applied choice; the deck's own s
 
 - 16:9, 10 x 5.625in. Margins ~0.3in.
 - Helvetica Neue (fallback Arial), Helvetica Neue Light for taglines and secondary text.
-- Primary = the client's brand colour (ask only if it cannot be found from the prompt or the client's logo). Neutrals:
-  text `#262626`, secondary `#595959`, fill grey `#F2F2F2`, mid grey `#D9D9D9`. Good/bad: green `#6AA84F`, red
-  `#C00000`.
-- Title 18pt bold; tagline 12pt light; panel header bars 10 to 11pt bold white on brand colour; body 10 to 11pt; big
-  numbers 24 to 30pt bold brand colour (hero numbers larger); footnotes 7pt.
-- Bottom tab tracker (Introduction | Problem Brief | Recommendation | Implementation), current tab in brand colour.
+- Primary = the client's brand colour: from their logo in the case files, then their published brand colour, then the
+  prompt's tone (ask only if none of these settles it). Neutrals: text `#262626`, secondary `#595959`, fill grey
+  `#F2F2F2`, mid grey `#D9D9D9`. Good/bad: green `#6AA84F`, red `#C00000`.
+- Title 18pt bold; tagline 12pt light; panel header bars 10 to 11pt bold white on brand colour; body by the density
+  tier (`polish`); big numbers 24 to 30pt bold brand colour (hero numbers larger); footnotes 7pt; nothing else under
+  8pt.
+- Centred bottom tab tracker (Introduction | Problem Brief | Recommendation | Implementation), current tab bold in
+  brand colour and underlined.

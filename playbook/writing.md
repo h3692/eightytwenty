@@ -27,10 +27,13 @@ is invented. Each section gives the rules, then before and after pairs.
   name the causes: the result, then "driven by" two specific drivers.
 - Sentence case, no full stop, no question, no colon set-up. Bold only for emphasis.
 - Provable from what is on the slide. The tagline is the answer in one line (`anatomy-and-taglines`).
+- Honest to the data: the verb says what the chart shows. A gap that is narrowing is still trailing, not falling
+  behind; judges read the chart and pick apart an overstated tagline.
 
 | Before | After |
 |---|---|
 | `Analysing the drivers of declining store traffic` | `Weekday visits fell 18% after the app replaced paper punch cards` |
+| `Night ridership keeps falling behind the day network` | `Night ridership still trails days, but the gap has halved since 2023` |
 | `Our solution unlocks transformative value for every stakeholder` | `Same-day delivery adds $3.1M of gross profit by year 2 at a 14% margin` |
 | `Strong growth prospects in a dynamic market` | `Chilled storage demand rises 9% a year, twice the pace of dry warehousing` |
 
@@ -90,8 +93,9 @@ is invented. Each section gives the rules, then before and after pairs.
 ## Chart titles and axis labels
 
 - The chart title names the measure, the unit and the base, in sentence case: `Weekly active riders (000s), 2021–2025`.
-- Units once, in brackets in the title or axis label (`($M)`, `(%)`, `(x)`), not on every data label. Pitch books put
-  the unit in the exhibit header far more often than case decks do.
+- Units once, in brackets in the title or axis label (`($M)`, `(%)`, `(x)`), not on every data label (finance-pitch
+  charts carry `$` data labels, `polish`). Pitch books put the unit in the exhibit header far more often than case
+  decks do.
 - Years as `2024A` and `2026E` when actuals and estimates share an axis.
 - No axis title where the chart title already carries the unit; never "Value" or "Category".
 - The takeaway goes in an annotation on the chart, not in its title.
@@ -108,7 +112,7 @@ is invented. Each section gives the rules, then before and after pairs.
 - Numbered notes `(1)`, `(2)` tie to superscripts in the body; an estimate's note states its key assumption.
 - `Note:` defines a term or a basis (`Note: Fiscal year ends in June`).
 - Name sources by type and date, never as a web address or "internet research".
-- Quiet: about 6 to 7pt, grey, bottom left (`polish` rule 4).
+- Quiet: 7pt, grey, bottom left (`polish` rule 4).
 
 | Before | After |
 |---|---|
@@ -144,8 +148,9 @@ is invented. Each section gives the rules, then before and after pairs.
 
 ## IB and finance register
 
-Pitch-book text is terser and more exact than a case deck:
+Pitch-book text is terser and more exact than a case deck (the full finance-pitch rules are in `polish`):
 
+- Plain and factual: no bold mid-sentence and no callout-style phrasing.
 - Noun phrases in panels and tables, not sentences (`Peer Trading Comps`, `Synergies Phasing`).
 - Precise units: `8.5x LTM EBITDA`, `$1.2bn`, `+75 bps`, `22% IRR`, `2.5x MOIC`. Leverage is the debt ratio here
   (`4.0x net debt / EBITDA`), never a verb.
@@ -209,7 +214,8 @@ and on closing slides. Replace on sight.
 - A named persona introduced early and reused through the journey and recommendation slides.
 - Numbered circles that tie the same option or recommendation together across slides.
 - Insights placed on the evidence: a market slide with the target segment in the brand colour and the rest grey; a
-  positioning map with a dashed note beside the client's logo; financials as big numbers with arrows.
+  positioning map with a dashed note beside the client's logo; financials as big numbers with drawn arrows (case decks;
+  finance-pitch decks keep figures in tables and charts).
 - Every recommendation ends in numbers: cost, return, timing, KPI.
 - Imagery with purpose: full-bleed title photos, circle-cropped personas, device mockups of the proposed product, real
   activation and partner screenshots, while analytical slides stay clean.
@@ -226,7 +232,7 @@ and on closing slides. Replace on sight.
 - Template sameness: near-identical issue tree, SWOT and exec summary layouts with only the client swapped. They fail
   the swap test.
 - Generic stock photos that could sit in any deck (handshakes, skylines with no tie to the client).
-- Body text below 7pt; dense 5 to 7pt slides read as clutter in a room. Cut words instead.
+- Text below 8pt outside the footnotes; dense 5 to 7pt slides read as clutter in a room. Cut words instead.
 - Overlapping elements (chart titles colliding with headers) and off-slide or cropped labels.
 - Malformed numbers (`%25`), stray superscripts mid-word ("promoting1"), typos in headers.
 - Placeholder artifacts left in (a lone X standing in for a number, "names" on title slides).
