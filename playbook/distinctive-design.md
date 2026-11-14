@@ -3,6 +3,7 @@
 Runs on every slide, unprompted. Left alone, a slide gets the most typical layout for its job, because that is what the
 archetype table describes. Every competing team draws from the same pool, so the result is competent and forgettable.
 Users get their best results by asking "make this more unique" afterwards; this chapter does that step up front.
+Finance-pitch decks use only concept C and no hero numbers (`polish`, Finance pitch decks).
 
 ## The five steps
 
@@ -34,9 +35,9 @@ unchanged, it is generic. Tie the layout, imagery, labels or example to somethin
 prompt or this persona.
 
 **5. Vary across the deck.** Read the neighbouring slides first and note which concepts and insight devices the deck
-already uses. Do not reuse a composition within a section, and avoid three consecutive slides with the same grid. Do
-carry recurring motifs (the persona, the client-world metaphor, a consistent marker for "our recommendation") so the
-deck reads as one story, not a sampler.
+already uses. Do not reuse a composition within a section, and never give a slide the same structure as either neighbour
+(impact slides excepted, `narrative`). Do carry recurring motifs (the persona, the client-world metaphor, a consistent
+marker for "our recommendation") so the deck reads as one story, not a sampler.
 
 **Guardrails (distinctive is not decorative):**
 - Fonts, colours, header block, tracker and footer stay consistent. They change only deck-wide through an approved

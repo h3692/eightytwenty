@@ -14,8 +14,8 @@ exceptions rather than averaging them.
 2. **Fonts**: heading and body families and weights, from the theme and from the text runs actually used (runs often
    override the theme). Note any font that is not a system font: it needs embedding, and a check render will substitute
    it.
-3. **Sizes by role**: title, tagline, panel headers, body, big numbers, footnotes. Record the most common value per
-   role.
+3. **Sizes and styling by role**: title, tagline, panel headers, body, big numbers, footnotes. Record the most common
+   size, weight (bold, regular, light) and italic per role; new slides match them exactly.
 4. **Colour**: the brand colour hex (the fill of header bars, the highlighted tracker item, emphasis), the text colours,
    the grey fills, any second accent and where it is used. Theme colours first, then explicit fills that override them.
 5. **Header and tracker**: stacked or inline-pipe header; title form (`Topic: Subtopic`?); tagline style (claim or
@@ -28,9 +28,11 @@ exceptions rather than averaging them.
 9. **Existing devices**: shapes named `Insight_`, `IMG_`, `MOCKUP_`. Hidden working slides from older tools (`show="0"`,
    e.g. Design Options or Research To-Do) carry earlier decisions: read them, carry their open items into the research
    to-do list in chat, and offer to delete them, since judges can unhide them.
+10. **Deck style**: a banker-style stock pitch, take-private or deal book is `finance-pitch`, and its rules apply
+    (`polish`, Finance pitch decks).
 
-Summarise the spec in a few lines (fonts, sizes, brand hex, header/tracker form, box styles) and state it to the user
-once, so a wrong read is caught early. Then build every new slide to it.
+Summarise the spec in a few lines (fonts, sizes, brand hex, header/tracker form, box styles, deck style) and state it to
+the user once, so a wrong read is caught early. Then build every new slide to it.
 
 ## Using it
 

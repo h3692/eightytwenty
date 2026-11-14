@@ -16,8 +16,9 @@ user to correct; ask about one only if the answers leave it genuinely open.
 3. **The alternatives.** Which options will the judges think of themselves (do nothing, the obvious competitor move,
    the cheaper option, the prompt's own suggestion)? Why does each fail for this market?
 4. **The hook.** What tension opens the deck: a number, a contradiction, a customer moment, a cost of inaction?
-5. **The reasoning chain.** Which 3 to 5 steps lead from the problem to the recommendation (e.g. the market is shifting
-   -> the client is losing this segment -> the segment needs X -> only option C delivers X within the constraints)?
+5. **The reasoning chain.** Which 3 to 5 steps lead from the problem to the recommendation (e.g. the market is shifting,
+   then the client is losing this segment, then the segment needs X, then only option C delivers X within the
+   constraints)?
 6. **The handoffs.** What does each section hand to the next? If a section hands nothing on, it is filler or appendix.
 
 ## The storyline (text, before any slide)
@@ -68,7 +69,7 @@ Impact slides repeat or extend the slide just shown to land one point. They are 
 | **Shade + ribbon** | The previous slide repeated, shaded dark at ~70%, with a ribbon across it carrying the one-line so-what. The ribbon is a claim ("Neither alternative reaches late-shift workers"), never a topic ("Key takeaway"). | Landing the key insight or a turning point. |
 | **Repeat / recap** | An earlier slide (exec summary, issue tree, recommendation overview) shown again, often spotlighted on the current part. | Re-orienting before a new section or before the ask. |
 
-**When**: at turning points only. Landing the key insight; the problem -> solution hinge; just before the
+**When**: at turning points only. Landing the key insight; the hinge from problem to solution; just before the
 recommendation; a recap before the ask; the transition into each recommendation pillar.
 
 **How**: always built on the slide just shown (or the earlier slide being recalled), duplicated so layout, tracker and

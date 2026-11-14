@@ -127,6 +127,10 @@ flowchart LR
 
 ## What's new
 
+**November 14, 2026**
+- Slide density is now fixed by slide type: content slides at Medium, financials and the problem analysis at High, Low
+  only on request. The live-or-read answer now sets the speaker notes.
+
 **November 10, 2026**
 - Listed in Claude's connector directory, and served at `mcp.eightytwenty.tech`.
 
