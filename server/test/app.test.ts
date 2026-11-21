@@ -67,13 +67,13 @@ describe("MCP endpoint", () => {
 		expect(body.result.serverInfo.name).toBe("eightytwenty");
 	});
 
-	it("lists six titled tools, all read-only except submit_feedback, with enum filters from the label schema", async () => {
+	it("lists six titled tools, all read-only and non-destructive except submit_feedback, with enum filters from the label schema", async () => {
 		const { body } = await rpc("tools/list");
 		const tools = Object.fromEntries(body.result.tools.map((t: any) => [t.name, t]));
 		expect(Object.keys(tools).sort()).toEqual(["find_deck_flows", "find_images", "find_references", "get_playbook", "get_reference", "submit_feedback"]);
 		for (const t of Object.values<any>(tools)) {
 			expect(t.title).toBeTruthy();
-			expect(t.annotations, t.name).toMatchObject({ readOnlyHint: t.name !== "submit_feedback", destructiveHint: false });
+			expect(t.annotations, t.name).toMatchObject({ readOnlyHint: t.name !== "submit_feedback", destructiveHint: t.name === "submit_feedback" });
 		}
 		const p = tools.find_references.inputSchema.properties;
 		expect(p.slide_type.enum).toEqual(labels.properties.archetype.enum);
@@ -152,13 +152,13 @@ describe("MCP endpoint", () => {
 		expect((await rpc("tools/list", {}, { headers: { host: "mcp.eightytwenty.tech", origin: "https://evil.example" } })).res.status).toBe(403);
 	});
 
-	it("marks every tool titled and non-destructive, all read-only except submit_feedback, and only find_images as open-world", async () => {
+	it("marks every tool titled, read-only and non-destructive except submit_feedback, and only find_images as open-world", async () => {
 		const { body } = await rpc("tools/list");
 		expect(body.result.tools).toHaveLength(6);
 		for (const t of body.result.tools) {
 			expect(t.title).toBeTruthy();
 			for (const hint of ["readOnlyHint", "destructiveHint", "openWorldHint"]) expect(typeof t.annotations[hint]).toBe("boolean");
-			expect(t.annotations, t.name).toMatchObject({ readOnlyHint: t.name !== "submit_feedback", destructiveHint: false });
+			expect(t.annotations, t.name).toMatchObject({ readOnlyHint: t.name !== "submit_feedback", destructiveHint: t.name === "submit_feedback" });
 		}
 		expect(body.result.tools.filter((t: any) => !t.annotations.readOnlyHint).map((t: any) => t.name)).toEqual(["submit_feedback"]);
 		expect(body.result.tools.filter((t: any) => t.annotations.openWorldHint).map((t: any) => t.name)).toEqual(["find_images"]);
@@ -640,11 +640,11 @@ const feedbackRows = async (today = false) => {
 const lastRow = (table: string) => env.FEEDBACK.prepare(`SELECT * FROM ${table} ORDER BY id DESC LIMIT 1`).first<Record<string, unknown>>();
 
 describe("submit_feedback", () => {
-	it("is a titled, non-destructive, non-idempotent, closed-world write tool taking the correction fields", async () => {
+	it("is a titled, destructive-hinted, non-idempotent, closed-world write tool taking the correction fields", async () => {
 		const t = (await rpc("tools/list")).body.result.tools.find((t: any) => t.name === "submit_feedback");
 		expect(t.title).toBe("Send feedback to eightytwenty");
 		expect(t.description).toBe("Saves one slide correction the user asked to send to eightytwenty as feedback, after they confirmed the summary. General terms only: no names, figures or file content.");
-		expect(t.annotations).toEqual({ readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false });
+		expect(t.annotations).toEqual({ readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false });
 		const p = t.inputSchema.properties;
 		expect(p.deck_type.enum).toEqual(["consulting", "stock_pitch"]);
 		expect(p.slide_type.enum).toEqual(labels.properties.archetype.enum);
@@ -669,8 +669,8 @@ describe("submit_feedback", () => {
 
 	it("stores a stock_pitch correction in stock_pitch_feedback", async () => {
 		const before = await feedbackRows();
-		const { slide_role, message, correction } = CORRECTION; // the optional fields left out
-		const { body } = await tool("submit_feedback", { deck_type: "stock_pitch", slide_role, message, correction });
+		const { slide_role, message, correction } = CORRECTION; // the optional fields left out or blank
+		const { body } = await tool("submit_feedback", { deck_type: "stock_pitch", slide_role, message, correction, reason: "   " }); // a blank reason stores NULL
 		expect(body.result).toEqual({ content: [{ type: "text", text: SAVED }] });
 		expect(await feedbackRows()).toEqual({ ...before, stock_pitch: before.stock_pitch + 1, total: before.total + 1 });
 		expect(await lastRow("stock_pitch_feedback")).toMatchObject({ slide_type: null, deck_style: null, slide_role, message, correction, reason: null, used_in_pr: null });

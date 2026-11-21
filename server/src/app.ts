@@ -276,7 +276,7 @@ function createServer(env: Env, lib: Library, key: string, ctx: ExecutionContext
 			description: "Saves one slide correction the user asked to send to eightytwenty as feedback, after they confirmed the summary. " +
 				"General terms only: no names, figures or file content.",
 			inputSchema: FEEDBACK_INPUT,
-			annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+			annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
 		},
 		tracked("submit_feedback", async ({ deck_type, slide_type, deck_style, slide_role, message, correction, reason }) => {
 			const since = `${new Date().toISOString().slice(0, 10)}T00:00:00Z`;
@@ -286,9 +286,9 @@ function createServer(env: Env, lib: Library, key: string, ctx: ExecutionContext
 				meta.errorType = "budget";
 				throw new Error("Feedback is full for today. Try again after 00:00 UTC.");
 			}
-			// The table name comes only from the deck_type enum; a plain INSERT (a REPLACE conflict would delete without the trigger).
+			// plain INSERT: REPLACE would bypass the no-delete trigger
 			await env.FEEDBACK.prepare(`INSERT INTO ${deck_type}_feedback (slide_type, deck_style, slide_role, message, correction, reason) VALUES (?, ?, ?, ?, ?, ?)`)
-				.bind(slide_type ?? null, deck_style ?? null, slide_role, message, correction, reason ?? null).run();
+				.bind(slide_type ?? null, deck_style ?? null, slide_role, message, correction, reason || null).run();
 			return { content: [text("Saved. Thank you: corrections that recur are reviewed and folded into the playbook.")] };
 		}, deps),
 	);
