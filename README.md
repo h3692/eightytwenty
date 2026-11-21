@@ -62,6 +62,16 @@ claude mcp add --transport http eightytwenty https://mcp.eightytwenty.tech/mcp
 
 Add `--scope user` to have it in every project.
 
+**Claude Code plugin:** installs the connector and adds the `/eightytwenty` command.
+
+```
+/plugin marketplace add h3692/eightytwenty
+/plugin install eightytwenty@eightytwenty
+```
+
+Type `/eightytwenty` with your case prompt or problem, or on its own and it asks for the case. If you already added the
+connector, the plugin uses it instead of adding a second copy.
+
 ### ChatGPT
 
 Turn on developer mode in ChatGPT's settings, then create a custom app with the address above and **No authentication**.
