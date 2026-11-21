@@ -2,7 +2,7 @@
 import argparse
 import sys
 
-from pipeline import build, dedupe, embed, extract, flow, label_prep, leak_check, mockup, package, release
+from pipeline import build, dedupe, embed, extract, feedback_digest, flow, label_prep, leak_check, mockup, package, release
 
 
 def main(argv=None):
@@ -41,6 +41,8 @@ def main(argv=None):
     p = sub.add_parser("release", help="preflight, embed, package, deploy, load D1 and smoke-check the live server")
     p.add_argument("--dry-run", action="store_true", help="preflight only: report what would publish")
     p.add_argument("--library", default=release.REPO / "library")  # from any folder
+    p = sub.add_parser("feedback-digest", help="open a playbook PR for each feedback correction that recurs")
+    p.add_argument("--dry-run", action="store_true", help="print the qualifying clusters; change nothing")
     a = ap.parse_args(argv)
 
     if a.stage == "extract":
@@ -94,6 +96,8 @@ def main(argv=None):
             print(f"Draw each layout: in Claude Code, ask it to follow every {out}/slide-NN.prompt.txt")
     elif a.stage == "release":
         release.run(a.library, a.dry_run)
+    elif a.stage == "feedback-digest":
+        feedback_digest.run(a.dry_run)
 
 
 if __name__ == "__main__":
