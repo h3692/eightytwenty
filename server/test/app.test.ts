@@ -280,6 +280,16 @@ describe("get_playbook", () => {
 		expect(qa).toMatch(/- \[ \] A delivery reported as finished ends with the completion audit/);
 	});
 
+	it("shows the feedback tip and sends feedback only when the user asks", async () => {
+		const workflow = (await tool("get_playbook", { stage: "workflow" })).body.result.content[0].text;
+		expect(workflow.slice(workflow.indexOf("## Run sheet"), workflow.indexOf("## Scope"))).toContain(
+			"*Tip: say **send feedback** anytime to send a correction to eightytwenty, so future versions of the playbook learn from it.*");
+		expect(workflow.slice(workflow.indexOf("## Scope"), workflow.indexOf("## Pick the mode first"))).toMatch(/Sending feedback about this deck .* is in scope/);
+		for (const s of ["## Feedback (only when the user asks)", "send feedback", "/eightytwenty-feedback", "submit_feedback", "finance-pitch"])
+			expect(workflow).toContain(s);
+		expect(workflow).toMatch(/never otherwise, and never\s+from an edit request such as "fix" or "change"/);
+	});
+
 	it("gives writing rules per text type, a reads-AI-made list and a writing pass in QA", async () => {
 		const writing = (await tool("get_playbook", { stage: "writing" })).body.result.content[0].text;
 		expect(writing).toContain("## Reads AI-made");
