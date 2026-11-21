@@ -6,6 +6,7 @@ declare module "*.svg" { const text: string; export default text; }
 
 interface Env {
 	DB: D1Database;
+	FEEDBACK: D1Database;
 	AI: Ai;
 	ASSETS: Fetcher;
 	LIMITER: DurableObjectNamespace<import("./limiter").Limiter>;
@@ -14,6 +15,7 @@ interface Env {
 	LIMIT_PER_MINUTE_SHARED: number;
 	DAILY_SEARCH_BUDGET: number;
 	DAILY_PHOTO_BUDGET: number;
+	DAILY_FEEDBACK_BUDGET: number;
 	OPENVERSE_CLIENT_ID?: string; // secrets (wrangler secret put); photos fall back to anonymous Openverse calls without them
 	OPENVERSE_CLIENT_SECRET?: string;
 	OPENAI_APPS_CHALLENGE?: string; // secret: ChatGPT's domain verification token, served at /.well-known/openai-apps-challenge
@@ -25,6 +27,7 @@ interface Env {
 declare namespace Cloudflare {
 	interface Env {
 		DB: D1Database;
+		FEEDBACK: D1Database;
 		AI: Ai;
 		ASSETS: Fetcher;
 		LIMITER: DurableObjectNamespace<import("./limiter").Limiter>;
@@ -33,12 +36,14 @@ declare namespace Cloudflare {
 		LIMIT_PER_MINUTE_SHARED: number;
 		DAILY_SEARCH_BUDGET: number;
 		DAILY_PHOTO_BUDGET: number;
+		DAILY_FEEDBACK_BUDGET: number;
 		OPENVERSE_CLIENT_ID?: string;
 		OPENVERSE_CLIENT_SECRET?: string;
 		OPENAI_APPS_CHALLENGE?: string;
 		POSTHOG_PROJECT_TOKEN?: string;
 		POSTHOG_HOST?: string;
 		TEST_MIGRATIONS: import("cloudflare:test").D1Migration[];
+		TEST_FEEDBACK_MIGRATIONS: import("cloudflare:test").D1Migration[];
 		LIVE_AI: string;
 		PLAYBOOK_FILES: string[];
 	}

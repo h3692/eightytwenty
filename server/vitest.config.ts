@@ -12,7 +12,7 @@ export default defineConfig({
 			main: "./test/worker.ts", // not src/index.ts: that bundles the gitignored library/ files
 			remoteBindings: live,
 			wrangler: { configPath: "./wrangler.jsonc" },
-			miniflare: { bindings: { TEST_MIGRATIONS: await readD1Migrations("./migrations"), LIVE_AI: live ? "1" : "", PLAYBOOK_FILES: readdirSync("../playbook") } },
+			miniflare: { bindings: { TEST_MIGRATIONS: await readD1Migrations("./migrations"), TEST_FEEDBACK_MIGRATIONS: await readD1Migrations("./feedback-migrations"), LIVE_AI: live ? "1" : "", PLAYBOOK_FILES: readdirSync("../playbook") } },
 		}),
 	],
 	test: { setupFiles: ["./test/apply-migrations.ts"] },
