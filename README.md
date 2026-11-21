@@ -176,11 +176,13 @@ call sends one anonymous usage record to PostHog (US cloud): the tool name, outc
 picked from fixed lists, a library id only when it exists in the library, the name and version of your AI app, and the
 server's name and version. It never includes search text, context, feedback text, results, your IP address or anything
 that identifies you; records are not linked to each other, and nothing is sent if your client sends Do Not Track or
-Global Privacy Control. `submit_feedback` runs only when you ask and sends only the summary you approved (deck type,
-slide type and style, the slide's role and message, the correction and any reason). It is stored in Cloudflare D1, kept
-indefinitely and never linked to you (no account, and your IP address is not stored with it), so a row can't be traced
-to you or removed on request. The maintainer reads it, and it is processed with the Anthropic API to find corrections
-that recur; it is used to improve the playbook and future eightytwenty products. Full policy: [Privacy](https://mcp.eightytwenty.tech/privacy) and [Terms](https://mcp.eightytwenty.tech/terms).
+Global Privacy Control. `submit_feedback` runs only when you ask and sends only the summary you approved (deck type, the
+slide type and deck style if given, the slide's role and message, the correction and any reason). It is stored in
+Cloudflare D1, kept indefinitely and never linked to you (no account, and your IP address is not stored with it), so a
+row can't be traced to you. Rows are never deleted, but if you email eightytwenty.tech@gmail.com with what the feedback
+said, its text can be replaced with "[removed]". The maintainer reads it, and it is processed with the Anthropic API to
+find corrections that recur; it is used to improve the playbook and future eightytwenty products. Full policy:
+[Privacy](https://mcp.eightytwenty.tech/privacy) and [Terms](https://mcp.eightytwenty.tech/terms).
 
 Self-hosting: usage statistics are off unless the `POSTHOG_PROJECT_TOKEN` secret is set (`wrangler secret put`). The
 optional `POSTHOG_HOST` var picks the PostHog host and defaults to `https://us.i.posthog.com`.

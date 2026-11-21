@@ -1017,7 +1017,7 @@ describe("pages", () => {
 
 	it("/docs says there are six tools, read-only apart from feedback you choose to send", async () => {
 		const html = await (await call("/docs")).text();
-		for (const s of ["six tools", "read-only apart from feedback you choose to send", "/eightytwenty-feedback", "200"]) expect(html).toContain(s);
+		for (const s of ["six tools", "read-only apart from feedback you choose to send", "/eightytwenty-feedback", "200", "slide type and deck style, if given"]) expect(html).toContain(s);
 		expect(html).not.toContain("All five are read-only");
 		expect(html).not.toContain("A free, read-only");
 	});
@@ -1099,8 +1099,10 @@ describe("pages", () => {
 	it("/privacy discloses what feedback sends, how long it is kept and how it is processed", async () => {
 		const html = (await (await call("/privacy")).text()).toLowerCase();
 		for (const s of ["submit_feedback", "only when you ask", "kept indefinitely", "cloudflare d1", "your ip address is not stored with it", "anthropic api",
-			"never published to github", "deck type, slide type and deck style", "future eightytwenty products"]) expect(html).toContain(s);
+			"never published to github", "deck type, slide type and deck style", "future eightytwenty products", "[removed]",
+			'email <a href="mailto:eightytwenty.tech@gmail.com">eightytwenty.tech@gmail.com</a> with what it said', "slide type and deck style, if given"]) expect(html).toContain(s);
 		expect(html).not.toContain("is a read-only connector");
+		expect(html).not.toContain("removed on request");
 	});
 
 	it("serves an icon and sets a strict CSP with no external assets", async () => {
