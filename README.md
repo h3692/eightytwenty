@@ -181,7 +181,9 @@ slide type and deck style if given, the slide's role and message, the correction
 Cloudflare D1, kept indefinitely and never linked to you (no account, and your IP address is not stored with it), so a
 row can't be traced to you. Rows are never deleted, but if you email eightytwenty.tech@gmail.com with what the feedback
 said, its text can be replaced with "[removed]". The maintainer reads it, and it is processed with the Anthropic API to
-find corrections that recur; it is used to improve the playbook and future eightytwenty products. Full policy:
+find corrections that recur. The raw feedback text is never published to GitHub, but a model-written summary of the
+recurring corrections is posted publicly in the pull request (and in the GitHub Actions log) before the maintainer
+reviews it. Feedback is used to improve the playbook and future eightytwenty products. Full policy:
 [Privacy](https://mcp.eightytwenty.tech/privacy) and [Terms](https://mcp.eightytwenty.tech/terms).
 
 Self-hosting: usage statistics are off unless the `POSTHOG_PROJECT_TOKEN` secret is set (`wrangler secret put`). The

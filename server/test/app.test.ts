@@ -666,6 +666,15 @@ describe("submit_feedback", () => {
 		expect(p.correction).toMatchObject({ type: "string", minLength: 1, maxLength: 1000 });
 		expect(p.reason).toMatchObject({ type: "string", maxLength: 500 });
 		expect(t.inputSchema.required.sort()).toEqual(["correction", "deck_type", "message", "slide_role"]);
+		expect(Object.fromEntries(Object.entries(p).map(([k, v]: [string, any]) => [k, v.description]))).toEqual({
+			deck_type: "consulting, or stock_pitch for finance-pitch decks.",
+			slide_type: "Archetype id (see the archetypes stage of get_playbook).",
+			deck_style: "The deck's style.",
+			slide_role: "Where the slide sits in the storyline.",
+			message: "What the slide must land.",
+			correction: "What was wrong and what to do instead, in general terms.",
+			reason: "Why the change is needed.",
+		});
 	});
 
 	it("stores a consulting correction in consulting_feedback", async () => {
@@ -1099,7 +1108,8 @@ describe("pages", () => {
 	it("/privacy discloses what feedback sends, how long it is kept and how it is processed", async () => {
 		const html = (await (await call("/privacy")).text()).toLowerCase();
 		for (const s of ["submit_feedback", "only when you ask", "kept indefinitely", "cloudflare d1", "your ip address is not stored with it", "anthropic api",
-			"never published to github", "deck type, slide type and deck style", "future eightytwenty products", "[removed]",
+			"never published to github", "a model-written summary of the recurring corrections is posted publicly in the pull request (and in the github actions log) before the maintainer reviews it",
+			"deck type, slide type and deck style", "future eightytwenty products", "[removed]",
 			'email <a href="mailto:eightytwenty.tech@gmail.com">eightytwenty.tech@gmail.com</a> with what it said', "slide type and deck style, if given"]) expect(html).toContain(s);
 		expect(html).not.toContain("is a read-only connector");
 		expect(html).not.toContain("removed on request");

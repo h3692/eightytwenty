@@ -74,13 +74,13 @@ const IMAGES_INPUT = z.object({
 	k: z.number().int().min(1).max(4).optional().describe("How many results, 1 to 4 (default 3; 4 for icons)."),
 });
 const FEEDBACK_INPUT = z.object({
-	deck_type: z.enum(["consulting", "stock_pitch"]),
-	slide_type: enumOf(labels.properties.archetype.enum).optional(),
-	deck_style: enumOf(style.properties.style.enum).optional(),
-	slide_role: z.string().trim().min(1).max(300),
-	message: z.string().trim().min(1).max(300),
-	correction: z.string().trim().min(1).max(1000),
-	reason: z.string().trim().max(500).optional(),
+	deck_type: z.enum(["consulting", "stock_pitch"]).describe("consulting, or stock_pitch for finance-pitch decks."),
+	slide_type: enumOf(labels.properties.archetype.enum).optional().describe("Archetype id (see the archetypes stage of get_playbook)."),
+	deck_style: enumOf(style.properties.style.enum).optional().describe("The deck's style."),
+	slide_role: z.string().trim().min(1).max(300).describe("Where the slide sits in the storyline."),
+	message: z.string().trim().min(1).max(300).describe("What the slide must land."),
+	correction: z.string().trim().min(1).max(1000).describe("What was wrong and what to do instead, in general terms."),
+	reason: z.string().trim().max(500).optional().describe("Why the change is needed."),
 });
 const DECK_ID = /^[0-9a-f]{16}$/; // slide ids are <deck id>-NN
 const PLAYBOOK_INDEX = `Playbook stages (call get_playbook with one of these as \`stage\`):\n${STAGES.map((s) => `- \`${s}\`: ${PLAYBOOK[s].match(/^# (.+)$/m)?.[1] ?? s}`).join("\n")}\n\n${workflow}`;
