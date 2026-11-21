@@ -11,6 +11,7 @@ import os
 import ssl
 import subprocess
 import tempfile
+import unicodedata
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -25,7 +26,7 @@ EXCLUDED = {"writing", "archetypes"}  # chapters the digest never edits
 SECTION = "## Learned from feedback"
 SUBSECTIONS = {"consulting": "### Case-competition and consulting decks", "stock_pitch": "### Finance pitch decks"}
 MIN_ROWS, MAX_CHARS, WINDOW, LIMIT = 5, 600, "-90 days", 500
-BANNED = ("http", "www.", "@", "<", "`")
+BANNED = ("http", "www.", "@", "<", "`", "](", "//", "&#", "&lt")  # checked after NFKC: no full-width look-alikes
 MODEL, MAX_TOKENS = "claude-sonnet-5-5", 16000
 VERDICTS = ("new", "covered", "vague")
 SCHEMA = {"type": "object", "additionalProperties": False, "required": ["clusters"], "properties": {"clusters": {
@@ -99,9 +100,10 @@ def cluster(rows, deck_type, chapters):
 
 def qualifies(c, rows_by_id, allowed):
     md = c["markdown"]
+    plain = unicodedata.normalize("NFKC", md).lower()
     return (c["verdict"] == "new" and len(set(c["row_ids"]) & rows_by_id.keys()) >= MIN_ROWS
             and c["target"] in allowed and 0 < len(md.strip()) and len(md) <= MAX_CHARS
-            and not any(b in md.lower() for b in BANNED)
+            and not any(b in plain for b in BANNED)
             and not any(line.lstrip().startswith("#") for line in md.splitlines()))
 
 
@@ -120,31 +122,37 @@ def append(path, deck_type, markdown):
     path.write_text("\n".join(lines) + "\n")
 
 
-def _git(*args):
-    r = subprocess.run(["git", *args], cwd=REPO, capture_output=True, text=True)
+def _run(*cmd):
+    r = subprocess.run(list(cmd), cwd=REPO, capture_output=True, text=True)
     if r.returncode:
-        raise SystemExit(f"Failed: git {' '.join(args)}\n{r.stderr}")
+        raise SystemExit(f"Failed: {' '.join(map(str, cmd))}\n{r.stderr}")
     return r.stdout.strip()
 
 
 def open_pr(c, deck_type, table):
-    """c: a qualifying cluster whose row_ids are fetched, unused rows, plus "first" and "last" (their dates)."""
+    """c: a qualifying cluster whose row_ids are fetched, unused rows, plus "first" and "last" (their dates).
+
+    Rows are marked only once a PR exists: a branch an earlier run pushed gets its PR opened now if it has none.
+    """
     ids = sorted(c["row_ids"])
     branch = f"feedback/{deck_type}-{ids[0]}"  # from data only: the deck type and an integer id
-    if not _git("ls-remote", "--heads", "origin", branch):  # already pushed by an earlier run: only mark the rows
-        path, sub = PLAYBOOK / f"{c['target']}.md", SUBSECTIONS[deck_type]
-        original = path.read_text()
+    path, sub = PLAYBOOK / f"{c['target']}.md", SUBSECTIONS[deck_type]
+    title = f"Learned from feedback: {c['target']} ({deck_type})"
+    base = _run("git", "rev-parse", "--abbrev-ref", "HEAD")
+    if _run("git", "ls-remote", "--heads", "origin", branch):  # pushed by an earlier run
+        has_pr = json.loads(_run("gh", "pr", "list", "--head", branch, "--state", "all", "--json", "number"))
+    else:
+        has_pr, original = False, path.read_text()
         append(path, deck_type, c["markdown"])
         if subprocess.run(["npx", "vitest", "run", "test/app.test.ts", "-t", "get_playbook"], cwd=REPO / "server").returncode:
             path.write_text(original)
             print(f"{branch}: the chunk breaks the playbook tests; skipped, {path.name} restored")
             return None
-        base = _git("rev-parse", "--abbrev-ref", "HEAD")
-        title = f"Learned from feedback: {c['target']} ({deck_type})"
-        _git("switch", "-c", branch)
-        _git("commit", "-m", title, "--", str(path))
-        _git("push", "origin", branch)
-        _git("switch", base)
+        _run("git", "switch", "-c", branch)
+        _run("git", "commit", "-m", title, "--", str(path))
+        _run("git", "push", "origin", branch)
+        _run("git", "switch", base)
+    if not has_pr:
         body = "\n".join([
             f"Chapter: playbook/{path.name}", f"Deck type: {deck_type}",
             f"Feedback: {len(ids)} rows, first {c['first']}, last {c['last']}", f"Row ids: {', '.join(map(str, ids))}",
@@ -154,11 +162,10 @@ def open_pr(c, deck_type, table):
             f"\"SELECT * FROM {table} WHERE id IN ({', '.join(map(str, ids))})\""])
         with tempfile.TemporaryDirectory() as d:
             (Path(d) / "body.md").write_text(body + "\n")
-            r = subprocess.run(["gh", "pr", "create", "--base", base, "--head", branch, "--title", title,
-                                "--body-file", Path(d) / "body.md"], cwd=REPO)
-        if r.returncode:
-            raise SystemExit(f"{branch} is pushed but gh pr create failed; open the PR by hand.")
-    query(f"UPDATE {table} SET used_in_pr = ? WHERE id IN ({', '.join('?' * len(ids))})", [branch, *ids])
+            print(_run("gh", "pr", "create", "--base", base, "--head", branch, "--title", title,
+                       "--body-file", Path(d) / "body.md"))
+    # json_each: one bound param for any number of ids (D1 allows at most 100 per query)
+    query(f"UPDATE {table} SET used_in_pr = ? WHERE id IN (SELECT value FROM json_each(?))", [branch, json.dumps(ids)])
     return branch
 
 

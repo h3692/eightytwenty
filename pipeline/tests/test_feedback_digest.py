@@ -10,6 +10,7 @@ from pipeline import feedback_digest as fd
 
 ALLOWED = {p.stem for p in fd.PLAYBOOK.glob("*.md")} - {"writing", "archetypes"}
 SECRET = "Zorblax"  # planted in every feedback text field: must never reach a PR body or a log line
+MARK = "UPDATE {} SET used_in_pr = ? WHERE id IN (SELECT value FROM json_each(?))"
 CHUNK = "Lead each market slide with the single number the recommendation depends on."
 
 
@@ -57,17 +58,20 @@ class _Resp:
 
 
 class _Proc:
-    """Fake subprocess.run: `remote` is what ls-remote prints, `tests` the playbook test exit code."""
+    """Fake subprocess.run: `remote` is what ls-remote prints, `prs` what gh pr list prints, `tests` the playbook
+    test exit code, `create` the gh pr create exit code."""
 
-    def __init__(self, remote="", tests=0):
-        self.remote, self.tests, self.cmds, self.bodies = remote, tests, [], []
+    def __init__(self, remote="", prs="[]", tests=0, create=0):
+        self.remote, self.prs, self.tests, self.create, self.cmds, self.bodies = remote, prs, tests, create, [], []
 
     def __call__(self, cmd, cwd=None, **kw):
         self.cmds.append([str(c) for c in cmd])
-        if cmd[0] == "gh":
+        if cmd[:3] == ["gh", "pr", "create"]:
             self.bodies.append(Path(cmd[cmd.index("--body-file") + 1]).read_text())
-        out = self.remote if "ls-remote" in cmd else "main\n" if "rev-parse" in cmd else ""
-        return subprocess.CompletedProcess(cmd, self.tests if cmd[0] == "npx" else 0, out, "")
+        out = (self.remote if "ls-remote" in cmd else "main\n" if "rev-parse" in cmd else
+               self.prs if cmd[:3] == ["gh", "pr", "list"] else "")
+        rc = self.tests if cmd[0] == "npx" else self.create if cmd[:3] == ["gh", "pr", "create"] else 0
+        return subprocess.CompletedProcess(cmd, rc, out, "")
 
     def ran(self, *prefix):
         return [c for c in self.cmds if c[:len(prefix)] == list(prefix)]
@@ -110,7 +114,9 @@ def test_qualifies_needs_five_rows():
 def test_rejects_links_mentions_markup_headings_long_and_excluded_targets():
     by_id = {r["id"]: r for r in _rows(5)}
     for md in ("See HTTPS://example.com for more.", "Copy www.example.com.", "Ask @someone first.", "Use <b>bold</b>.",
-               "Run `npx` first.", "# A heading\nThen text.", "Text first.\n  ## A heading", "x" * 601, "", "   "):
+               "Run `npx` first.", "# A heading\nThen text.", "Text first.\n  ## A heading", "x" * 601, "", "   ",
+               "Read the [guide](//evil.example/x).", "Read [x](evil.example).", "Ask \uff20name first.", "Ask &#64;name.",
+               "Use &lt;b&gt; tags."):
         assert not fd.qualifies(_cluster(markdown=md), by_id, ALLOWED), md
     for target in ("writing", "archetypes", "nonexistent", "../server/src/index"):
         assert not fd.qualifies(_cluster(target=target), by_id, ALLOWED), target
@@ -180,8 +186,7 @@ def test_pr_body_has_no_feedback_text(env, monkeypatch):
     assert proc.ran("git", "push", "origin", "feedback/consulting-1")
     assert proc.ran("npx", "vitest", "run", "test/app.test.ts", "-t", "get_playbook")
     assert f"- {CHUNK}" in (env / "playbook" / "narrative.md").read_text()
-    assert http.d1() == [{"sql": "UPDATE consulting_feedback SET used_in_pr = ? WHERE id IN (?, ?, ?, ?, ?)",
-                          "params": ["feedback/consulting-1", 1, 2, 3, 4, 5]}]
+    assert http.d1() == [{"sql": MARK.format("consulting_feedback"), "params": ["feedback/consulting-1", "[1, 2, 3, 4, 5]"]}]
 
 
 def test_open_pr_skips_and_restores_when_playbook_tests_fail(env, monkeypatch):
@@ -195,15 +200,31 @@ def test_open_pr_skips_and_restores_when_playbook_tests_fail(env, monkeypatch):
 
 
 def test_existing_branch_is_not_reopened(env, monkeypatch):
-    http, proc = _Http(), _Proc(remote="abc123\trefs/heads/feedback/stock_pitch-7\n")
+    http, proc = _Http(), _Proc(remote="abc123\trefs/heads/feedback/stock_pitch-7\n", prs='[{"number": 12}]')
     _fakes(monkeypatch, http, proc)
     before = (env / "playbook" / "polish.md").read_text()
     c = _ready(_cluster(row_ids=[7, 8, 9, 10, 11], target="polish"))
     assert fd.open_pr(c, "stock_pitch", "stock_pitch_feedback") == "feedback/stock_pitch-7"
     assert (env / "playbook" / "polish.md").read_text() == before
-    assert not proc.ran("npx") and not proc.ran("git", "push") and not proc.ran("gh")
-    assert http.d1() == [{"sql": "UPDATE stock_pitch_feedback SET used_in_pr = ? WHERE id IN (?, ?, ?, ?, ?)",
-                          "params": ["feedback/stock_pitch-7", 7, 8, 9, 10, 11]}]
+    assert proc.ran("gh", "pr", "list", "--head", "feedback/stock_pitch-7", "--state", "all", "--json", "number")
+    assert not proc.ran("npx") and not proc.ran("git", "push") and not proc.ran("gh", "pr", "create")
+    assert http.d1() == [{"sql": MARK.format("stock_pitch_feedback"), "params": ["feedback/stock_pitch-7", "[7, 8, 9, 10, 11]"]}]
+
+
+def test_pushed_branch_without_a_pr_gets_one_before_rows_are_marked(env, monkeypatch):
+    http, proc = _Http(), _Proc(create=1)  # first run: push succeeds, gh pr create fails
+    _fakes(monkeypatch, http, proc)
+    with pytest.raises(SystemExit, match="gh pr create"):
+        fd.open_pr(_ready(), "consulting", "consulting_feedback")
+    assert proc.ran("git", "push", "origin", "feedback/consulting-1") and http.d1() == []
+
+    rerun = _Proc(remote="abc123\trefs/heads/feedback/consulting-1\n", prs="[]")  # next run: branch there, no PR
+    _fakes(monkeypatch, http, rerun)
+    assert fd.open_pr(_ready(), "consulting", "consulting_feedback") == "feedback/consulting-1"
+    assert not rerun.ran("npx") and not rerun.ran("git", "push") and not rerun.ran("git", "commit")
+    assert rerun.ran("gh", "pr", "create") and CHUNK in rerun.bodies[0] and SECRET not in rerun.bodies[0]
+    assert rerun.cmds.index(next(c for c in rerun.cmds if c[:3] == ["gh", "pr", "create"])) == len(rerun.cmds) - 1
+    assert http.d1() == [{"sql": MARK.format("consulting_feedback"), "params": ["feedback/consulting-1", "[1, 2, 3, 4, 5]"]}]
 
 
 def test_queries_use_bound_params(env, monkeypatch):
@@ -217,6 +238,12 @@ def test_queries_use_bound_params(env, monkeypatch):
     assert "90" not in body["sql"] and "500" not in body["sql"] and body["params"] == ["-90 days", 500]
     with pytest.raises(ValueError):
         fd.fetch("consulting_feedback; DROP TABLE x")
+    # D1 binds at most 100 params per query: any cluster size marks with exactly two
+    _fakes(monkeypatch, http, _Proc(remote="abc123\trefs/heads/feedback/consulting-1\n", prs='[{"number": 1}]'))
+    fd.open_pr(_ready(_cluster(row_ids=list(range(1, 151)))), "consulting", "consulting_feedback")
+    mark = http.d1()[-1]
+    assert mark["sql"] == MARK.format("consulting_feedback") and "?, ?" not in mark["sql"]
+    assert mark["params"] == ["feedback/consulting-1", json.dumps(list(range(1, 151)))] and len(mark["params"]) == 2
     monkeypatch.delenv("FEEDBACK_DB_ID")
     with pytest.raises(SystemExit, match="FEEDBACK_DB_ID"):
         fd.query("SELECT 1", [])
