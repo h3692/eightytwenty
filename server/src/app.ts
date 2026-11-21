@@ -22,7 +22,7 @@ import docs from "../pages/index.html";
 import privacy from "../pages/privacy.html";
 import terms from "../pages/terms.html";
 import icon from "../pages/icon.svg";
-import { clientName, SERVER_VERSION, tracked } from "./analytics";
+import { clientName, identity, initializeEvent, send, SERVER_VERSION, tracked } from "./analytics";
 import { findImages, type Images, type Kind } from "./images";
 import { cached, DEFAULT_FLAGS, LENGTHS, normalise, search, searchFlows, store, uncached, uncachedFlows, type FlowQuery, type Library, type Query } from "./search";
 
@@ -103,8 +103,8 @@ function createServer(env: Env, lib: Library, key: string, ctx: ExecutionContext
 	};
 
 	const server = new McpServer({ name: "eightytwenty", version: SERVER_VERSION }, { instructions: INSTRUCTIONS });
-	// Wraps each tool callback: one anonymous usage event per call (src/analytics.ts).
-	const deps = { env, ctx, hints, meta, client: () => clientName(server.server.getClientVersion(), hints.userAgent) };
+	// Wraps each tool callback: one usage event per call (src/analytics.ts).
+	const deps = { env, ctx, hints, meta, key, client: () => clientName(server.server.getClientVersion(), hints.userAgent) };
 
 	server.registerPrompt(
 		"start",
@@ -360,6 +360,10 @@ export const app = (lib: Library): ExportedHandler<Env> => ({
 			const denied = body ? await limit(request, env, body, key) : null;
 			if (denied) return denied;
 			const hints = { dnt: request.headers.get("dnt") === "1" || request.headers.get("sec-gpc") === "1", userAgent: request.headers.get("user-agent") };
+			// One "client connects" event per single initialize message (not a batch); it runs after the response, like tracked().
+			// No _meta: initialize is not rate limited, so it must not mint ChatGPT user ids.
+			if (body?.method === "initialize")
+				ctx.waitUntil(identity(env, key).then((who) => send(env, ctx, hints, initializeEvent(body.params, hints.userAgent, who))).catch(() => {}));
 			// Hand the parsed body to the SDK (its parsedBody option); otherwise it clones and parses the body twice more.
 			return createMcpHandler(() => createServer(env, lib, key, ctx, hints), { allowedHostnames: HOSTS, allowedOriginHostnames: HOSTS }).fetch(request, body ? { parsedBody: body } : undefined);
 		}
