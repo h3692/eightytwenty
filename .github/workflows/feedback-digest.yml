@@ -19,6 +19,7 @@ concurrency: feedback-digest
 jobs:
   digest:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       # On schedule and workflow_dispatch the ref is a branch, so checkout leaves HEAD attached to it.
       - uses: actions/checkout@v4
