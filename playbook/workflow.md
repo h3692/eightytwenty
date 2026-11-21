@@ -268,9 +268,10 @@ checklist (`qa`).
 1. Send feedback only when the user says "send feedback" or runs `/eightytwenty-feedback`; never otherwise, and never
    from an edit request such as "fix" or "change".
 2. If no correction is in the conversation or given with the command, ask what to send.
-3. Write one summary per correction: the deck type (`stock_pitch` when the deck's style is `finance-pitch`, else
-   `consulting`), the slide type, the slide's role in the storyline, the message it must land, what was wrong and what
-   to do instead, and why. Keep it general: no company or people names, figures or text from their files.
+3. Write one summary per correction: `deck_type` (`stock_pitch` when the deck's style is `finance-pitch`, else
+   `consulting`), the slide type, the deck style if one was picked, the slide's role in the storyline, the message it
+   must land, what was wrong and what to do instead, and why. Keep it general: no company or people names, figures or
+   text from their files.
 4. Show the summaries and ask "Send these to eightytwenty?"
 5. On yes, call `submit_feedback` once per summary. Otherwise send nothing.
 6. Continue the deck.

@@ -285,9 +285,11 @@ describe("get_playbook", () => {
 		expect(workflow.slice(workflow.indexOf("## Run sheet"), workflow.indexOf("## Scope"))).toContain(
 			"*Tip: say **send feedback** anytime to send a correction to eightytwenty, so future versions of the playbook learn from it.*");
 		expect(workflow.slice(workflow.indexOf("## Scope"), workflow.indexOf("## Pick the mode first"))).toMatch(/Sending feedback about this deck .* is in scope/);
-		for (const s of ["## Feedback (only when the user asks)", "send feedback", "/eightytwenty-feedback", "submit_feedback", "finance-pitch"])
-			expect(workflow).toContain(s);
-		expect(workflow).toMatch(/never otherwise, and never\s+from an edit request such as "fix" or "change"/);
+		expect(workflow).toContain("## Feedback (only when the user asks)");
+		const feedback = workflow.slice(workflow.indexOf("## Feedback"), workflow.indexOf("## Completion audit"));
+		for (const s of ["send feedback", "/eightytwenty-feedback", "submit_feedback", "`deck_type`", "`stock_pitch`", "`finance-pitch`", "`consulting`", "deck style"])
+			expect(feedback).toContain(s);
+		expect(feedback).toMatch(/never otherwise, and never\s+from an edit request such as "fix" or "change"/);
 	});
 
 	it("gives writing rules per text type, a reads-AI-made list and a writing pass in QA", async () => {
