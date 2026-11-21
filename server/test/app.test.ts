@@ -67,13 +67,13 @@ describe("MCP endpoint", () => {
 		expect(body.result.serverInfo.name).toBe("eightytwenty");
 	});
 
-	it("lists five read-only, titled tools with enum filters from the label schema", async () => {
+	it("lists six titled tools, all read-only except submit_feedback, with enum filters from the label schema", async () => {
 		const { body } = await rpc("tools/list");
 		const tools = Object.fromEntries(body.result.tools.map((t: any) => [t.name, t]));
-		expect(Object.keys(tools).sort()).toEqual(["find_deck_flows", "find_images", "find_references", "get_playbook", "get_reference"]);
+		expect(Object.keys(tools).sort()).toEqual(["find_deck_flows", "find_images", "find_references", "get_playbook", "get_reference", "submit_feedback"]);
 		for (const t of Object.values<any>(tools)) {
 			expect(t.title).toBeTruthy();
-			expect(t.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false });
+			expect(t.annotations, t.name).toMatchObject({ readOnlyHint: t.name !== "submit_feedback", destructiveHint: false });
 		}
 		const p = tools.find_references.inputSchema.properties;
 		expect(p.slide_type.enum).toEqual(labels.properties.archetype.enum);
@@ -152,13 +152,15 @@ describe("MCP endpoint", () => {
 		expect((await rpc("tools/list", {}, { headers: { host: "mcp.eightytwenty.tech", origin: "https://evil.example" } })).res.status).toBe(403);
 	});
 
-	it("marks every tool titled, read-only and non-destructive, and only find_images as open-world", async () => {
+	it("marks every tool titled and non-destructive, all read-only except submit_feedback, and only find_images as open-world", async () => {
 		const { body } = await rpc("tools/list");
+		expect(body.result.tools).toHaveLength(6);
 		for (const t of body.result.tools) {
 			expect(t.title).toBeTruthy();
 			for (const hint of ["readOnlyHint", "destructiveHint", "openWorldHint"]) expect(typeof t.annotations[hint]).toBe("boolean");
-			expect(t.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false });
+			expect(t.annotations, t.name).toMatchObject({ readOnlyHint: t.name !== "submit_feedback", destructiveHint: false });
 		}
+		expect(body.result.tools.filter((t: any) => !t.annotations.readOnlyHint).map((t: any) => t.name)).toEqual(["submit_feedback"]);
 		expect(body.result.tools.filter((t: any) => t.annotations.openWorldHint).map((t: any) => t.name)).toEqual(["find_images"]);
 	});
 });
@@ -625,6 +627,93 @@ describe("get_reference", () => {
 	});
 });
 
+const SAVED = "Saved. Thank you: corrections that recur are reviewed and folded into the playbook.";
+const CORRECTION = { deck_type: "consulting", slide_type: "financials", deck_style: "consulting-structured", slide_role: "SECRET-ROLE evidence for the price claim",
+	message: "SECRET-MESSAGE the chart buries the claim", correction: "SECRET-CORRECTION lead with the claim in the title", reason: "SECRET-REASON readers skim titles" };
+// Rows in both feedback tables; today's only when asked (the budget counts today's rows across both).
+const feedbackRows = async (today = false) => {
+	const since = today ? `${new Date().toISOString().slice(0, 10)}T00:00:00Z` : "";
+	const [a, b] = await env.FEEDBACK.batch<{ n: number }>(["consulting_feedback", "stock_pitch_feedback"].map((t) =>
+		env.FEEDBACK.prepare(`SELECT COUNT(*) AS n FROM ${t} WHERE created_at >= ?`).bind(since)));
+	return { consulting: a.results[0].n, stock_pitch: b.results[0].n, total: a.results[0].n + b.results[0].n };
+};
+const lastRow = (table: string) => env.FEEDBACK.prepare(`SELECT * FROM ${table} ORDER BY id DESC LIMIT 1`).first<Record<string, unknown>>();
+
+describe("submit_feedback", () => {
+	it("is a titled, non-destructive, non-idempotent, closed-world write tool taking the correction fields", async () => {
+		const t = (await rpc("tools/list")).body.result.tools.find((t: any) => t.name === "submit_feedback");
+		expect(t.title).toBe("Send feedback to eightytwenty");
+		expect(t.description).toBe("Saves one slide correction the user asked to send to eightytwenty as feedback, after they confirmed the summary. General terms only: no names, figures or file content.");
+		expect(t.annotations).toEqual({ readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false });
+		const p = t.inputSchema.properties;
+		expect(p.deck_type.enum).toEqual(["consulting", "stock_pitch"]);
+		expect(p.slide_type.enum).toEqual(labels.properties.archetype.enum);
+		expect(p.deck_style.enum).toEqual(styles.properties.style.enum);
+		expect(p.slide_role).toMatchObject({ type: "string", minLength: 1, maxLength: 300 });
+		expect(p.message).toMatchObject({ type: "string", minLength: 1, maxLength: 300 });
+		expect(p.correction).toMatchObject({ type: "string", minLength: 1, maxLength: 1000 });
+		expect(p.reason).toMatchObject({ type: "string", maxLength: 500 });
+		expect(t.inputSchema.required.sort()).toEqual(["correction", "deck_type", "message", "slide_role"]);
+	});
+
+	it("stores a consulting correction in consulting_feedback", async () => {
+		const before = await feedbackRows();
+		const { body } = await tool("submit_feedback", { ...CORRECTION, slide_role: "  evidence  " });
+		expect(body.result).toEqual({ content: [{ type: "text", text: SAVED }] }); // no workflow reminder
+		expect(await feedbackRows()).toEqual({ ...before, consulting: before.consulting + 1, total: before.total + 1 });
+		const row = await lastRow("consulting_feedback");
+		expect(row).toMatchObject({ slide_type: "financials", deck_style: "consulting-structured", slide_role: "evidence", message: CORRECTION.message,
+			correction: CORRECTION.correction, reason: CORRECTION.reason, used_in_pr: null });
+		expect(row!.created_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+	});
+
+	it("stores a stock_pitch correction in stock_pitch_feedback", async () => {
+		const before = await feedbackRows();
+		const { slide_role, message, correction } = CORRECTION; // the optional fields left out
+		const { body } = await tool("submit_feedback", { deck_type: "stock_pitch", slide_role, message, correction });
+		expect(body.result).toEqual({ content: [{ type: "text", text: SAVED }] });
+		expect(await feedbackRows()).toEqual({ ...before, stock_pitch: before.stock_pitch + 1, total: before.total + 1 });
+		expect(await lastRow("stock_pitch_feedback")).toMatchObject({ slide_type: null, deck_style: null, slide_role, message, correction, reason: null, used_in_pr: null });
+	});
+
+	it("rejects an empty or oversize correction and stores nothing", async () => {
+		const before = await feedbackRows();
+		for (const bad of [
+			{ correction: "" }, { correction: "   " }, { correction: "x".repeat(1001) }, { correction: undefined },
+			{ message: "" }, { message: "x".repeat(301) }, { slide_role: " " }, { slide_role: "x".repeat(301) }, { reason: "x".repeat(501) },
+			{ deck_type: "pitch" }, { slide_type: "chart" }, { deck_style: "consulting" },
+		]) {
+			const { res, body } = await tool("submit_feedback", { ...CORRECTION, ...bad });
+			expect(res.status, JSON.stringify(bad)).toBe(200);
+			expect(body.result.isError, JSON.stringify(bad)).toBe(true);
+			expect(body.result.content[0].text, JSON.stringify(bad)).not.toBe(SAVED);
+		}
+		expect(await feedbackRows()).toEqual(before);
+	});
+
+	it("stops at the daily feedback budget", async () => {
+		// Earlier tests stored rows today: allow exactly two more, counted across both tables.
+		const e = testEnv({ DAILY_FEEDBACK_BUDGET: (await feedbackRows(true)).total + 2 });
+		expect((await tool("submit_feedback", CORRECTION, { e })).body.result.content[0].text).toBe(SAVED);
+		expect((await tool("submit_feedback", { ...CORRECTION, deck_type: "stock_pitch" }, { e })).body.result.content[0].text).toBe(SAVED);
+		const before = await feedbackRows();
+		for (const deck_type of ["consulting", "stock_pitch"]) {
+			const { res, body } = await tool("submit_feedback", { ...CORRECTION, deck_type }, { e });
+			expect(res.status).toBe(200);
+			expect(body.result).toMatchObject({ isError: true, content: [{ text: "Feedback is full for today. Try again after 00:00 UTC." }] });
+		}
+		expect(await feedbackRows()).toEqual(before);
+	});
+
+	it("over the rate limit returns 429 and stores nothing", async () => {
+		const e = testEnv({ LIMIT_PER_MINUTE: 1 }), from = nextIp();
+		expect((await tool("submit_feedback", CORRECTION, { e, from })).body.result.content[0].text).toBe(SAVED);
+		const before = await feedbackRows();
+		expect((await tool("submit_feedback", CORRECTION, { e, from })).res.status).toBe(429);
+		expect(await feedbackRows()).toEqual(before);
+	});
+});
+
 describe("rate limits", () => {
 	it("cools a client down with 429 after the per-minute limit, other clients unaffected", async () => {
 		const e = testEnv({ LIMIT_PER_MINUTE: 3 }), from = nextIp();
@@ -748,6 +837,23 @@ describe("usage statistics", () => {
 		expect((await tool("get_playbook", {}, { e, from })).res.status).toBe(200);
 		expect((await tool("get_playbook", {}, { e, from })).res.status).toBe(429);
 		expect(sent()).toHaveLength(1);
+	});
+
+	it("sends only deck_type, slide_type and deck_style to analytics", async () => {
+		expect((await tool("submit_feedback", CORRECTION, { e: on() })).body.result.content[0].text).toBe(SAVED);
+		const [event, ...rest] = events();
+		expect(rest).toEqual([]);
+		expect(event.properties).toMatchObject({ $mcp_tool_name: "submit_feedback", $mcp_is_error: false, deck_type: "consulting", slide_type: "financials", deck_style: "consulting-structured" });
+		expect(Object.keys(event.properties).filter((k) => !k.startsWith("$")).sort()).toEqual(["deck_style", "deck_type", "slide_type"]);
+		expect(sent()[0].body).not.toMatch(/SECRET|203\.0\.113\./);
+	});
+
+	it("with DNT stores but sends nothing", async () => {
+		const before = await feedbackRows();
+		for (const headers of [{ dnt: "1" }, { "sec-gpc": "1" }] as Record<string, string>[])
+			expect((await tool("submit_feedback", CORRECTION, { e: on(), headers })).body.result.content[0].text).toBe(SAVED);
+		expect((await feedbackRows()).total).toBe(before.total + 2);
+		expect(sent()).toEqual([]);
 	});
 
 	it("names the client from its per-request clientInfo, else from the User-Agent", async () => {

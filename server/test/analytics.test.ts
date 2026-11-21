@@ -43,6 +43,10 @@ describe("toolEvent", () => {
 		expect(toolEvent("find_images", { kind: "icon", query: "SECRET", k: 2 }, { ms: 1 }, { result_count: 2 }, CLIENT).properties).toMatchObject({ kind: "icon", k: 2, result_count: 2 });
 		expect(toolEvent("get_playbook", { stage: "qa" }, { ms: 0 }, {}, CLIENT).properties).toMatchObject({ stage: "qa" });
 		expect(toolEvent("get_playbook", {}, { ms: 0 }, {}, CLIENT).properties).not.toHaveProperty("stage");
+		const feedback = { deck_type: "consulting", slide_type: "financials", deck_style: "data-led", slide_role: "SECRET", message: "SECRET", correction: "SECRET", reason: "SECRET" };
+		expect(toolEvent("submit_feedback", feedback, { ms: 1 }, { result_count: 1 }, CLIENT).properties).toMatchObject({ deck_type: "consulting", slide_type: "financials", deck_style: "data-led" });
+		expect(toolEvent("submit_feedback", feedback, { ms: 1 }, { result_count: 1 }, CLIENT).properties).not.toHaveProperty("result_count");
+		expect(JSON.stringify(toolEvent("submit_feedback", feedback, { ms: 1 }, {}, CLIENT))).not.toMatch(/SECRET/);
 		expect(JSON.stringify(toolEvent("find_images", { kind: "icon", query: "SECRET" }, { ms: 1 }, {}, CLIENT))).not.toMatch(/SECRET/);
 		expect(JSON.stringify(toolEvent("unknown_tool", { purpose: "SECRET" }, { ms: 1 }, {}, CLIENT))).not.toMatch(/SECRET/);
 	});

@@ -1,6 +1,6 @@
-// The public connector: five read-only MCP tools at /mcp (stateless Streamable HTTP, Host and Origin checks), the
-// Limiter in front of every tool call, the /docs, /privacy and /terms pages, and ChatGPT's domain challenge. index.ts
-// binds it to the bundled library.
+// The public connector: five read-only MCP tools and submit_feedback (writes to the FEEDBACK database) at /mcp
+// (stateless Streamable HTTP, Host and Origin checks), the Limiter in front of every tool call, the /docs, /privacy and
+// /terms pages, and ChatGPT's domain challenge. index.ts binds it to the bundled library.
 import { DurableObject } from "cloudflare:workers";
 import { hostHeaderValidationResponse, McpServer, originValidationResponse } from "@modelcontextprotocol/server";
 import { createMcpHandler } from "agents/mcp/server";
@@ -72,6 +72,15 @@ const IMAGES_INPUT = z.object({
 	kind: z.enum(["logo", "icon", "photo"]).describe("logo: a brand's mark; icon: a pictogram of an object; photo: a photograph."),
 	query: z.string().trim().min(1).max(100).describe("A brand name, the object an icon draws (\"truck\", not \"logistics\"), or what a photo shows."),
 	k: z.number().int().min(1).max(4).optional().describe("How many results, 1 to 4 (default 3; 4 for icons)."),
+});
+const FEEDBACK_INPUT = z.object({
+	deck_type: z.enum(["consulting", "stock_pitch"]),
+	slide_type: enumOf(labels.properties.archetype.enum).optional(),
+	deck_style: enumOf(style.properties.style.enum).optional(),
+	slide_role: z.string().trim().min(1).max(300),
+	message: z.string().trim().min(1).max(300),
+	correction: z.string().trim().min(1).max(1000),
+	reason: z.string().trim().max(500).optional(),
 });
 const DECK_ID = /^[0-9a-f]{16}$/; // slide ids are <deck id>-NN
 const PLAYBOOK_INDEX = `Playbook stages (call get_playbook with one of these as \`stage\`):\n${STAGES.map((s) => `- \`${s}\`: ${PLAYBOOK[s].match(/^# (.+)$/m)?.[1] ?? s}`).join("\n")}\n\n${workflow}`;
@@ -257,6 +266,30 @@ function createServer(env: Env, lib: Library, key: string, ctx: ExecutionContext
 				...(found.thumbnails.length ? ["Thumbnails follow as images, in order: thumbnail 1 first."] : []),
 			].join("\n");
 			return { content: [text(summary), REMINDER, ...found.thumbnails.map((t) => ({ type: "image" as const, ...t }))] };
+		}, deps),
+	);
+
+	server.registerTool(
+		"submit_feedback",
+		{
+			title: "Send feedback to eightytwenty",
+			description: "Saves one slide correction the user asked to send to eightytwenty as feedback, after they confirmed the summary. " +
+				"General terms only: no names, figures or file content.",
+			inputSchema: FEEDBACK_INPUT,
+			annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+		},
+		tracked("submit_feedback", async ({ deck_type, slide_type, deck_style, slide_role, message, correction, reason }) => {
+			const since = `${new Date().toISOString().slice(0, 10)}T00:00:00Z`;
+			const today = await env.FEEDBACK.prepare("SELECT (SELECT COUNT(*) FROM consulting_feedback WHERE created_at >= ?) + " +
+				"(SELECT COUNT(*) FROM stock_pitch_feedback WHERE created_at >= ?) AS n").bind(since, since).first<number>("n");
+			if ((today ?? 0) >= env.DAILY_FEEDBACK_BUDGET) {
+				meta.errorType = "budget";
+				throw new Error("Feedback is full for today. Try again after 00:00 UTC.");
+			}
+			// The table name comes only from the deck_type enum; a plain INSERT (a REPLACE conflict would delete without the trigger).
+			await env.FEEDBACK.prepare(`INSERT INTO ${deck_type}_feedback (slide_type, deck_style, slide_role, message, correction, reason) VALUES (?, ?, ?, ?, ?, ?)`)
+				.bind(slide_type ?? null, deck_style ?? null, slide_role, message, correction, reason ?? null).run();
+			return { content: [text("Saved. Thank you: corrections that recur are reviewed and folded into the playbook.")] };
 		}, deps),
 	);
 
