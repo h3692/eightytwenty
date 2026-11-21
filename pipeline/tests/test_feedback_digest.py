@@ -63,9 +63,11 @@ class _Proc:
 
     def __init__(self, remote="", prs="[]", tests=0, create=0):
         self.remote, self.prs, self.tests, self.create, self.cmds, self.bodies = remote, prs, tests, create, [], []
+        self.envs = []
 
     def __call__(self, cmd, cwd=None, **kw):
         self.cmds.append([str(c) for c in cmd])
+        self.envs.append(kw.get("env"))
         if cmd[:3] == ["gh", "pr", "create"]:
             self.bodies.append(Path(cmd[cmd.index("--body-file") + 1]).read_text())
         out = (self.remote if "ls-remote" in cmd else "main\n" if "rev-parse" in cmd else
@@ -162,9 +164,16 @@ def test_cluster_sends_rows_as_data_with_no_tools(env, monkeypatch):
     data = prompt.split("<feedback_rows>")[1].split("</feedback_rows>")[0]
     assert json.loads(data) == rows
     assert "## Chain of proof" not in prompt and "Chain of proof" in prompt  # headings listed, not raw markdown
+    assert f"Return only groups of at least {fd.MIN_ROWS} rows" in prompt and "still return smaller groups" not in prompt
+
+    # a cut-off or refused answer stops the run (red in Actions), never a silent empty digest
+    for stop in ("max_tokens", "refusal"):
+        http.reply = _reply([_cluster()], stop=stop)
+        with pytest.raises(SystemExit, match=stop):
+            fd.cluster(rows, "consulting", chapters)
 
     # anything malformed is no clusters, never an exception
-    for bad in (_reply([_cluster()], stop="max_tokens"), {"content": [{"type": "text", "text": "not json"}]},
+    for bad in ({"content": [{"type": "text", "text": "not json"}]},
                 {"stop_reason": "end_turn", "content": []}, _reply("clusters"), {"error": "overloaded"}):
         http.reply = bad
         assert fd.cluster(rows, "consulting", chapters) == [], bad
@@ -174,6 +183,7 @@ def test_cluster_sends_rows_as_data_with_no_tools(env, monkeypatch):
 
 
 def test_pr_body_has_no_feedback_text(env, monkeypatch):
+    monkeypatch.setenv("GH_TOKEN", "placeholder")
     http, proc = _Http(), _Proc()
     _fakes(monkeypatch, http, proc)
     assert fd.open_pr(_ready(), "consulting", "consulting_feedback") == "feedback/consulting-1"
@@ -185,6 +195,10 @@ def test_pr_body_has_no_feedback_text(env, monkeypatch):
     assert SECRET not in body
     assert proc.ran("git", "push", "origin", "feedback/consulting-1")
     assert proc.ran("npx", "vitest", "run", "test/app.test.ts", "-t", "get_playbook")
+    gate = proc.envs[proc.cmds.index(proc.ran("npx")[0])]
+    assert gate is not None and "PATH" in gate
+    for name in ("ANTHROPIC_API_KEY", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "FEEDBACK_DB_ID", "GH_TOKEN"):
+        assert name not in gate, name
     assert f"- {CHUNK}" in (env / "playbook" / "narrative.md").read_text()
     assert http.d1() == [{"sql": MARK.format("consulting_feedback"), "params": ["feedback/consulting-1", "[1, 2, 3, 4, 5]"]}]
 
@@ -227,15 +241,22 @@ def test_pushed_branch_without_a_pr_gets_one_before_rows_are_marked(env, monkeyp
     assert http.d1() == [{"sql": MARK.format("consulting_feedback"), "params": ["feedback/consulting-1", "[1, 2, 3, 4, 5]"]}]
 
 
-def test_queries_use_bound_params(env, monkeypatch):
+def test_queries_use_bound_params(env, monkeypatch, capsys):
     http = _Http(rows=_rows(3))
     _fakes(monkeypatch, http, _Proc())
     assert fd.fetch("stock_pitch_feedback") == _rows(3)
+    assert "warning" not in capsys.readouterr().out.lower()
     url, body, req = http.calls[0]
+    assert body["sql"].endswith("ORDER BY id DESC LIMIT ?")  # newest first: old junk can't crowd out new rows
     assert url == "https://api.cloudflare.com/client/v4/accounts/acct-1/d1/database/db-1/query"
     assert req.get_header("Authorization") == "Bearer placeholder"
     assert "FROM stock_pitch_feedback" in body["sql"] and "used_in_pr IS NULL" in body["sql"]
     assert "90" not in body["sql"] and "500" not in body["sql"] and body["params"] == ["-90 days", 500]
+    monkeypatch.setattr(fd, "LIMIT", 3)  # a full page: older rows were left out
+    fd.fetch("stock_pitch_feedback")
+    out = capsys.readouterr().out
+    assert "warning" in out.lower() and "stock_pitch_feedback" in out and SECRET not in out
+    monkeypatch.setattr(fd, "LIMIT", 500)
     with pytest.raises(ValueError):
         fd.fetch("consulting_feedback; DROP TABLE x")
     # D1 binds at most 100 params per query: any cluster size marks with exactly two

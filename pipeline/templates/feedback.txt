@@ -15,8 +15,8 @@ Return every group, each with:
   chapter or what it has learned from feedback already says it; "vague" when it is unclear, a matter of one person's
   taste, or too narrow to become a rule.
 
-Only a group of at least {min_rows} rows can change the playbook; still return smaller groups with an honest verdict.
-Return an empty clusters list when nothing groups.
+Return only groups of at least {min_rows} rows: a smaller group can't change the playbook, so never return one.
+Return an empty clusters list when no group is that large.
 
 Chapters, with their section headings and what each has learned from feedback so far:
 

@@ -5,6 +5,9 @@ qualifies(), then append each one to its chapter's "Learned from feedback" secti
 Raw feedback text never leaves D1 and this process: the PR carries counts, dates, row ids and the model-written chunk.
 Secrets come from the environment only (ANTHROPIC_API_KEY, CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, FEEDBACK_DB_ID;
 gh reads GH_TOKEN).
+
+Each run reads the newest LIMIT unused rows. To retire junk so it stops taking up that window, the maintainer marks it
+(the triggers allow this): UPDATE <table> SET used_in_pr = 'rejected' WHERE id IN (...)
 """
 import json
 import os
@@ -29,6 +32,7 @@ MIN_ROWS, MAX_CHARS, WINDOW, LIMIT = 5, 600, "-90 days", 500
 BANNED = ("http", "www.", "@", "<", "`", "](", "//", "&#", "&lt")  # checked after NFKC: no full-width look-alikes
 MODEL, MAX_TOKENS = "claude-sonnet-5-5", 16000
 VERDICTS = ("new", "covered", "vague")
+SECRETS = {"ANTHROPIC_API_KEY", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "FEEDBACK_DB_ID", "GH_TOKEN"}
 SCHEMA = {"type": "object", "additionalProperties": False, "required": ["clusters"], "properties": {"clusters": {
     "type": "array", "items": {"type": "object", "additionalProperties": False,
                                "required": ["row_ids", "target", "markdown", "verdict"], "properties": {
@@ -65,9 +69,13 @@ def fetch(table):
     if table not in TABLES.values():
         raise ValueError(f"not a feedback table: {table}")
     # redacted rows ('[removed]') were withdrawn by their sender: they never count toward a PR
-    return query(f"SELECT id, created_at, slide_type, deck_style, slide_role, message, correction, reason FROM {table} "
+    rows = query(f"SELECT id, created_at, slide_type, deck_style, slide_role, message, correction, reason FROM {table} "
                  "WHERE used_in_pr IS NULL AND created_at >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now', ?) "
-                 "AND '[removed]' NOT IN (slide_role, message, correction) ORDER BY id LIMIT ?", [WINDOW, LIMIT])
+                 "AND '[removed]' NOT IN (slide_role, message, correction) ORDER BY id DESC LIMIT ?", [WINDOW, LIMIT])
+    if len(rows) == LIMIT:
+        print(f"Warning: {table} has {LIMIT} or more unused rows; only the newest {LIMIT} were read. "
+              f"Retire junk with: UPDATE {table} SET used_in_pr = 'rejected' WHERE id IN (...)")
+    return rows
 
 
 def _outline(stem, text):
@@ -85,7 +93,10 @@ def cluster(rows, deck_type, chapters):
                   {"model": MODEL, "max_tokens": MAX_TOKENS, "messages": [{"role": "user", "content": prompt}],
                    "output_config": {"format": {"type": "json_schema", "schema": SCHEMA}}},
                   {"x-api-key": _env("ANTHROPIC_API_KEY"), "anthropic-version": "2026-10-21"})
-    if reply.get("stop_reason") != "end_turn":  # a refusal, a cut-off or an error body: no clusters
+    if reply.get("stop_reason") in ("max_tokens", "refusal"):  # fail the run: an empty digest would hide it
+        raise SystemExit(f"Claude API stop_reason {reply['stop_reason']}: no usable clusters for {deck_type}; "
+                         "the digest stopped (max_tokens: raise MAX_TOKENS or lower LIMIT)")
+    if reply.get("stop_reason") != "end_turn":  # an error body or anything else unexpected: no clusters
         return []
     try:
         clusters = json.loads(next(b["text"] for b in reply["content"] if b.get("type") == "text"))["clusters"]
@@ -144,7 +155,9 @@ def open_pr(c, deck_type, table):
     else:
         has_pr, original = False, path.read_text()
         append(path, deck_type, c["markdown"])
-        if subprocess.run(["npx", "vitest", "run", "test/app.test.ts", "-t", "get_playbook"], cwd=REPO / "server").returncode:
+        gate_env = {k: v for k, v in os.environ.items() if k not in SECRETS}  # the chunk's test run never sees them
+        if subprocess.run(["npx", "vitest", "run", "test/app.test.ts", "-t", "get_playbook"], cwd=REPO / "server",
+                          env=gate_env).returncode:
             path.write_text(original)
             print(f"{branch}: the chunk breaks the playbook tests; skipped, {path.name} restored")
             return None
