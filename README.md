@@ -70,7 +70,7 @@ Add `--scope user` to have it in every project.
 ```
 
 Type `/eightytwenty` with your case prompt or problem, or on its own and it asks for the case. If you already added the
-connector, the plugin uses it instead of adding a second copy.
+connector, you won't get a second copy of its tools.
 
 ### ChatGPT
 
@@ -107,8 +107,10 @@ In Claude you can also start from the connector's `start` prompt.
 | `find_deck_flows` | Search whole-deck flows: section order, pacing and arc, by industry, length or style |
 | `get_reference` | One result in full: its layout record, component layout and wireframe, or one deck flow |
 | `find_images` | A logo, icon or photo for a slide: public-domain logos, permissive icons and openly licensed photos, with a credit line only when the licence needs one |
+| `submit_feedback` | One slide correction for the maintainer, sent only when you say "send feedback" or run `/eightytwenty-feedback`, after you confirm a summary |
 
-Every tool is read-only. Nothing can list, export or upload to the library.
+Every tool except `submit_feedback` is read-only, and it runs only when you ask. Nothing can list, export or upload to
+the library.
 
 ## How it works
 
@@ -136,6 +138,10 @@ flowchart LR
 | `pipeline/` | Extraction, labelling worksheets, the leak check, packaging and the one-command release |
 
 ## What's new
+
+**November 21, 2026**
+- Send feedback: say "send feedback" (or run `/eightytwenty-feedback` in the plugin) to send a slide correction after
+  you confirm a summary. Corrections that recur are reviewed and folded into the playbook.
 
 **November 14, 2026**
 - Slide density is now fixed by slide type: content slides at Medium, financials and the problem analysis at High, Low
@@ -168,9 +174,13 @@ the image search terms go to Openverse, Wikimedia Commons and Iconify. Your IP a
 There is no account, queries are not logged, and cached results are keyed by a one-way hash of the search. Each tool
 call sends one anonymous usage record to PostHog (US cloud): the tool name, outcome, duration, result count, the options
 picked from fixed lists, a library id only when it exists in the library, the name and version of your AI app, and the
-server's name and version. It never includes search text, context, results, your IP address or anything that identifies
-you; records are not linked to each other, and nothing is sent if your client sends Do Not Track or Global Privacy
-Control. Full policy: [Privacy](https://mcp.eightytwenty.tech/privacy) and [Terms](https://mcp.eightytwenty.tech/terms).
+server's name and version. It never includes search text, context, feedback text, results, your IP address or anything
+that identifies you; records are not linked to each other, and nothing is sent if your client sends Do Not Track or
+Global Privacy Control. `submit_feedback` runs only when you ask and sends only the summary you approved (deck type,
+slide type and style, the slide's role and message, the correction and any reason). It is stored in Cloudflare D1, kept
+indefinitely and never linked to you (no account, and your IP address is not stored with it), so a row can't be traced
+to you or removed on request. The maintainer reads it, and it is processed with the Anthropic API to find corrections
+that recur; it is used to improve the playbook and future eightytwenty products. Full policy: [Privacy](https://mcp.eightytwenty.tech/privacy) and [Terms](https://mcp.eightytwenty.tech/terms).
 
 Self-hosting: usage statistics are off unless the `POSTHOG_PROJECT_TOKEN` secret is set (`wrangler secret put`). The
 optional `POSTHOG_HOST` var picks the PostHog host and defaults to `https://us.i.posthog.com`.

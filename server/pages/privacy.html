@@ -21,20 +21,28 @@ footer { margin-top: 3rem; color: var(--muted); font-size: .9rem; }
 <body>
 <main>
 <h1>Privacy</h1>
-<p>eightytwenty is a read-only connector with no accounts. This page says what it receives and what it keeps, and what the website at eightytwenty.tech collects.</p>
+<p>eightytwenty is a connector with no accounts, read-only apart from feedback you choose to send. This page says what it receives and what it keeps, and what the website at eightytwenty.tech collects.</p>
 
 <h2>What a request sends</h2>
-<p>The tool arguments your assistant passes: the search text and filters for <code>find_references</code> and <code>find_deck_flows</code>, the kind and search terms for <code>find_images</code>, a stage name for <code>get_playbook</code>, or an id for <code>get_reference</code>. Nothing else from your chat or your files is sent.</p>
+<p>The tool arguments your assistant passes: the search text and filters for <code>find_references</code> and <code>find_deck_flows</code>, the kind and search terms for <code>find_images</code>, a stage name for <code>get_playbook</code>, or an id for <code>get_reference</code>. <code>submit_feedback</code> sends the feedback summary you approved, and only when you ask (see Feedback below). Nothing else from your chat or your files is sent.</p>
 
 <h2>Image search</h2>
 <p>To fetch results, image search terms are sent to Openverse (photos), Wikimedia Commons (logos) and Iconify (icons and Simple Icons logos). Nothing else about you or your request goes with them. Openverse access uses an app registration in the operator's name, which carries no user data.</p>
+
+<h2>Feedback</h2>
+<p><code>submit_feedback</code> runs only when you ask: you say "send feedback" (or run <code>/eightytwenty-feedback</code>), your assistant shows you a summary, and it sends only after you confirm. It sends only that summary: the deck type (consulting or stock pitch), the slide type and deck style, the slide's role in the storyline, the message it must land, the correction and, if you give one, the reason. Your assistant is asked to keep it to general terms, with no names, figures or file content.</p>
+<ul>
+<li><strong>Stored in Cloudflare D1 and kept indefinitely.</strong> Each summary is one row in a separate database, with the time it was saved. Rows are never deleted.</li>
+<li><strong>Never linked to you.</strong> There is no account, and your IP address is not stored with it, so a row can't be traced back to you or removed on request. If you sent something by mistake, email <a href="mailto:eightytwenty.tech@gmail.com">eightytwenty.tech@gmail.com</a> with what it said, and its text can be replaced with "[removed]".</li>
+<li><strong>How it is used.</strong> The maintainer reads it. Once a day, new feedback is processed with the Anthropic API to find corrections that recur (five or more similar ones), and each finding becomes a pull request the maintainer reviews before anything in the playbook changes. The feedback text itself is never published to GitHub. Feedback is used to improve the playbook and future eightytwenty products.</li>
+</ul>
 
 <h2>What is kept</h2>
 <ul>
 <li><strong>Your IP address</strong> is used only for rate limits. It sits in a request counter that is deleted 24 hours after your last request. Requests that come from claude.ai arrive from Anthropic's servers and share one counter, so your own address is not seen.</li>
 <li><strong>Search text is not logged or stored.</strong> To return identical results for identical searches, results (image results too) are cached under a one-way hash of the normalised search text and filters, never the text itself. Cached results are dropped when the library is rebuilt.</li>
-<li><strong>Usage statistics.</strong> For each tool call, one anonymous record goes to PostHog's US cloud. It holds only: the tool name; whether the call succeeded and, if not, the error type (budget, not found or other); how long it took; how many results a search returned; the options picked from fixed lists (slide type, industry, data type, impact, style, deck length, image kind, number of results asked for, playbook stage) and a library id only when that id exists in the library; the name and version your AI app announces; the server's name and version; and fixed labels identifying the source as this connector. Never sent: your search text or image search terms, the context you give, results, error text, your IP address or anything derived from it, or anything that identifies you. Each record gets a fresh random id, so records are not linked to each other or to you. If your client sends Do Not Track or Global Privacy Control, nothing is sent. PostHog notes the network address each record arrives from, which is Cloudflare's server, not yours.</li>
-<li><strong>No request logs.</strong> Cloudflare's request logging stays switched off. Beyond the rate-limit counter and cache above, the only record of a call is the anonymous usage statistic.</li>
+<li><strong>Usage statistics.</strong> For each tool call, one anonymous record goes to PostHog's US cloud. It holds only: the tool name; whether the call succeeded and, if not, the error type (budget, not found or other); how long it took; how many results a search returned; the options picked from fixed lists (slide type, industry, data type, impact, style, deck length, image kind, number of results asked for, playbook stage, and for feedback only the deck type, slide type and deck style) and a library id only when that id exists in the library; the name and version your AI app announces; the server's name and version; and fixed labels identifying the source as this connector. Never sent: your search text or image search terms, the context you give, the text of your feedback, results, error text, your IP address or anything derived from it, or anything that identifies you. Each record gets a fresh random id, so records are not linked to each other or to you. If your client sends Do Not Track or Global Privacy Control, nothing is sent. PostHog notes the network address each record arrives from, which is Cloudflare's server, not yours.</li>
+<li><strong>No request logs.</strong> Cloudflare's request logging stays switched off. Beyond the rate-limit counter, the cache and any feedback you send, the only record of a call is the anonymous usage statistic.</li>
 </ul>
 
 <h2>What is not used</h2>
@@ -50,7 +58,7 @@ footer { margin-top: 3rem; color: var(--muted); font-size: .9rem; }
 </ul>
 
 <h2>Infrastructure</h2>
-<p>The connector runs on Cloudflare Workers. Cloudflare processes each request to deliver it and may keep its own operational data under its privacy policy. Usage statistics go to PostHog, which processes them under its own privacy policy.</p>
+<p>The connector runs on Cloudflare Workers. Cloudflare processes each request to deliver it and may keep its own operational data under its privacy policy. Usage statistics go to PostHog, which processes them under its own privacy policy. Feedback is stored in Cloudflare D1 and processed with the Anthropic API, which handles it under its own terms.</p>
 
 <footer><a href="/docs">Docs</a> · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="https://www.eightytwenty.tech/">eightytwenty</a> · <a href="mailto:eightytwenty.tech@gmail.com">eightytwenty.tech@gmail.com</a></footer>
 </main>

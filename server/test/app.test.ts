@@ -1011,8 +1011,15 @@ describe("pages", () => {
 		expect(res.status).toBe(200);
 		expect(res.headers.get("content-type")).toMatch(/^text\/html/);
 		const html = await res.text();
-		for (const s of ["get_playbook", "find_references", "find_deck_flows", "get_reference", "find_images", "https://mcp.eightytwenty.tech/mcp", "claude.ai", "Claude Code"]) expect(html).toContain(s);
+		for (const s of ["get_playbook", "find_references", "find_deck_flows", "get_reference", "find_images", "submit_feedback", "https://mcp.eightytwenty.tech/mcp", "claude.ai", "Claude Code"]) expect(html).toContain(s);
 		expect(html).not.toContain("socratic.workers.dev"); // connect instructions give the custom domain
+	});
+
+	it("/docs says there are six tools, read-only apart from feedback you choose to send", async () => {
+		const html = await (await call("/docs")).text();
+		for (const s of ["six tools", "read-only apart from feedback you choose to send", "/eightytwenty-feedback", "200"]) expect(html).toContain(s);
+		expect(html).not.toContain("All five are read-only");
+		expect(html).not.toContain("A free, read-only");
 	});
 
 	it("/docs tags only the clients not yet tested: not Claude Code or ChatGPT", async () => {
@@ -1030,7 +1037,7 @@ describe("pages", () => {
 		expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
 		expect(res.headers.get("content-security-policy")).toBe((await call("/privacy")).headers.get("content-security-policy"));
 		const html = await res.text();
-		for (const s of ["eightytwenty, an independent project based in Ontario, Canada", "read-only", "no accounts", "bulk-copy", "rate limits",
+		for (const s of ["eightytwenty, an independent project based in Ontario, Canada", "read-only apart from feedback you choose to send", "no accounts", "bulk-copy", "rate limits",
 			"find_images", "licence", "credit line", "competition's rules", "MIT licence", "as is", "liab", "change", 'href="/privacy"', "eightytwenty.tech@gmail.com"])
 			expect(html).toContain(s);
 		expect(html).not.toContain("—");
@@ -1083,10 +1090,17 @@ describe("pages", () => {
 	it("/privacy covers the connector's anonymous usage statistics and qualifies request logs", async () => {
 		const html = (await (await call("/privacy")).text()).toLowerCase();
 		for (const s of ["usage statistics", "posthog", "random id", "do not track", "global privacy control", "never sent", "ip address", "cookies", "accounts", "24 hours",
-			"cloudflare's request logging stays switched off. beyond the rate-limit counter and cache above, the only record of a call is the anonymous usage statistic.",
+			"cloudflare's request logging stays switched off. beyond the rate-limit counter, the cache and any feedback you send, the only record of a call is the anonymous usage statistic.",
 			"library id", "are not linked", "fixed labels"]) expect(html).toContain(s);
 		for (const s of ["layout id", "cannot be linked"]) expect(html).not.toContain(s);
 		expect(html).not.toContain("the server's request logging is switched off.");
+	});
+
+	it("/privacy discloses what feedback sends, how long it is kept and how it is processed", async () => {
+		const html = (await (await call("/privacy")).text()).toLowerCase();
+		for (const s of ["submit_feedback", "only when you ask", "kept indefinitely", "cloudflare d1", "your ip address is not stored with it", "anthropic api",
+			"never published to github", "deck type, slide type and deck style", "future eightytwenty products"]) expect(html).toContain(s);
+		expect(html).not.toContain("is a read-only connector");
 	});
 
 	it("serves an icon and sets a strict CSP with no external assets", async () => {

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>eightytwenty: a slide-design connector for AI assistants</title>
-<meta name="description" content="A free, read-only MCP connector: a slide-design playbook for case competition decks and search over a curated library of slide layouts.">
+<meta name="description" content="A free MCP connector: a slide-design playbook for case competition decks and search over a curated library of slide layouts. Read-only apart from feedback you choose to send.">
 <link rel="icon" href="/icon.svg" type="image/svg+xml">
 <style>
 :root { color-scheme: light dark; --ink: #1f2a37; --muted: #5b6573; --line: #d9d4ca; --bg: #fbfaf7; --code: #f1eee7; --accent: #b7791f; }
@@ -34,7 +34,7 @@ footer { margin-top: 3rem; color: var(--muted); font-size: .9rem; }
 <body>
 <main>
 <header><img src="/icon.svg" alt=""><h1>eightytwenty</h1></header>
-<p class="lede">A free, read-only connector that gives your AI assistant a slide-design playbook for case competition decks, plus search over a curated library of slide layouts.</p>
+<p class="lede">A free connector that gives your AI assistant a slide-design playbook for case competition decks, plus search over a curated library of slide layouts.</p>
 
 <p>Each library entry is an abstract layout record (region boxes, colour and type roles, hierarchy, a short note on why the slide works) and a wireframe drawn from that record. There are no original slides, names or numbers in it. Your assistant uses a reference as inspiration and builds the slide with its own tools.</p>
 <p>No account, no sign-in. It works with assistants that connect to remote MCP servers, such as claude.ai, ChatGPT, Claude Code and Cursor; web pages cannot call it directly.</p>
@@ -61,7 +61,7 @@ footer { margin-top: 3rem; color: var(--muted); font-size: .9rem; }
 <pre><code>{ "mcpServers": { "eightytwenty": { "url": "https://mcp.eightytwenty.tech/mcp" } } }</code></pre>
 
 <h2>Tools</h2>
-<p>All five are read-only. There is no way to upload to the library or list all of it.</p>
+<p>There are six tools, read-only apart from feedback you choose to send with <code>submit_feedback</code>. There is no way to upload to the library or list all of it.</p>
 <dl>
 <dt><code>get_playbook(stage?)</code></dt>
 <dd>The methodology: workflow, narrative and impact slides, slide archetypes, anatomy and taglines, distinctive design, visual rules and design options, writing, a QA checklist, and how to audit the style of a deck you attach in chat. With no stage it returns the index and the workflow. Your assistant should call it before planning a deck.</dd>
@@ -73,6 +73,8 @@ footer { margin-top: 3rem; color: var(--muted); font-size: .9rem; }
 <dd>One slide: its labels (purpose, why it works, archetype, insight device, impact), its component layout, its design-DNA record (the 40 largest regions), and its wireframe image where the client shows images. Given a deck id, it returns that deck's flow: its steps in order, each with a slide id, its impact device, and whether that slide is in the library.</dd>
 <dt><code>find_images(kind, query, k?)</code></dt>
 <dd>Sources a logo, icon or photo for a slide being built: public-domain logo SVGs from Wikimedia Commons and Simple Icons, permissive icon SVGs from Iconify, and CC0, public-domain and CC BY photos from Openverse. Returns up to four results (<code>k</code>, default 3, or 4 for icons) with their licence and either the SVG text or the photo's download and page links, plus a credit line only when the licence requires one; photos come with thumbnails. The search terms are sent to those three services; see <a href="/privacy">Privacy</a>.</dd>
+<dt><code>submit_feedback(deck_type, slide_role, message, correction, slide_type?, deck_style?, reason?)</code></dt>
+<dd>Saves one slide correction for the maintainer, only when you say "send feedback" or run <code>/eightytwenty-feedback</code>, and only after your assistant shows you a summary and you confirm it. It sends the deck type (consulting or stock pitch), the slide type and deck style, the slide's role in the storyline, the message it must land, the correction and, if you give one, the reason. Corrections that recur are reviewed and folded into the playbook. Feedback is kept indefinitely and is not linked to you; see <a href="/privacy">Privacy</a>.</dd>
 </dl>
 
 <h2>Try asking</h2>
@@ -83,7 +85,7 @@ footer { margin-top: 3rem; color: var(--muted); font-size: .9rem; }
 </ul>
 
 <h2>Limits</h2>
-<p>Each client IP address can make 20 tool calls a minute. Going over starts a cooldown of 1 minute that doubles for repeat bursts, up to an hour. Requests from claude.ai share one larger allowance, and searches across all users share a daily budget that resets at 00:00 UTC. Photo searches have their own daily budget; when it runs out, logos and icons still work.</p>
+<p>Each client IP address can make 20 tool calls a minute. Going over starts a cooldown of 1 minute that doubles for repeat bursts, up to an hour. Requests from claude.ai share one larger allowance, and searches across all users share a daily budget that resets at 00:00 UTC. Photo searches have their own daily budget; when it runs out, logos and icons still work. Feedback is capped at 200 a day across all users.</p>
 
 <footer><a href="/docs">Docs</a> · <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="https://www.eightytwenty.tech/">eightytwenty</a> · <a href="mailto:eightytwenty.tech@gmail.com">eightytwenty.tech@gmail.com</a> · MIT licensed</footer>
 </main>
