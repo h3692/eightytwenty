@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { clientName, send, SERVER_VERSION, toolEvent, tracked } from "../src/analytics";
+import { clientName, identity, initializeEvent, send, SERVER_VERSION, toolEvent, tracked } from "../src/analytics";
 
 const CLIENT = { name: "claude-ai", version: "0.1.0" };
+const WHO = { distinct_id: "day_test", $mcp_user_source: "daily" as const };
+const SALTED = { ANALYTICS_SALT: "test-salt" } as Env;
+const HEX = /^[0-9a-f]{32}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 // A fake ExecutionContext: collects waitUntil work so each test awaits it (an unhandled rejection fails the run).
@@ -24,12 +27,13 @@ describe("toolEvent", () => {
 	it("keeps only the allowlisted filters and the fixed properties", () => {
 		const args = { purpose: "SECRET-PURPOSE", query: "SECRET-QUERY", context: "SECRET-CONTEXT", injected: "SECRET-EXTRA", result_count: "SECRET-COUNT",
 			slide_type: "chart", industry: "tech", data_type: "trend", impact: "spotlight", style: "minimal", k: 5 };
-		const payload = toolEvent("find_references", args, { ms: 12 }, { result_count: 3 }, CLIENT);
+		const payload = toolEvent("find_references", args, { ms: 12 }, { result_count: 3 }, CLIENT, WHO);
 		expect(payload.event).toBe("$mcp_tool_call");
+		expect(payload.distinct_id).toBe("day_test");
 		expect(payload.properties).toEqual({
 			$mcp_tool_name: "find_references", $mcp_duration_ms: 12, $mcp_is_error: false,
 			$mcp_server_name: "eightytwenty", $mcp_server_version: SERVER_VERSION, $mcp_interface: "mcp", $mcp_source: "posthog_mcp_analytics",
-			$mcp_client_name: "claude-ai", $mcp_client_version: "0.1.0", $process_person_profile: false, $geoip_disable: true,
+			$mcp_client_name: "claude-ai", $mcp_client_version: "0.1.0", $mcp_user_source: "daily", $process_person_profile: false, $geoip_disable: true,
 			slide_type: "chart", industry: "tech", data_type: "trend", impact: "spotlight", style: "minimal", k: 5, result_count: 3,
 		});
 		expect(JSON.stringify(payload)).not.toMatch(/SECRET/);
@@ -37,35 +41,108 @@ describe("toolEvent", () => {
 
 	it("keeps each tool's own filters and skips undefined ones", () => {
 		const flows = { purpose: "SECRET", industry: "tech", length: "short", style: undefined, kind: "logo" };
-		expect(toolEvent("find_deck_flows", flows, { ms: 1 }, { result_count: 0 }, CLIENT).properties).toMatchObject({ industry: "tech", length: "short", result_count: 0 });
-		expect(toolEvent("find_deck_flows", flows, { ms: 1 }, {}, CLIENT).properties).not.toHaveProperty("style");
-		expect(toolEvent("find_deck_flows", flows, { ms: 1 }, {}, CLIENT).properties).not.toHaveProperty("kind");
-		expect(toolEvent("find_images", { kind: "icon", query: "SECRET", k: 2 }, { ms: 1 }, { result_count: 2 }, CLIENT).properties).toMatchObject({ kind: "icon", k: 2, result_count: 2 });
-		expect(toolEvent("get_playbook", { stage: "qa" }, { ms: 0 }, {}, CLIENT).properties).toMatchObject({ stage: "qa" });
-		expect(toolEvent("get_playbook", {}, { ms: 0 }, {}, CLIENT).properties).not.toHaveProperty("stage");
-		expect(JSON.stringify(toolEvent("find_images", { kind: "icon", query: "SECRET" }, { ms: 1 }, {}, CLIENT))).not.toMatch(/SECRET/);
-		expect(JSON.stringify(toolEvent("unknown_tool", { purpose: "SECRET" }, { ms: 1 }, {}, CLIENT))).not.toMatch(/SECRET/);
+		expect(toolEvent("find_deck_flows", flows, { ms: 1 }, { result_count: 0 }, CLIENT, WHO).properties).toMatchObject({ industry: "tech", length: "short", result_count: 0 });
+		expect(toolEvent("find_deck_flows", flows, { ms: 1 }, {}, CLIENT, WHO).properties).not.toHaveProperty("style");
+		expect(toolEvent("find_deck_flows", flows, { ms: 1 }, {}, CLIENT, WHO).properties).not.toHaveProperty("kind");
+		expect(toolEvent("find_images", { kind: "icon", query: "SECRET", k: 2 }, { ms: 1 }, { result_count: 2 }, CLIENT, WHO).properties).toMatchObject({ kind: "icon", k: 2, result_count: 2 });
+		expect(toolEvent("get_playbook", { stage: "qa" }, { ms: 0 }, {}, CLIENT, WHO).properties).toMatchObject({ stage: "qa" });
+		expect(toolEvent("get_playbook", {}, { ms: 0 }, {}, CLIENT, WHO).properties).not.toHaveProperty("stage");
+		expect(JSON.stringify(toolEvent("find_images", { kind: "icon", query: "SECRET" }, { ms: 1 }, {}, CLIENT, WHO))).not.toMatch(/SECRET/);
+		expect(JSON.stringify(toolEvent("unknown_tool", { purpose: "SECRET" }, { ms: 1 }, {}, CLIENT, WHO))).not.toMatch(/SECRET/);
 	});
 
 	it("sends get_reference's id only when the lookup succeeded", () => {
-		expect(toolEvent("get_reference", { id: "abc-01" }, { ms: 4 }, {}, CLIENT).properties).toMatchObject({ id: "abc-01" });
-		const missing = toolEvent("get_reference", { id: "my-secret-idea" }, { ms: 4, error: "not_found" }, {}, CLIENT);
+		expect(toolEvent("get_reference", { id: "abc-01" }, { ms: 4 }, {}, CLIENT, WHO).properties).toMatchObject({ id: "abc-01" });
+		const missing = toolEvent("get_reference", { id: "my-secret-idea" }, { ms: 4, error: "not_found" }, {}, CLIENT, WHO);
 		expect(missing.properties).toMatchObject({ $mcp_is_error: true, $mcp_error_type: "not_found" });
 		expect(JSON.stringify(missing)).not.toMatch(/my-secret-idea/);
 	});
 
 	it("sets the error type only on errors", () => {
-		expect(toolEvent("find_references", {}, { ms: 1 }, {}, CLIENT).properties).not.toHaveProperty("$mcp_error_type");
+		expect(toolEvent("find_references", {}, { ms: 1 }, {}, CLIENT, WHO).properties).not.toHaveProperty("$mcp_error_type");
 		for (const error of ["budget", "not_found", "exception"])
-			expect(toolEvent("find_references", {}, { ms: 1, error }, {}, CLIENT).properties).toMatchObject({ $mcp_is_error: true, $mcp_error_type: error });
+			expect(toolEvent("find_references", {}, { ms: 1, error }, {}, CLIENT, WHO).properties).toMatchObject({ $mcp_is_error: true, $mcp_error_type: error });
 	});
 
-	it("uses a fresh random distinct_id per call", () => {
-		const a = toolEvent("get_playbook", {}, { ms: 0 }, {}, CLIENT).distinct_id;
-		const b = toolEvent("get_playbook", {}, { ms: 0 }, {}, CLIENT).distinct_id;
-		expect(a).toMatch(UUID);
-		expect(b).toMatch(UUID);
-		expect(a).not.toBe(b);
+});
+
+describe("initializeEvent", () => {
+	it("sends the fixed properties with the cleaned client and protocol version", () => {
+		const payload = initializeEvent({ protocolVersion: "2025-06-18", clientInfo: { name: "claude-code", version: "2.1.0 SECRET" } }, "SECRET-UA/9", WHO);
+		expect(payload.event).toBe("$mcp_initialize");
+		expect(payload.distinct_id).toBe("day_test");
+		expect(payload.properties).toEqual({
+			$mcp_server_name: "eightytwenty", $mcp_server_version: SERVER_VERSION, $mcp_interface: "mcp", $mcp_source: "posthog_mcp_analytics",
+			$mcp_client_name: "claude-code", $mcp_client_version: "2.1.0", $mcp_protocol_version: "2025-06-18", $mcp_user_source: "daily",
+			$process_person_profile: false, $geoip_disable: true,
+		});
+		expect(JSON.stringify(payload)).not.toMatch(/SECRET/);
+	});
+
+	it("cleans a junk protocol version and falls back to the User-Agent and unknown", () => {
+		expect(initializeEvent({ protocolVersion: "x<script>" }, null, WHO).properties.$mcp_protocol_version).toBe("xscript");
+		expect(initializeEvent({ protocolVersion: "<>!" }, null, WHO).properties.$mcp_protocol_version).toBe("unknown");
+		expect(initializeEvent({ protocolVersion: "1".repeat(200) }, null, WHO).properties.$mcp_protocol_version).toBe("1".repeat(32));
+		expect(initializeEvent(undefined, "python-httpx/0.28.1", WHO).properties).toMatchObject({ $mcp_client_name: "python-httpx", $mcp_client_version: "0.28.1", $mcp_protocol_version: "unknown" });
+	});
+
+	it("carries the conversation hash with the identity", () => {
+		expect(initializeEvent({}, null, { ...WHO, mcp_conversation: "abc" }).properties).toMatchObject({ mcp_conversation: "abc" });
+	});
+});
+
+describe("identity", () => {
+	const SUBJECT = { "openai/subject": "SECRET-SUBJECT-1", "openai/session": "SECRET-SESSION-1" };
+
+	it("hashes ChatGPT's subject into a stable usr_ id and its session into mcp_conversation", async () => {
+		const a = await identity(SALTED, "203.0.113.9", SUBJECT);
+		expect(a.distinct_id).toMatch(/^usr_[0-9a-f]{32}$/);
+		expect(a.$mcp_user_source).toBe("chatgpt");
+		expect(a.mcp_conversation).toMatch(HEX);
+		expect(await identity(SALTED, "198.51.100.7", SUBJECT)).toEqual(a); // the subject wins over the address
+		const other = await identity(SALTED, "203.0.113.9", { "openai/subject": "SECRET-SUBJECT-2", "openai/session": "SECRET-SESSION-2" });
+		expect(other.distinct_id).not.toBe(a.distinct_id);
+		expect(other.mcp_conversation).not.toBe(a.mcp_conversation);
+		expect((await identity({ ANALYTICS_SALT: "other-salt" } as Env, "203.0.113.9", SUBJECT)).distinct_id).not.toBe(a.distinct_id);
+	});
+
+	it("never puts the raw subject, session, address or key in the result", async () => {
+		for (const meta of [SUBJECT, { "openai/session": "SECRET-SESSION-1" }, {}])
+			expect(JSON.stringify(await identity(SALTED, "203.0.113.9", meta))).not.toMatch(/SECRET|203\.0\.113|test-salt/);
+		expect(JSON.stringify(await identity(SALTED, "2001:db8:1:2::/64", {}))).not.toMatch(/2001|db8/);
+	});
+
+	it("gives direct apps a day_ id per address, stable within the UTC day and new the next day", async () => {
+		try {
+			vi.setSystemTime(new Date("2026-11-21T00:00:01Z"));
+			const a = await identity(SALTED, "203.0.113.9");
+			expect(a).toEqual({ distinct_id: expect.stringMatching(/^day_[0-9a-f]{32}$/), $mcp_user_source: "daily" });
+			vi.setSystemTime(new Date("2026-11-21T23:59:59Z"));
+			expect(await identity(SALTED, "203.0.113.9", {})).toEqual(a);
+			expect((await identity(SALTED, "198.51.100.7")).distinct_id).not.toBe(a.distinct_id);
+			vi.setSystemTime(new Date("2026-11-22T00:00:01Z"));
+			expect((await identity(SALTED, "203.0.113.9")).distinct_id).not.toBe(a.distinct_id);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("keeps a fresh random id for claude.ai, a missing address or a missing salt", async () => {
+		const ids = [await identity(SALTED, "anthropic"), await identity(SALTED, "unknown"), await identity({} as Env, "203.0.113.9", SUBJECT), await identity({} as Env, "anthropic", SUBJECT)];
+		for (const who of ids) expect(who).toEqual({ distinct_id: expect.stringMatching(UUID), $mcp_user_source: "none" });
+		expect(new Set(ids.map((w) => w.distinct_id)).size).toBe(ids.length);
+		expect((await identity(SALTED, "anthropic", { "openai/session": "s" })).mcp_conversation).toMatch(HEX);
+	});
+
+	it("ignores a subject or session that is not a non-empty string", async () => {
+		const who = await identity(SALTED, "anthropic", { "openai/subject": "", "openai/session": 42 });
+		expect(who).toEqual({ distinct_id: expect.stringMatching(UUID), $mcp_user_source: "none" });
+	});
+
+	it("ignores a subject or session over 256 characters", async () => {
+		const who = await identity(SALTED, "anthropic", { "openai/subject": "s".repeat(257), "openai/session": "s".repeat(257) });
+		expect(who).toEqual({ distinct_id: expect.stringMatching(UUID), $mcp_user_source: "none" });
+		expect((await identity(SALTED, "anthropic", { "openai/subject": "s".repeat(256) })).$mcp_user_source).toBe("chatgpt");
 	});
 });
 
@@ -101,7 +178,7 @@ describe("clientName", () => {
 });
 
 describe("send", () => {
-	const payload = toolEvent("get_playbook", { stage: "qa" }, { ms: 0 }, {}, CLIENT);
+	const payload = toolEvent("get_playbook", { stage: "qa" }, { ms: 0 }, {}, CLIENT, WHO);
 
 	it("does nothing without a token", async () => {
 		spyFetch();
@@ -163,7 +240,7 @@ describe("send", () => {
 
 describe("tracked", () => {
 	const deps = (ctx: ReturnType<typeof fakeCtx>, meta: { errorType?: string; result_count?: number } = {}) =>
-		({ env: { POSTHOG_PROJECT_TOKEN: "phc_test" } as Env, ctx, hints: { dnt: false }, meta, client: () => CLIENT });
+		({ env: { POSTHOG_PROJECT_TOKEN: "phc_test", ANALYTICS_SALT: "test-salt" } as Env, ctx, hints: { dnt: false }, meta, client: () => CLIENT, key: "203.0.113.9" });
 	const sent = () => fetched.map((f) => JSON.parse(String(f.init?.body)).properties);
 
 	it("returns the result untouched, forwards (args, ctx) and sends one event", async () => {
@@ -231,5 +308,22 @@ describe("tracked", () => {
 		await wrapped({}, {});
 		await ctx.settle();
 		expect(sent()[0]).toMatchObject({ $mcp_client_name: "late", $mcp_client_version: "1" });
+	});
+
+	it("identifies the caller from the tool's ctx._meta and the client key, never sending the raw values", async () => {
+		spyFetch();
+		const ctx = fakeCtx();
+		const handler = async (_args: object, _extra: object) => ({ content: [] });
+		await tracked("get_playbook", handler, deps(ctx))({}, { mcpReq: { _meta: { "openai/subject": "SECRET-SUBJECT", "openai/session": "SECRET-SESSION" } } });
+		await ctx.settle(); // one at a time: the hashing is async, so events could otherwise arrive out of order
+		await tracked("get_playbook", handler, deps(ctx))({}, {});
+		await ctx.settle();
+		await tracked("get_playbook", handler, { ...deps(ctx), key: "anthropic" })({}, {});
+		await ctx.settle();
+		const events = fetched.map((f) => JSON.parse(String(f.init?.body)));
+		expect(events.map((e) => [e.distinct_id.slice(0, 4), e.properties.$mcp_user_source])).toEqual([["usr_", "chatgpt"], ["day_", "daily"], [expect.any(String), "none"]]);
+		expect(events[0].properties.mcp_conversation).toMatch(HEX);
+		expect(events[2].distinct_id).toMatch(UUID);
+		expect(JSON.stringify(events)).not.toMatch(/SECRET|203\.0\.113|test-salt/);
 	});
 });

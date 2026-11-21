@@ -30,7 +30,8 @@
     // OPENAI_APPS_CHALLENGE (ChatGPT's domain verification token) is a secret too.
     // GLAMA_CLAIM (the Glama connector claim JSON) is a secret too.
     "DAILY_PHOTO_BUDGET": 1000,
-    // Anonymous usage statistics go here. POSTHOG_PROJECT_TOKEN is a secret (wrangler secret put); unset, nothing is sent.
+    // Usage statistics go here. POSTHOG_PROJECT_TOKEN is a secret (wrangler secret put); unset, nothing is sent.
+    // ANALYTICS_SALT (the HMAC key for the hashed caller ids) is a secret too; unset, every call gets a random id.
     "POSTHOG_HOST": "https://us.i.posthog.com"
   }
 }

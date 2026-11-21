@@ -154,16 +154,20 @@ flowchart LR
 ## Privacy
 
 A request sends only the tool arguments your assistant passes, such as the search text and filters. For `find_images`
-the image search terms go to Openverse, Wikimedia Commons and Iconify. Your IP address is used only for rate limiting.
-There is no account, queries are not logged, and cached results are keyed by a one-way hash of the search. Each tool
-call sends one anonymous usage record to PostHog (US cloud): the tool name, outcome, duration, result count, the options
-picked from fixed lists, a library id only when it exists in the library, the name and version of your AI app, and the
-server's name and version. It never includes search text, context, results, your IP address or anything that identifies
-you; records are not linked to each other, and nothing is sent if your client sends Do Not Track or Global Privacy
-Control. Full policy: [Privacy](https://mcp.eightytwenty.tech/privacy) and [Terms](https://mcp.eightytwenty.tech/terms).
+the image search terms go to Openverse, Wikimedia Commons and Iconify. Your IP address is used for rate limiting and,
+as a keyed daily hash, for usage statistics. There is no account, queries are not logged, and cached results are keyed
+by a one-way hash of the search. Each tool call, and each time an app connects, sends one usage record to PostHog (US
+cloud): the tool name, outcome, duration, result count, the options picked from fixed lists, a library id only when it
+exists in the library, the name and version of your AI app, and the server's name and version. Records carry a keyed
+hash, never the raw value: of ChatGPT's anonymized user and conversation ids, or for apps that connect directly, of your
+network address and the date (that one changes daily, so those records link only within one day). claude.ai records
+keep a random id. Records never include search text, context, results or your IP address, and nothing is sent if your
+client sends Do Not Track or Global Privacy Control. Full policy: [Privacy](https://mcp.eightytwenty.tech/privacy) and
+[Terms](https://mcp.eightytwenty.tech/terms).
 
 Self-hosting: usage statistics are off unless the `POSTHOG_PROJECT_TOKEN` secret is set (`wrangler secret put`). The
-optional `POSTHOG_HOST` var picks the PostHog host and defaults to `https://us.i.posthog.com`.
+optional `POSTHOG_HOST` var picks the PostHog host and defaults to `https://us.i.posthog.com`. Hashed ids need the
+`ANALYTICS_SALT` secret; without it every record gets a random id.
 
 ## FAQ
 
