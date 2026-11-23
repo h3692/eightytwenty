@@ -1,0 +1,8 @@
+{
+  "name": "eightytwenty",
+  "description": "Builds case-competition and pitch decks in PowerPoint from the layouts behind winning decks.",
+  "owner": { "name": "h3692" },
+  "plugins": [
+    { "name": "eightytwenty", "source": "./" }
+  ]
+}

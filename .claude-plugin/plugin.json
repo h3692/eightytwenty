@@ -1,0 +1,12 @@
+{
+  "name": "eightytwenty",
+  "version": "1.0.0",
+  "description": "Builds case-competition and pitch decks in PowerPoint from the layouts behind winning decks.",
+  "author": { "name": "h3692" },
+  "homepage": "https://eightytwenty.tech",
+  "privacyPolicyUrl": "https://mcp.eightytwenty.tech/privacy",
+  "license": "MIT",
+  "mcpServers": {
+    "eightytwenty": { "type": "http", "url": "https://mcp.eightytwenty.tech/mcp" }
+  }
+}

@@ -17,6 +17,7 @@ const ALLOW: Record<string, string[]> = {
 	find_images: ["kind", "k", "result_count"],
 	get_playbook: ["stage"],
 	get_reference: ["id"],
+	submit_feedback: ["deck_type", "slide_type", "deck_style"],
 };
 
 export function toolEvent(name: string, args: Record<string, unknown>, outcome: { ms: number; error?: string }, meta: Meta, client: Client, who: Who) {

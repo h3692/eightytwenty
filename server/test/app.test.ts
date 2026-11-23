@@ -67,13 +67,13 @@ describe("MCP endpoint", () => {
 		expect(body.result.serverInfo.name).toBe("eightytwenty");
 	});
 
-	it("lists five read-only, titled tools with enum filters from the label schema", async () => {
+	it("lists six titled tools, all read-only and non-destructive except submit_feedback, with enum filters from the label schema", async () => {
 		const { body } = await rpc("tools/list");
 		const tools = Object.fromEntries(body.result.tools.map((t: any) => [t.name, t]));
-		expect(Object.keys(tools).sort()).toEqual(["find_deck_flows", "find_images", "find_references", "get_playbook", "get_reference"]);
+		expect(Object.keys(tools).sort()).toEqual(["find_deck_flows", "find_images", "find_references", "get_playbook", "get_reference", "submit_feedback"]);
 		for (const t of Object.values<any>(tools)) {
 			expect(t.title).toBeTruthy();
-			expect(t.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false });
+			expect(t.annotations, t.name).toMatchObject({ readOnlyHint: t.name !== "submit_feedback", destructiveHint: t.name === "submit_feedback" });
 		}
 		const p = tools.find_references.inputSchema.properties;
 		expect(p.slide_type.enum).toEqual(labels.properties.archetype.enum);
@@ -152,13 +152,15 @@ describe("MCP endpoint", () => {
 		expect((await rpc("tools/list", {}, { headers: { host: "mcp.eightytwenty.tech", origin: "https://evil.example" } })).res.status).toBe(403);
 	});
 
-	it("marks every tool titled, read-only and non-destructive, and only find_images as open-world", async () => {
+	it("marks every tool titled, read-only and non-destructive except submit_feedback, and only find_images as open-world", async () => {
 		const { body } = await rpc("tools/list");
+		expect(body.result.tools).toHaveLength(6);
 		for (const t of body.result.tools) {
 			expect(t.title).toBeTruthy();
 			for (const hint of ["readOnlyHint", "destructiveHint", "openWorldHint"]) expect(typeof t.annotations[hint]).toBe("boolean");
-			expect(t.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false });
+			expect(t.annotations, t.name).toMatchObject({ readOnlyHint: t.name !== "submit_feedback", destructiveHint: t.name === "submit_feedback" });
 		}
+		expect(body.result.tools.filter((t: any) => !t.annotations.readOnlyHint).map((t: any) => t.name)).toEqual(["submit_feedback"]);
 		expect(body.result.tools.filter((t: any) => t.annotations.openWorldHint).map((t: any) => t.name)).toEqual(["find_images"]);
 	});
 });
@@ -276,6 +278,18 @@ describe("get_playbook", () => {
 		expect(workflow).toMatch(/Nothing is called finished while a row is not\s+done/);
 		const qa = (await tool("get_playbook", { stage: "qa" })).body.result.content[0].text;
 		expect(qa).toMatch(/- \[ \] A delivery reported as finished ends with the completion audit/);
+	});
+
+	it("shows the feedback tip and sends feedback only when the user asks", async () => {
+		const workflow = (await tool("get_playbook", { stage: "workflow" })).body.result.content[0].text;
+		expect(workflow.slice(workflow.indexOf("## Run sheet"), workflow.indexOf("## Scope"))).toContain(
+			"*Tip: say **send feedback** anytime to send a correction to eightytwenty, so future versions of the playbook learn from it.*");
+		expect(workflow.slice(workflow.indexOf("## Scope"), workflow.indexOf("## Pick the mode first"))).toMatch(/Sending feedback about this deck .* is in scope/);
+		expect(workflow).toContain("## Feedback (only when the user asks)");
+		const feedback = workflow.slice(workflow.indexOf("## Feedback"), workflow.indexOf("## Completion audit"));
+		for (const s of ["send feedback", "/eightytwenty-feedback", "submit_feedback", "`deck_type`", "`stock_pitch`", "`finance-pitch`", "`consulting`", "deck style"])
+			expect(feedback).toContain(s);
+		expect(feedback).toMatch(/never otherwise, and never\s+from an edit request such as "fix" or "change"/);
 	});
 
 	it("gives writing rules per text type, a reads-AI-made list and a writing pass in QA", async () => {
@@ -625,6 +639,102 @@ describe("get_reference", () => {
 	});
 });
 
+const SAVED = "Saved. Thank you: corrections that recur are reviewed and folded into the playbook.";
+const CORRECTION = { deck_type: "consulting", slide_type: "financials", deck_style: "consulting-structured", slide_role: "SECRET-ROLE evidence for the price claim",
+	message: "SECRET-MESSAGE the chart buries the claim", correction: "SECRET-CORRECTION lead with the claim in the title", reason: "SECRET-REASON readers skim titles" };
+// Rows in both feedback tables; today's only when asked (the budget counts today's rows across both).
+const feedbackRows = async (today = false) => {
+	const since = today ? `${new Date().toISOString().slice(0, 10)}T00:00:00Z` : "";
+	const [a, b] = await env.FEEDBACK.batch<{ n: number }>(["consulting_feedback", "stock_pitch_feedback"].map((t) =>
+		env.FEEDBACK.prepare(`SELECT COUNT(*) AS n FROM ${t} WHERE created_at >= ?`).bind(since)));
+	return { consulting: a.results[0].n, stock_pitch: b.results[0].n, total: a.results[0].n + b.results[0].n };
+};
+const lastRow = (table: string) => env.FEEDBACK.prepare(`SELECT * FROM ${table} ORDER BY id DESC LIMIT 1`).first<Record<string, unknown>>();
+
+describe("submit_feedback", () => {
+	it("is a titled, destructive-hinted, non-idempotent, closed-world write tool taking the correction fields", async () => {
+		const t = (await rpc("tools/list")).body.result.tools.find((t: any) => t.name === "submit_feedback");
+		expect(t.title).toBe("Send feedback to eightytwenty");
+		expect(t.description).toBe("Saves one slide correction the user asked to send to eightytwenty as feedback, after they confirmed the summary. General terms only: no names, figures or file content.");
+		expect(t.annotations).toEqual({ readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false });
+		const p = t.inputSchema.properties;
+		expect(p.deck_type.enum).toEqual(["consulting", "stock_pitch"]);
+		expect(p.slide_type.enum).toEqual(labels.properties.archetype.enum);
+		expect(p.deck_style.enum).toEqual(styles.properties.style.enum);
+		expect(p.slide_role).toMatchObject({ type: "string", minLength: 1, maxLength: 300 });
+		expect(p.message).toMatchObject({ type: "string", minLength: 1, maxLength: 300 });
+		expect(p.correction).toMatchObject({ type: "string", minLength: 1, maxLength: 1000 });
+		expect(p.reason).toMatchObject({ type: "string", maxLength: 500 });
+		expect(t.inputSchema.required.sort()).toEqual(["correction", "deck_type", "message", "slide_role"]);
+		expect(Object.fromEntries(Object.entries(p).map(([k, v]: [string, any]) => [k, v.description]))).toEqual({
+			deck_type: "consulting, or stock_pitch for finance-pitch decks.",
+			slide_type: "Archetype id (see the archetypes stage of get_playbook).",
+			deck_style: "The deck's style.",
+			slide_role: "Where the slide sits in the storyline.",
+			message: "What the slide must land.",
+			correction: "What was wrong and what to do instead, in general terms.",
+			reason: "Why the change is needed.",
+		});
+	});
+
+	it("stores a consulting correction in consulting_feedback", async () => {
+		const before = await feedbackRows();
+		const { body } = await tool("submit_feedback", { ...CORRECTION, slide_role: "  evidence  " });
+		expect(body.result).toEqual({ content: [{ type: "text", text: SAVED }] }); // no workflow reminder
+		expect(await feedbackRows()).toEqual({ ...before, consulting: before.consulting + 1, total: before.total + 1 });
+		const row = await lastRow("consulting_feedback");
+		expect(row).toMatchObject({ slide_type: "financials", deck_style: "consulting-structured", slide_role: "evidence", message: CORRECTION.message,
+			correction: CORRECTION.correction, reason: CORRECTION.reason, used_in_pr: null });
+		expect(row!.created_at).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/);
+	});
+
+	it("stores a stock_pitch correction in stock_pitch_feedback", async () => {
+		const before = await feedbackRows();
+		const { slide_role, message, correction } = CORRECTION; // the optional fields left out or blank
+		const { body } = await tool("submit_feedback", { deck_type: "stock_pitch", slide_role, message, correction, reason: "   " }); // a blank reason stores NULL
+		expect(body.result).toEqual({ content: [{ type: "text", text: SAVED }] });
+		expect(await feedbackRows()).toEqual({ ...before, stock_pitch: before.stock_pitch + 1, total: before.total + 1 });
+		expect(await lastRow("stock_pitch_feedback")).toMatchObject({ slide_type: null, deck_style: null, slide_role, message, correction, reason: null, used_in_pr: null });
+	});
+
+	it("rejects an empty or oversize correction and stores nothing", async () => {
+		const before = await feedbackRows();
+		for (const bad of [
+			{ correction: "" }, { correction: "   " }, { correction: "x".repeat(1001) }, { correction: undefined },
+			{ message: "" }, { message: "x".repeat(301) }, { slide_role: " " }, { slide_role: "x".repeat(301) }, { reason: "x".repeat(501) },
+			{ deck_type: "pitch" }, { slide_type: "chart" }, { deck_style: "consulting" },
+		]) {
+			const { res, body } = await tool("submit_feedback", { ...CORRECTION, ...bad });
+			expect(res.status, JSON.stringify(bad)).toBe(200);
+			expect(body.result.isError, JSON.stringify(bad)).toBe(true);
+			expect(body.result.content[0].text, JSON.stringify(bad)).not.toBe(SAVED);
+		}
+		expect(await feedbackRows()).toEqual(before);
+	});
+
+	it("stops at the daily feedback budget", async () => {
+		// Earlier tests stored rows today: allow exactly two more, counted across both tables.
+		const e = testEnv({ DAILY_FEEDBACK_BUDGET: (await feedbackRows(true)).total + 2 });
+		expect((await tool("submit_feedback", CORRECTION, { e })).body.result.content[0].text).toBe(SAVED);
+		expect((await tool("submit_feedback", { ...CORRECTION, deck_type: "stock_pitch" }, { e })).body.result.content[0].text).toBe(SAVED);
+		const before = await feedbackRows();
+		for (const deck_type of ["consulting", "stock_pitch"]) {
+			const { res, body } = await tool("submit_feedback", { ...CORRECTION, deck_type }, { e });
+			expect(res.status).toBe(200);
+			expect(body.result).toMatchObject({ isError: true, content: [{ text: "Feedback is full for today. Try again after 00:00 UTC." }] });
+		}
+		expect(await feedbackRows()).toEqual(before);
+	});
+
+	it("over the rate limit returns 429 and stores nothing", async () => {
+		const e = testEnv({ LIMIT_PER_MINUTE: 1 }), from = nextIp();
+		expect((await tool("submit_feedback", CORRECTION, { e, from })).body.result.content[0].text).toBe(SAVED);
+		const before = await feedbackRows();
+		expect((await tool("submit_feedback", CORRECTION, { e, from })).res.status).toBe(429);
+		expect(await feedbackRows()).toEqual(before);
+	});
+});
+
 describe("rate limits", () => {
 	it("cools a client down with 429 after the per-minute limit, other clients unaffected", async () => {
 		const e = testEnv({ LIMIT_PER_MINUTE: 3 }), from = nextIp();
@@ -748,6 +858,23 @@ describe("usage statistics", () => {
 		expect((await tool("get_playbook", {}, { e, from })).res.status).toBe(200);
 		expect((await tool("get_playbook", {}, { e, from })).res.status).toBe(429);
 		expect(sent()).toHaveLength(1);
+	});
+
+	it("sends only deck_type, slide_type and deck_style to analytics", async () => {
+		expect((await tool("submit_feedback", CORRECTION, { e: on() })).body.result.content[0].text).toBe(SAVED);
+		const [event, ...rest] = events();
+		expect(rest).toEqual([]);
+		expect(event.properties).toMatchObject({ $mcp_tool_name: "submit_feedback", $mcp_is_error: false, deck_type: "consulting", slide_type: "financials", deck_style: "consulting-structured" });
+		expect(Object.keys(event.properties).filter((k) => !k.startsWith("$")).sort()).toEqual(["deck_style", "deck_type", "slide_type"]);
+		expect(sent()[0].body).not.toMatch(/SECRET|203\.0\.113\./);
+	});
+
+	it("with DNT stores but sends nothing", async () => {
+		const before = await feedbackRows();
+		for (const headers of [{ dnt: "1" }, { "sec-gpc": "1" }] as Record<string, string>[])
+			expect((await tool("submit_feedback", CORRECTION, { e: on(), headers })).body.result.content[0].text).toBe(SAVED);
+		expect((await feedbackRows()).total).toBe(before.total + 2);
+		expect(sent()).toEqual([]);
 	});
 
 	it("names the client from its per-request clientInfo, else from the User-Agent", async () => {
@@ -953,8 +1080,15 @@ describe("pages", () => {
 		expect(res.status).toBe(200);
 		expect(res.headers.get("content-type")).toMatch(/^text\/html/);
 		const html = await res.text();
-		for (const s of ["get_playbook", "find_references", "find_deck_flows", "get_reference", "find_images", "https://mcp.eightytwenty.tech/mcp", "claude.ai", "Claude Code"]) expect(html).toContain(s);
+		for (const s of ["get_playbook", "find_references", "find_deck_flows", "get_reference", "find_images", "submit_feedback", "https://mcp.eightytwenty.tech/mcp", "claude.ai", "Claude Code"]) expect(html).toContain(s);
 		expect(html).not.toContain("socratic.workers.dev"); // connect instructions give the custom domain
+	});
+
+	it("/docs says there are six tools, read-only apart from feedback you choose to send", async () => {
+		const html = await (await call("/docs")).text();
+		for (const s of ["six tools", "read-only apart from feedback you choose to send", "/eightytwenty-feedback", "200", "slide type and deck style, if given"]) expect(html).toContain(s);
+		expect(html).not.toContain("All five are read-only");
+		expect(html).not.toContain("A free, read-only");
 	});
 
 	it("/docs tags only the clients not yet tested: not Claude Code or ChatGPT", async () => {
@@ -972,7 +1106,7 @@ describe("pages", () => {
 		expect(res.headers.get("content-type")).toBe("text/html; charset=utf-8");
 		expect(res.headers.get("content-security-policy")).toBe((await call("/privacy")).headers.get("content-security-policy"));
 		const html = await res.text();
-		for (const s of ["eightytwenty, an independent project based in Ontario, Canada", "read-only", "no accounts", "bulk-copy", "rate limits",
+		for (const s of ["eightytwenty, an independent project based in Ontario, Canada", "read-only apart from feedback you choose to send", "no accounts", "bulk-copy", "rate limits",
 			"find_images", "licence", "credit line", "competition's rules", "MIT licence", "as is", "liab", "change", 'href="/privacy"', "eightytwenty.tech@gmail.com"])
 			expect(html).toContain(s);
 		expect(html).not.toContain("—");
@@ -1025,10 +1159,20 @@ describe("pages", () => {
 	it("/privacy covers the connector's usage statistics and qualifies request logs", async () => {
 		const html = (await (await call("/privacy")).text()).toLowerCase();
 		for (const s of ["usage statistics", "posthog", "random id", "do not track", "global privacy control", "never sent", "ip address", "cookies", "accounts", "24 hours",
-			"is used for rate limits and, as a keyed daily hash, for the usage statistics below.", "cloudflare's request logging stays switched off. beyond the rate-limit counter and cache above, the only record of a call is its usage statistic.",
+			"is used for rate limits and, as a keyed daily hash, for the usage statistics below.", "cloudflare's request logging stays switched off. beyond the rate-limit counter, the cache and any feedback you send, the only record of a call is its usage statistic.",
 			"library id", "are not linked", "fixed labels", "which kind of id the record carries"]) expect(html).toContain(s);
 		for (const s of ["layout id", "cannot be linked"]) expect(html).not.toContain(s);
 		expect(html).not.toContain("the server's request logging is switched off.");
+	});
+
+	it("/privacy discloses what feedback sends, how long it is kept and how it is processed", async () => {
+		const html = (await (await call("/privacy")).text()).toLowerCase();
+		for (const s of ["submit_feedback", "only when you ask", "kept indefinitely", "cloudflare d1", "your ip address is not stored with it", "anthropic api",
+			"never published to github", "a model-written summary of the recurring corrections is posted publicly in the pull request (and in the github actions log) before the maintainer reviews it",
+			"deck type, slide type and deck style", "future eightytwenty products", "[removed]",
+			'email <a href="mailto:eightytwenty.tech@gmail.com">eightytwenty.tech@gmail.com</a> with what it said', "slide type and deck style, if given"]) expect(html).toContain(s);
+		expect(html).not.toContain("is a read-only connector");
+		expect(html).not.toContain("removed on request");
 	});
 
 	it("serves an icon and sets a strict CSP with no external assets", async () => {
