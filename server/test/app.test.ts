@@ -885,6 +885,66 @@ describe("usage statistics", () => {
 		expect(events().map((e) => [e.properties.$mcp_client_name, e.properties.$mcp_client_version])).toEqual([["claude-ai", "0.9.1"], ["python-httpx", "0.28.1"]]);
 	});
 
+	it("identifies ChatGPT users by their hashed subject and direct apps by a daily hash of the IP, with the salt set", async () => {
+		const e = on({ ANALYTICS_SALT: "test-salt" }), from = nextIp();
+		const _meta = { "openai/subject": "SECRET-SUBJECT", "openai/session": "SECRET-SESSION" };
+		expect((await rpc("tools/call", { name: "get_playbook", arguments: {}, _meta }, { e, from })).body.result.isError).toBeFalsy();
+		expect((await tool("get_playbook", {}, { e, from })).body.result.isError).toBeFalsy();
+		expect((await tool("get_playbook", {}, { e, from })).body.result.isError).toBeFalsy();
+		expect((await tool("get_playbook", {}, { e, from: "160.79.104.1" })).body.result.isError).toBeFalsy();
+		const [chatgpt, day1, day2, claude] = events();
+		expect(chatgpt.distinct_id).toMatch(/^usr_[0-9a-f]{32}$/);
+		expect(chatgpt.properties).toMatchObject({ $mcp_user_source: "chatgpt", mcp_conversation: expect.stringMatching(/^[0-9a-f]{32}$/) });
+		expect(day1.distinct_id).toMatch(/^day_[0-9a-f]{32}$/);
+		expect(day2.distinct_id).toBe(day1.distinct_id);
+		expect(day1.properties.$mcp_user_source).toBe("daily");
+		expect(claude.properties.$mcp_user_source).toBe("none");
+		expect(JSON.stringify(sent())).not.toMatch(/SECRET|test-salt|203\.0\.113\.|160\.79\./);
+	});
+
+	it("sends one $mcp_initialize per initialize, with the cleaned client and the same daily id as the app's tool calls", async () => {
+		const e = on({ ANALYTICS_SALT: "test-salt" }), from = nextIp();
+		const init = { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "claude-code<SECRET>", version: "2.1.0 SECRET" } };
+		expect((await rpc("initialize", init, { e, from })).body.result.serverInfo.name).toBe("eightytwenty");
+		expect((await tool("get_playbook", {}, { e, from })).body.result.isError).toBeFalsy();
+		const [connect, call, ...rest] = events();
+		expect(rest).toEqual([]);
+		expect(connect).toMatchObject({ api_key: "phc_test", event: "$mcp_initialize", properties: {
+			$mcp_client_name: "claude-codeSECRET", $mcp_client_version: "2.1.0", $mcp_protocol_version: "2025-06-18", $mcp_user_source: "daily" } });
+		expect(connect.distinct_id).toMatch(/^day_[0-9a-f]{32}$/);
+		expect(call.event).toBe("$mcp_tool_call");
+		expect(call.distinct_id).toBe(connect.distinct_id);
+		expect(JSON.stringify(sent())).not.toMatch(/test-salt|203\.0\.113\.|2\.1\.0 SECRET/);
+	});
+
+	it("never takes a ChatGPT identity from an initialize, which is not rate limited", async () => {
+		const e = on({ ANALYTICS_SALT: "test-salt" }), from = nextIp();
+		const init = { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "x", version: "1" }, _meta: { "openai/subject": "FAKE-1", "openai/session": "FAKE-S" } };
+		await rpc("initialize", init, { e, from });
+		const [connect] = events();
+		expect(connect.distinct_id).toMatch(/^day_[0-9a-f]{32}$/);
+		expect(connect.properties.$mcp_user_source).toBe("daily");
+		expect(connect.properties).not.toHaveProperty("mcp_conversation");
+	});
+
+	it("sends no $mcp_initialize for other methods, a batch, or DNT, and leaves the initialize response unchanged", async () => {
+		const init = { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } };
+		await rpc("tools/list", {}, { e: on() });
+		await tool("get_playbook", {}, { e: on() });
+		await call("/mcp", { method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream", "cf-connecting-ip": nextIp() },
+			body: JSON.stringify([{ jsonrpc: "2.0", id: 1, method: "initialize", params: init }]) }, on());
+		await rpc("initialize", init, { e: on(), headers: { dnt: "1" } });
+		await rpc("initialize", init, { e: on(), headers: { "sec-gpc": "1" } });
+		expect(events().map((e) => e.event)).toEqual(["$mcp_tool_call"]);
+		const expected = await rpc("initialize", init, { e: testEnv() });
+		for (const reply of [async () => new Response(null, { status: 200 }), async () => { throw new Error("network down"); }]) {
+			posthog = reply;
+			const { res, body } = await rpc("initialize", init, { e: on() });
+			expect([res.status, res.headers.get("content-type"), body]).toEqual([expected.res.status, expected.res.headers.get("content-type"), expected.body]);
+		}
+		expect(events().filter((e) => e.event === "$mcp_initialize")).toHaveLength(2);
+	});
+
 	it("sends nothing to PostHog without a token", async () => {
 		for (const [name, args] of CALLS) await tool(name, args);
 		expect(fetched.filter((f) => /posthog|ph\.test/.test(f.url))).toEqual([]);
@@ -1096,11 +1156,11 @@ describe("pages", () => {
 		expect(html).not.toContain("no analytics or tracking, and no third-party scripts, fonts or images on these pages");
 	});
 
-	it("/privacy covers the connector's anonymous usage statistics and qualifies request logs", async () => {
+	it("/privacy covers the connector's usage statistics and qualifies request logs", async () => {
 		const html = (await (await call("/privacy")).text()).toLowerCase();
 		for (const s of ["usage statistics", "posthog", "random id", "do not track", "global privacy control", "never sent", "ip address", "cookies", "accounts", "24 hours",
-			"cloudflare's request logging stays switched off. beyond the rate-limit counter, the cache and any feedback you send, the only record of a call is the anonymous usage statistic.",
-			"library id", "are not linked", "fixed labels"]) expect(html).toContain(s);
+			"is used for rate limits and, as a keyed daily hash, for the usage statistics below.", "cloudflare's request logging stays switched off. beyond the rate-limit counter, the cache and any feedback you send, the only record of a call is its usage statistic.",
+			"library id", "are not linked", "fixed labels", "which kind of id the record carries"]) expect(html).toContain(s);
 		for (const s of ["layout id", "cannot be linked"]) expect(html).not.toContain(s);
 		expect(html).not.toContain("the server's request logging is switched off.");
 	});

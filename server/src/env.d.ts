@@ -22,6 +22,7 @@ interface Env {
 	GLAMA_CLAIM?: string; // secret: the Glama connector claim JSON, served at /.well-known/glama.json
 	POSTHOG_PROJECT_TOKEN?: string; // secret (wrangler secret put): usage statistics are sent to PostHog only when it is set
 	POSTHOG_HOST?: string;
+	ANALYTICS_SALT?: string; // secret: the HMAC key for the usage statistics' caller ids; unset, every call gets a random id
 }
 
 declare namespace Cloudflare {
@@ -42,6 +43,7 @@ declare namespace Cloudflare {
 		OPENAI_APPS_CHALLENGE?: string;
 		POSTHOG_PROJECT_TOKEN?: string;
 		POSTHOG_HOST?: string;
+		ANALYTICS_SALT?: string;
 		TEST_MIGRATIONS: import("cloudflare:test").D1Migration[];
 		TEST_FEEDBACK_MIGRATIONS: import("cloudflare:test").D1Migration[];
 		LIVE_AI: string;

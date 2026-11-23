@@ -36,7 +36,8 @@
     "DAILY_PHOTO_BUDGET": 1000,
     // submit_feedback rows accepted per UTC day across all clients (bounds D1 writes and the digest's reading).
     "DAILY_FEEDBACK_BUDGET": 200,
-    // Anonymous usage statistics go here. POSTHOG_PROJECT_TOKEN is a secret (wrangler secret put); unset, nothing is sent.
+    // Usage statistics go here. POSTHOG_PROJECT_TOKEN is a secret (wrangler secret put); unset, nothing is sent.
+    // ANALYTICS_SALT (the HMAC key for the hashed caller ids) is a secret too; unset, every call gets a random id.
     "POSTHOG_HOST": "https://us.i.posthog.com"
   }
 }
