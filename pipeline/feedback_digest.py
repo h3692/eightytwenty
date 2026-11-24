@@ -3,8 +3,9 @@
 Per feedback table: fetch the unused rows of the last 90 days, ask Claude to group them, keep the groups that pass
 qualifies(), then append each one to its chapter's "Learned from feedback" section on its own branch and open a PR.
 Raw feedback text never leaves D1 and this process: the PR carries counts, dates, row ids and the model-written chunk.
-Secrets come from the environment only (ANTHROPIC_API_KEY, CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, FEEDBACK_DB_ID;
-gh reads GH_TOKEN).
+Secrets come from the environment only (CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, FEEDBACK_DB_ID; gh reads GH_TOKEN).
+Claude runs through the claude CLI on a subscription login: CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`) in
+Actions, or the local login when run by hand.
 
 Each run reads the newest LIMIT unused rows. To retire junk so it stops taking up that window, the maintainer marks it
 (the triggers allow this): UPDATE <table> SET used_in_pr = 'rejected' WHERE id IN (...)
@@ -30,9 +31,10 @@ SECTION = "## Learned from feedback"
 SUBSECTIONS = {"consulting": "### Case-competition and consulting decks", "stock_pitch": "### Finance pitch decks"}
 MIN_ROWS, MAX_CHARS, WINDOW, LIMIT = 5, 600, "-90 days", 500
 BANNED = ("http", "www.", "@", "<", "`", "](", "//", "&#", "&lt")  # checked after NFKC: no full-width look-alikes
-MODEL, MAX_TOKENS = "claude-sonnet-5-5", 16000
+MODEL, CLAUDE_TIMEOUT = "claude-sonnet-5-5", 480
 VERDICTS = ("new", "covered", "vague")
-SECRETS = {"ANTHROPIC_API_KEY", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "FEEDBACK_DB_ID", "GH_TOKEN"}
+SECRETS = {"CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID",
+           "FEEDBACK_DB_ID", "GH_TOKEN"}
 SCHEMA = {"type": "object", "additionalProperties": False, "required": ["clusters"], "properties": {"clusters": {
     "type": "array", "items": {"type": "object", "additionalProperties": False,
                                "required": ["row_ids", "target", "markdown", "verdict"], "properties": {
@@ -89,19 +91,32 @@ def cluster(rows, deck_type, chapters):
         deck_label=SUBSECTIONS[deck_type].removeprefix("### ").lower(), max_chars=MAX_CHARS, min_rows=MIN_ROWS,
         chapters="\n\n".join(_outline(s, t) for s, t in chapters.items()),
         rows=json.dumps(rows, indent=1).replace("<", "\\u003c"))  # still valid JSON; a row can't close the data block
-    reply = _post("https://api.anthropic.com/v1/messages",
-                  {"model": MODEL, "max_tokens": MAX_TOKENS, "messages": [{"role": "user", "content": prompt}],
-                   "output_config": {"format": {"type": "json_schema", "schema": SCHEMA}}},
-                  {"x-api-key": _env("ANTHROPIC_API_KEY"), "anthropic-version": "2026-10-21"})
-    if reply.get("stop_reason") in ("max_tokens", "refusal"):  # fail the run: an empty digest would hide it
-        raise SystemExit(f"Claude API stop_reason {reply['stop_reason']}: no usable clusters for {deck_type}; "
-                         "the digest stopped (max_tokens: raise MAX_TOKENS or lower LIMIT)")
-    if reply.get("stop_reason") != "end_turn":  # an error body or anything else unexpected: no clusters
-        return []
+    # The rows are untrusted text: no tools, MCP servers, settings or hooks, run outside the checkout, and only the
+    # login in its environment (an ANTHROPIC_API_KEY would override the login; the other secrets stay out).
+    env = {k: v for k, v in os.environ.items() if k not in SECRETS - {"CLAUDE_CODE_OAUTH_TOKEN"}}
+    with tempfile.TemporaryDirectory() as cwd:
+        r = subprocess.run(["claude", "-p", "--model", MODEL, "--tools", "", "--strict-mcp-config",
+                            "--setting-sources", "", "--no-session-persistence", "--output-format", "json",
+                            "--json-schema", json.dumps(SCHEMA)],
+                           input=prompt, cwd=cwd, env=env, capture_output=True, text=True, timeout=CLAUDE_TIMEOUT)
     try:
-        clusters = json.loads(next(b["text"] for b in reply["content"] if b.get("type") == "text"))["clusters"]
-    except (KeyError, StopIteration, TypeError, ValueError):
-        return []
+        reply = json.loads(r.stdout)
+    except ValueError:
+        reply = {}
+    if r.returncode or not isinstance(reply, dict) or reply.get("is_error") or reply.get("subtype") != "success":
+        # fail the run: an empty digest would hide it. Only CLI or API errors are echoed, never model text, which
+        # could quote a row into the Actions log.
+        reply = reply if isinstance(reply, dict) else {}
+        if reply.get("terminal_reason") == "api_error":  # login, quota or network: the CLI's own message
+            detail = reply.get("result")
+        elif reply:
+            detail = reply.get("terminal_reason") or reply.get("subtype")
+        else:  # no JSON at all: the CLI failed before answering
+            detail = r.stderr
+        raise SystemExit(f"claude -p failed for {deck_type}: {str(detail)[:500]}. "
+                         "The digest stopped; check the login (claude setup-token).")
+    clusters = reply.get("structured_output")
+    clusters = clusters.get("clusters") if isinstance(clusters, dict) else None
     if not isinstance(clusters, list):
         return []
     return [c for c in clusters if isinstance(c, dict) and isinstance(c.get("row_ids"), list)
