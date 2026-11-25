@@ -28,9 +28,10 @@
 ---
 
 eightytwenty gives your assistant the method strong case-competition teams use to build decks. It asks the right questions
-in one round, builds and checks the whole deck, offers palettes, then improves the weakest slides with you. While it
-plans, it searches a library of more than 900 slide layouts and 39 whole-deck flows taken from strong case-competition
-and investment-banking decks, so each slide starts from a layout that has already worked.
+one at a time, shows a short plan for you to approve, builds and checks the whole deck, offers palettes, then improves
+the weakest slides with you. While it plans, it searches a library of more than 900 slide layouts and 39 whole-deck
+flows taken from strong case-competition and investment-banking decks, so each slide starts from a layout that has
+already worked.
 
 The library holds no original slides. Every entry is an abstract wireframe with its layout, why it works and when to use it.
 Your assistant rebuilds the idea in your own style.
@@ -140,8 +141,9 @@ flowchart LR
 ## What's new
 
 **November 25, 2026**
-- One round of questions, then the whole deck in one go: no plan approval. The palette choice comes after the build,
-  and up to 3 improvement rounds of 4 to 5 questions target the weakest slides.
+- Questions one at a time, as clickable choices in Claude apps that show them, then a short plan (one line per slide)
+  to approve, then the whole deck in one go. The palette choice comes after the build, and up to 3 improvement rounds
+  of 4 to 5 questions target the weakest slides.
 - The deck type (consulting or finance pitch) is always confirmed, also in Claude for PowerPoint and when editing, and
   then locked, with a concrete checklist of finance signals.
 - Full-sentence or label titles, asked up front.
@@ -150,7 +152,7 @@ flowchart LR
 - Photo results carry an `Insert URL` that apps such as PowerPoint add-ins can download from.
 - `find_references` draws its results from the strongest matches, so two decks on the same prompt start from
   different layouts. Writing rules now cover sentence shapes that read as AI-made, not only words.
-- Shorter chat replies: no run sheet or audit table.
+- Shorter chat replies: no run sheet or audit table. The first reply ends with the tip on sending feedback.
 
 **November 21, 2026**
 - Send feedback: say "send feedback" (or run `/eightytwenty-feedback` in the plugin) to send a slide correction after

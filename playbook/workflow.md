@@ -4,8 +4,8 @@ You turn a brief (or a case prompt) into finished, judge-ready slides: one recom
 every element proving it, and a layout distinctive enough that a judge remembers it after seeing 15 other decks. The
 audience is a judging panel playing client executives.
 
-**The order: one round of questions, then the whole deck, then the palette choice, then up to three improvement
-rounds.** The user approves nothing in between: you plan in your own reasoning and build.
+**The order: questions one at a time, then a short plan the user approves, then the whole deck, then the palette
+choice, then up to three improvement rounds.**
 
 ## Terms used in this playbook
 
@@ -16,14 +16,20 @@ rounds.** The user approves nothing in between: you plan in your own reasoning a
 - **Swap test**: swap in a competitor's name; if the slide still works unchanged, it is generic.
 - **Chain of proof**: no slide uses a fact that an earlier slide has not proven (`narrative`).
 - **Density tier**: how full a slide is, fixed by its type (`polish`).
+- **Question round**: the Step 1 questions, asked one per message.
 - A name in backticks such as `polish` is a playbook chapter: call `get_playbook` with it as `stage`.
 
 ## Talking to the user
 
-- Keep every chat message short: at most about five lines of plain sentences, plus the numbered questions when you ask
-  them. No headers, tables or checklists in chat unless the user asks.
-- Your plan, storyline, layout specs, reference ids and QA checklists are working notes. Never paste them into chat.
-- Never more than one round of questions at a time, and only at the points this chapter names.
+- Keep every chat message short: at most about five lines of plain sentences, plus the questions when you ask them.
+  The Step 2 plan is the one exception. No headers, tables or checklists in chat unless the user asks.
+- Your storyline, layout specs, reference ids and QA checklists are working notes. Never paste them into chat; show
+  only the short plan from Step 2.
+- Step 1 questions go one per message; an improvement round (Step 7) is one message. Ask only at the points this
+  chapter names.
+- End your first reply with this line, once:
+
+*Tip: say **send feedback** anytime to send a correction to eightytwenty, so future versions of the playbook learn from it.*
 
 ## Scope
 
@@ -35,22 +41,22 @@ help with a deck instead. Sending feedback about this deck (see Feedback) is in 
 ## Pick the mode first
 
 - **Deck mode** (a new deck, or the whole deck): Steps 1 to 7.
-- **Slide mode** (one new slide, usually in an existing deck): a short question round (Step 1, slide mode), then build
-  the strongest option and name one alternative in one line, then QA.
+- **Slide mode** (one new slide, usually in an existing deck): a short question round (Step 1, slide mode), then 2 to 3
+  options for the user to approve (Step 2), then build the approved option, then QA.
 - **Edit mode** (a change to slides that exist): Step 8.
 
 Check the chain of proof against the neighbouring slides in every mode: what the earlier slides established, what this
 slide must hand to the next, and that it uses nothing a later slide proves.
 
-If the user says "just build it" or gives no answers, use your suggested answers, build, and mark every assumed value
-`[assumed]` in the output.
+If the user says "just build it" or gives no answers, skip the remaining questions and the plan approval: use your
+suggested answers, build, and mark every assumed value `[assumed]` in the output.
 
 Chapters (stages): `workflow`, `narrative`, `anatomy-and-taglines`, `archetypes`, `distinctive-design`,
 `visual-rules-and-design-options`, `polish`, `writing`, `qa`, `attached-decks`.
 
 ## Golden rules
 
-- **One question round, then build.** No plan approval and no per-step approvals.
+- **Questions one per message, then a short plan the user approves, then build.** No other approvals before delivery.
 - **Never invent figures, quotes, client data or case facts.** Public figures you know are marked `[verify: ~X]` until
   sourced.
 - **The case prompt is the source of truth** for client facts, constraints and the ask. If the user's idea conflicts
@@ -94,12 +100,17 @@ Work out where you are running from the tools you have, then follow its line:
   whenever it happens, so nobody judges a font or text fit from a substituted render.
 - If the user attached a deck in chat, audit it first (`attached-decks`); its style is the spec.
 
-## Step 1: The question round (one message)
+## Step 1: The question round (one per message)
 
 First read what you have: the case prompt (client, the ask, constraints, data exhibits, judging criteria, presentation
-length), any attached or open deck (`attached-decks`) and the client's logo for brand colours. Then send **one message**
-with numbered questions, each with your suggested answer in brackets, and end it with: "Reply **yes** to use my
-suggestions, or change any number." Skip any question the prompt or the user already answered; never more than 6.
+length), any attached or open deck (`attached-decks`) and the client's logo for brand colours. Then say how many
+questions you have and ask question 1 only. Ask one question per message, each with your suggested answer, which the
+user can accept with "yes". Skip any question the prompt or the user already answered; never more than 6.
+
+If your app gives you a way to show the user clickable choices (Claude on the web, desktop and mobile), use it for each
+question, one question at a time, with the suggested answer first and free text still possible. In a terminal (Claude
+Code) and everywhere else, ask in plain text with the suggested answer. Where you show choices, offer the suggested
+answer plus 1 to 3 alternatives.
 
 **Deck mode** questions, in this order:
 
@@ -126,14 +137,16 @@ suggestions, or change any number." Skip any question the prompt or the user alr
 
 Work out the target market, the alternatives and the rest of the storyline yourself (`narrative`). Push back plainly on
 a weak answer (a topic instead of a claim, a recommendation the prompt rules out, numbers that don't reconcile) with a
-sharper version, in the same short reply, then build.
+sharper version, in your reply before the next question.
 
-**Slide mode** questions (3 to 4, same single message): the claim (offer 2 to 3 candidates), the proof (the single
+**Slide mode** questions (3 to 4, one per message): the claim (offer 2 to 3 candidates), the proof (the single
 number or fact that carries it), the objection a judge will raise first, and, if not settled in this conversation, the
 deck type (question 2 above) and the title mode (question 3). Never ask "What do you want on the slide?", colour
 preferences, density, or anything decidable from the deck, the prompt or this playbook.
 
-## Step 2: Plan in your own reasoning (not shown)
+## Step 2: Plan, then approval
+
+Work out the plan in your own reasoning first:
 
 - **Storyline**: the storyline table (`narrative`), checked against the chain of proof. Read the taglines top to bottom:
   they must tell the whole argument.
@@ -157,6 +170,13 @@ preferences, density, or anything decidable from the deck, the prompt or this pl
   segment with the target segment highlighted; right: three stacked proof cards"); the insight device and what it
   points at (not the neighbours' device); the impact frame, only at a turning point (`narrative`); the density tier
   (`polish`); every figure it needs, marked `[need]` or `[assumed]`.
+
+Then show the user one concise plan: the deck type and style, the end belief in one line, one line per slide
+(`n. Title or tagline: layout in a few words`), and any `[assumed]` values in one line. No layout-spec blocks, reference
+ids, spec tables or QA notes. In slide mode, show 2 to 3 options, one line each, and recommend one.
+
+End the plan with: "Reply **approve** to build this, or tell me what to change." On a change, revise the plan and ask
+again. Build nothing until the user approves. In slide mode, the approval also picks the option ("approve B").
 
 ## Step 3: Research, and what is missing
 
@@ -223,7 +243,7 @@ palette. Then start Step 7.
    slides.
 2. Send one round: name the weakest slides with one line each on what holds them back, then ask 4 to 5 numbered
    questions that would fix them (a missing number, a sharper claim, a better source, a photo you could not source,
-   an open item from Step 3), each with your suggested answer.
+   an open item from Step 3), each with your suggested answer. This round is one message, unlike Step 1.
 3. Apply the answers, reading and rebuilding only the slides they touch, then grade again.
 4. Decide whether another round would clearly improve the deck. Stop when it would not, and after 3 rounds at most.
    End with one line on what changed.
@@ -274,5 +294,6 @@ checklist (`qa`).
 ## Final check
 
 Before you call a delivery finished, check for yourself that every step ran: the question round answered or assumed,
-the deck type confirmed, every slide built and through QA, the financial reasoning written where needed, and the
-palette offered. If a step is not done, finish it or say in one line what is left. Do not show this check as a table.
+the deck type confirmed, the plan approved, every slide built and through QA, the financial reasoning written where
+needed, and the palette offered. If a step is not done, finish it or say in one line what is left.
+Do not show this check as a table.

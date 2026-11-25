@@ -16,7 +16,7 @@ import github from "./fixtures/images/simple-icons_github.svg";
 
 const lib = library();
 const worker = app(lib);
-const REMINDER = "Next in the eightytwenty workflow: one question round, build the whole deck, offer palettes, then up to 3 improvement rounds.";
+const REMINDER = "Next in the eightytwenty workflow: questions one at a time, a short plan to approve, the whole deck, palettes, then up to 3 improvement rounds.";
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
 const assets = {
 	async fetch(req: Request | string) {
@@ -183,31 +183,32 @@ describe("MCP endpoint", () => {
 });
 
 describe("server instructions and prompts", () => {
-	it("sends instructions on initialize: scope, one question round, deck type, then the whole build, up front", async () => {
+	it("sends instructions on initialize: scope, questions one per message, deck type, a short plan to approve, then the build, up front", async () => {
 		const { body } = await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } });
 		const ins: string = body.result.instructions;
 		expect(ins.length).toBeLessThan(1000);
 		const head = ins.slice(0, 512); // ChatGPT weighs the first 512 characters most
-		for (const s of ["researching and building decks", "get_playbook", "questions in one message", "deck type", "build the whole deck", "improvement rounds", "short"])
+		for (const s of ["researching and building decks", "get_playbook", "questions one per message", "deck type", "short plan", "build only after the user replies approve", "improvement rounds"])
 			expect(head).toContain(s);
+		expect(head).not.toMatch(/in one message/);
 		expect(ins).toMatch(/claim, why it is true, a specific number and what it means/);
 		expect(ins).toContain("eightytwenty can't be used for that");
 		expect(ins).toMatch(/never as slides/i);
 		expect(ins).toMatch(/hidden Financial Reasoning slide in Claude for PowerPoint/);
 		expect(ins).toContain("find_images never sources photos of real people; ask the user for those.");
-		expect(ins).not.toMatch(/run sheet|completion audit|one per message|approve/i);
+		expect(ins).not.toMatch(/run sheet|completion audit/i);
 	});
 
 	it("offers a start prompt that opens the guided flow, with optional context", async () => {
 		const { body: list } = await rpc("prompts/list");
 		const start = list.result.prompts.find((p: { name: string }) => p.name === "start");
-		expect(start.description).toBeTruthy();
+		expect(start.description).toMatch(/one at a time.*approve/);
 		expect(start.arguments).toEqual([expect.objectContaining({ name: "context", required: false })]);
 		const { body } = await rpc("prompts/get", { name: "start", arguments: { context: "a pitch for a campus food startup" } });
 		const msg = body.result.messages[0];
 		expect(msg.role).toBe("user");
-		for (const s of ["a pitch for a campus food startup", "get_playbook", "questions in one message", "build the whole deck"]) expect(msg.content.text).toContain(s);
-		expect(msg.content.text).not.toMatch(/approve/);
+		for (const s of ["a pitch for a campus food startup", "get_playbook", "questions one at a time", "short plan", "build after I approve"]) expect(msg.content.text).toContain(s);
+		expect(msg.content.text).not.toMatch(/in one message/);
 		const { body: bare } = await rpc("prompts/get", { name: "start", arguments: {} });
 		expect(bare.result.messages[0].content.text).toContain("get_playbook");
 	});
@@ -235,22 +236,35 @@ describe("get_playbook", () => {
 		expect(text).toContain("# Workflow");
 	});
 
-	it("the workflow puts scope, one question round, then the whole build with no plan approval", async () => {
+	it("the workflow puts scope, questions one per message, then a short plan the user approves before the build", async () => {
 		const { body } = await tool("get_playbook");
 		const text = body.result.content[0].text;
-		for (const s of ["eightytwenty can't be used for that.", "One question round, then build", "send **one message**", "Nothing extra in the deck", "## Step 7: Improvement rounds"])
-			expect(text).toContain(s);
-		expect(text).not.toMatch(/Reply \*\*approve\*\*|One question per message|## Run sheet|text plan/);
+		const flat = text.replace(/\s+/g, " ");
+		for (const s of ["eightytwenty can't be used for that.", "Questions one per message, then a short plan the user approves, then build.", "## Step 1: The question round (one per message)",
+			"If your app gives you a way to show the user clickable choices (Claude on the web, desktop and mobile), use it for each question, one question at a time, with the suggested answer first and free text still possible. In a terminal (Claude Code) and everywhere else, ask in plain text with the suggested answer.",
+			"Reply **approve** to build this, or tell me what to change.", "Nothing extra in the deck", "## Step 7: Improvement rounds"])
+			expect(flat).toContain(s);
+		expect(text).not.toMatch(/## Run sheet|\(not shown\)|Reply \*\*yes\*\* to use my|text plan/);
+		const step1 = flat.slice(flat.indexOf("## Step 1"), flat.indexOf("## Step 2"));
+		expect(step1).toMatch(/one per message/);
+		expect(step1).not.toMatch(/then build/);
+		const plan = flat.indexOf("## Step 2: Plan, then approval");
+		expect(plan).toBeGreaterThan(-1);
+		expect(plan).toBeLessThan(flat.indexOf("## Step 4: Build the whole deck"));
+		const step2 = flat.slice(plan, flat.indexOf("## Step 3"));
+		expect(step2).toMatch(/one line per slide/);
+		expect(step2).toMatch(/No layout-spec blocks, reference ids, spec tables or QA notes/);
+		expect(step2).toMatch(/Reply \*\*approve\*\* to build this, or tell me what to change\..*Build nothing until the user approves/);
+		expect(step2).toMatch(/"approve B"/);
 		expect(text).not.toMatch(/hidden \*\*Research To-Do\*\* slide|Design Options slide \(hidden\)/);
 		for (const stage of STAGES) {  // no chapter sends anything into the deck, waits on a plan approval or points at a removed step
 			const chapter = (await tool("get_playbook", { stage })).body.result.content[0].text;
 			expect(chapter, stage).not.toMatch(/Design Options (slide|asset list)|rough layout/i);
 			expect(chapter, stage).not.toMatch(/ALL CAPS only|small caps with|large caps|gradient background|brand gradient|6 to 7pt/); // designer QA: caps, gradients and tiny footnotes read as AI-made
 			if (stage !== "polish") expect(chapter, stage).not.toMatch(/`[^`\n]*(->|→|=>)[^`\n]*`/); // example slide text never carries an arrow
-			expect(chapter, stage).not.toMatch(/approved plan|completion audit|run sheet|research to-do list in chat|1 to 2 asks|`workflow`, Step 9/i);
+			expect(chapter.replace(/\s+/g, " "), stage).not.toMatch(/completion audit|run sheet|research to-do list in chat|1 to 2 asks|`workflow`, Step 9|questions in one message|same single message|one message with numbered questions|No plan approval|approves nothing/i);
 		}
-		expect(text).toMatch(/"Reply \*\*yes\*\* to use my\s+suggestions, or change any number\."/);
-		expect(text).toMatch(/If the user says "just build it" or gives no answers, use your suggested answers/);
+		expect(flat).toMatch(/If the user says "just build it" or gives no answers, skip the remaining questions and the plan approval: use your suggested answers/);
 		expect(text).toMatch(/drop the other filters first .*never the deck\s+type's style/s);
 		const polish = (await tool("get_playbook", { stage: "polish" })).body.result.content[0].text;
 		expect(polish).toContain("# Density and polish");
@@ -264,11 +278,12 @@ describe("get_playbook", () => {
 		expect(step).toMatch(/4 to 5\s+numbered\s+questions/);
 		expect(step).toMatch(/after 3 rounds at most/);
 		expect(step).toMatch(/rebuilding only the slides they touch/);
+		expect(step).toMatch(/This round is one message, unlike Step 1\./);
 	});
 
 	it("builds the deck first, then asks for the palette and applies it on the pick", async () => {
 		const workflow = (await tool("get_playbook", { stage: "workflow" })).body.result.content[0].text;
-		expect(workflow).toMatch(/one round of questions, then the whole deck, then the palette choice/);
+		expect(workflow.replace(/\s+/g, " ")).toMatch(/questions one at a time, then a short plan the user approves, then the whole deck, then the palette choice/);
 		expect(workflow.slice(workflow.indexOf("## Step 6"), workflow.indexOf("## Step 7"))).toMatch(/palette question.*On a pick, apply it to the whole deck/s);
 		const visual = (await tool("get_playbook", { stage: "visual-rules-and-design-options" })).body.result.content[0].text;
 		expect(visual).toContain("## Palette options (after the deck is built)");
@@ -311,6 +326,7 @@ describe("get_playbook", () => {
 	it("keeps chat short, combines references silently and holds every slide to the depth rule", async () => {
 		const workflow = (await tool("get_playbook", { stage: "workflow" })).body.result.content[0].text;
 		expect(workflow).toMatch(/at most about five lines/);
+		expect(workflow.replace(/\s+/g, " ")).toContain("Step 1 questions go one per message; an improvement round (Step 7) is one message.");
 		expect(workflow).toMatch(/at least two references from different source decks/);
 		expect(workflow).toMatch(/Never mention reference ids or this combining\s+to the user/);
 		expect(workflow).toMatch(/\*\*Depth on every content slide\*\*: a claim, the reason it is true/);
@@ -353,13 +369,17 @@ describe("get_playbook", () => {
 		const workflow = (await tool("get_playbook", { stage: "workflow" })).body.result.content[0].text;
 		expect(workflow).toContain("## Final check");
 		expect(workflow).toMatch(/Do not show this check as a table/);
+		expect(workflow).toMatch(/the plan\s+approved/);
 		expect(workflow).not.toContain("| Step | Done | Evidence |");
 		const qa = (await tool("get_playbook", { stage: "qa" })).body.result.content[0].text;
 		expect(qa).toMatch(/- \[ \] A delivery reported as finished has passed the final check/);
 	});
 
-	it("sends feedback only when the user asks", async () => {
+	it("shows the feedback tip once in the first reply and sends feedback only when the user asks", async () => {
 		const workflow = (await tool("get_playbook", { stage: "workflow" })).body.result.content[0].text;
+		const talking = workflow.slice(workflow.indexOf("## Talking to the user"), workflow.indexOf("## Scope"));
+		expect(talking).toMatch(/first reply/);
+		expect(talking).toContain("*Tip: say **send feedback** anytime to send a correction to eightytwenty, so future versions of the playbook learn from it.*");
 		expect(workflow.slice(workflow.indexOf("## Scope"), workflow.indexOf("## Pick the mode first"))).toMatch(/Sending feedback about this deck .* is in scope/);
 		expect(workflow).toContain("## Feedback (only when the user asks)");
 		const feedback = workflow.slice(workflow.indexOf("## Feedback"), workflow.indexOf("## Final check"));

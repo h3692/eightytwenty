@@ -37,8 +37,8 @@ Run on every finished slide. Fix what you can without asking; report only what n
 - [ ] Body text >= 8pt; nothing overlapping (titles colliding with chart titles is a common bug); no overflow (re-check
       after any font change); edges aligned; footer zone clear.
 - [ ] Composition not reused within the section; not the same structure as either neighbour (impact slides excepted).
-- [ ] No `[ ]` placeholders remain unless the user knowingly left them, and each remaining one is on the research
-      to-do list in chat.
+- [ ] No `[ ]` placeholders remain unless the user knowingly left them, and each remaining one is on your private
+      list of missing items (`workflow`, Step 3).
 - [ ] Nothing extra in the deck file: no options, mock, alternate or to-do slides, hidden or visible. The only
       exceptions are the hidden Financial Reasoning slide in Claude for PowerPoint (`workflow`, Step 5) and the
       originals kept beside a new or merged version the user asked for (`workflow`, Step 8), listed in your reply.

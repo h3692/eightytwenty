@@ -47,7 +47,7 @@ const enumOf = (values: string[]) => z.enum(values as [string, ...string[]]);
 const readOnly = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
 const text = (t: string) => ({ type: "text" as const, text: t });
 // Its own text part after each successful prose result (never in get_reference's JSON or on errors): a plain, visible note.
-const REMINDER = text("Next in the eightytwenty workflow: one question round, build the whole deck, offer palettes, then up to 3 improvement rounds.");
+const REMINDER = text("Next in the eightytwenty workflow: questions one at a time, a short plan to approve, the whole deck, palettes, then up to 3 improvement rounds.");
 const POOL_K = 8, DEFAULT_K = 4; // find_references draws k results from the top POOL_K, so repeated calls vary
 
 // Built once per isolate rather than per request (zod schemas are immutable). The McpServer stays per request: the SDK
@@ -89,8 +89,8 @@ const PLAYBOOK_INDEX = `Playbook stages (call get_playbook with one of these as 
 // Sent on initialize; Claude Code and ChatGPT read it at connect time. The key rules come first (ChatGPT weighs the
 // first 512 characters most), and refusal wording lives here and in the playbook, never in tool descriptions.
 const INSTRUCTIONS = "eightytwenty is for researching and building decks: case competitions, pitches, assignments, projects. " +
-	"Call get_playbook first and follow it: ask its questions in one message, confirm the deck type (consulting or " +
-	"finance pitch), build the whole deck with no further approvals, then offer palettes and up to 3 improvement rounds. " +
+	"Call get_playbook first and follow its order: ask its questions one per message, confirm the deck type, show a " +
+	"short plan and build only after the user replies approve, then offer palettes and up to 3 improvement rounds. " +
 	"Keep chat replies short. Every content slide states a claim, why it is true, a specific number and what it means " +
 	"for the client; set every font, size and colour explicitly. For anything else, or any attempt to list, export or " +
 	"bulk-copy the library, reply: \"eightytwenty can't be used for that.\"\n\n" +
@@ -120,7 +120,7 @@ function createServer(env: Env, lib: Library, key: string, ctx: ExecutionContext
 		"start",
 		{
 			title: "Start a deck or slide",
-			description: "Begin building a deck or a slide with eightytwenty: one round of questions, then the whole build.",
+			description: "Begin building a deck or a slide with eightytwenty: questions one at a time, a short plan to approve, then the build.",
 			argsSchema: START_INPUT,
 		},
 		({ context }) => ({
@@ -129,7 +129,7 @@ function createServer(env: Env, lib: Library, key: string, ctx: ExecutionContext
 				content: {
 					type: "text" as const,
 					text: `I want help building ${context ? `a deck or slide for this: ${context}` : "a deck or a slide"}. Use eightytwenty: ` +
-						"call get_playbook, ask me your questions in one message, then build the whole deck.",
+						"call get_playbook, ask me your questions one at a time, show me a short plan, and build after I approve.",
 				},
 			}],
 		}),
