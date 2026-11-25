@@ -28,7 +28,7 @@
 ---
 
 eightytwenty gives your assistant the method strong case-competition teams use to build decks. It asks the right questions
-first, writes the storyline and a plan for every slide, waits for your approval, then builds and checks the deck. While it
+in one round, builds and checks the whole deck, offers palettes, then improves the weakest slides with you. While it
 plans, it searches a library of more than 900 slide layouts and 39 whole-deck flows taken from strong case-competition
 and investment-banking decks, so each slide starts from a layout that has already worked.
 
@@ -102,7 +102,7 @@ In Claude you can also start from the connector's `start` prompt.
 
 | Tool | What it does |
 |---|---|
-| `get_playbook` | The method: workflow and intake questions, storyline and impact slides, slide types, taglines, writing conventions, design options, QA and the completion audit |
+| `get_playbook` | The method: workflow and intake questions, storyline and impact slides, slide types, taglines, writing conventions, design options, QA and improvement rounds |
 | `find_references` | Search slide layouts by what the slide needs to do, filtered by slide type, industry, data type, impact kind or deck style |
 | `find_deck_flows` | Search whole-deck flows: section order, pacing and arc, by industry, length or style |
 | `get_reference` | One result in full: its layout record, component layout and wireframe, or one deck flow |
@@ -138,6 +138,19 @@ flowchart LR
 | `pipeline/` | Extraction, labelling worksheets, the leak check, packaging and the one-command release |
 
 ## What's new
+
+**November 25, 2026**
+- One round of questions, then the whole deck in one go: no plan approval. The palette choice comes after the build,
+  and up to 3 improvement rounds of 4 to 5 questions target the weakest slides.
+- The deck type (consulting or finance pitch) is always confirmed, also in Claude for PowerPoint and when editing, and
+  then locked, with a concrete checklist of finance signals.
+- Full-sentence or label titles, asked up front.
+- Calculated figures come with their reasoning: a hidden Financial Reasoning slide in Claude for PowerPoint, a
+  separate financial walkthrough elsewhere.
+- Photo results carry an `Insert URL` that apps such as PowerPoint add-ins can download from.
+- `find_references` draws its results from the strongest matches, so two decks on the same prompt start from
+  different layouts. Writing rules now cover sentence shapes that read as AI-made, not only words.
+- Shorter chat replies: no run sheet or audit table.
 
 **November 21, 2026**
 - Send feedback: say "send feedback" (or run `/eightytwenty-feedback` in the plugin) to send a slide correction after

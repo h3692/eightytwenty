@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import dot from "../src/dot.wasm";
-import { DEFAULT_FLAGS, dense, loadLibrary, mmr, round, rrf, search, searchFlows } from "../src/search";
+import { DEFAULT_FLAGS, dense, loadLibrary, mmr, round, rrf, search, searchFlows, vary } from "../src/search";
 import { buffers, fakeAI, flowFloats, flows, floats, impacts, library, manifest, near, quantise, rows, seed } from "./fixture";
 
 const lib = library();
@@ -79,6 +79,32 @@ describe("mmr", () => {
 			}
 			expect(mmr(cands, lib, k, lambda).map((c) => c.id)).toEqual(picked.map((c) => c.id));
 		}
+	});
+});
+
+describe("vary", () => {
+	const pool = ["a", "b", "c", "d", "e", "f", "g", "h"];
+
+	it("takes the top k in order when random() is 0, and the whole pool when k covers it", () => {
+		expect(vary(pool, 4, () => 0)).toEqual(["a", "b", "c", "d"]);
+		expect(vary(pool, 8, Math.random)).toEqual(pool);
+		expect(vary(pool.slice(0, 2), 4, Math.random)).toEqual(["a", "b"]);
+		expect(vary([], 4, Math.random)).toEqual([]);
+	});
+
+	it("returns k distinct results in rank order, varies between calls and favours the top ranks", () => {
+		let seed = 1;
+		const random = () => ((seed = (seed * 16807) % 2147483647) / 2147483647); // deterministic stand-in for Math.random
+		const seen = new Set<string>(), counts = new Map<string, number>();
+		for (let i = 0; i < 500; i++) {
+			const picked = vary(pool, 4, random);
+			expect(new Set(picked).size).toBe(4);
+			expect(picked).toEqual([...picked].sort());
+			seen.add(picked.join(""));
+			for (const x of picked) counts.set(x, (counts.get(x) ?? 0) + 1);
+		}
+		expect(seen.size).toBeGreaterThan(10);
+		expect(counts.get("a")!).toBeGreaterThan(counts.get("h")!);
 	});
 });
 

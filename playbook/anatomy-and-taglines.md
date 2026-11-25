@@ -4,8 +4,10 @@
 
 Standard canvas is 16:9 at 10 x 5.625in (13.33 x 7.5in is the same ratio; scale layouts proportionally). Top to bottom:
 
-1. **Header block, top left**: title (bold, ~18pt) on line 1, tagline (regular or light, ~11 to 12pt, grey or dark
-   text) on line 2. Two accepted forms; match the deck:
+1. **Header block, top left**, in the title mode the user chose (`writing`, Slide titles).
+   **Full-sentence titles**: the claim as the title (bold, ~16 to 18pt, up to two lines), no tagline line; an optional
+   small eyebrow above it carries the section. **Label titles**: title (bold, ~18pt) on line 1, tagline (regular or
+   light, ~11 to 12pt, grey or dark text) on line 2. Two accepted label forms; match the deck:
    - Stacked: `Executive Summary` / `The client must rebuild its loyalty program to stop losing frequent buyers`
    - Inline pipe: `Situational Analysis | Rising fuel costs have erased the regional routes' margin`
    The title is a short topic label (2 to 6 words, Title Case). It may use a `Topic: Subtopic` form (e.g. `Pillar 1:
@@ -30,7 +32,8 @@ If a message needs more than 4 panels, it is probably two slides. Say so.
 
 ## Tagline rule
 
-This is the main place to beat typical decks. Strong decks write claims ("Points-based loyalty no longer changes where
+This is the main place to beat typical decks. In full-sentence title mode the title is the tagline, and everything
+below applies to it. Strong decks write claims ("Points-based loyalty no longer changes where
 frequent buyers shop", "The client is the No. 2 player in its core category and gaining share"). Weak ones write
 process descriptions ("Assessing...", "Determining the root causes of...", "An overview of campaign costs"). Always
 write a claim. Test: a judge reading only the taglines across the deck gets the whole story.

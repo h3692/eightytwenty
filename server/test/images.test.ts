@@ -197,8 +197,8 @@ describe("photos", () => {
 		const r = await findImages("photo", "busy hospital waiting room", 4, { fetch });
 		const [by, , pdm] = openverse.results;
 		expect(r.results).toHaveLength(4);
-		expect(r.results[0]).toEqual({ title: by.title, creator: by.creator, licence: "CC BY 2.0", download_url: by.url, landing_url: by.foreign_landing_url, credit: by.attribution, thumbnail: 0 });
-		expect(r.results[2]).toEqual({ title: pdm.title, creator: pdm.creator, licence: "Public Domain Mark 1.0", download_url: pdm.url, landing_url: pdm.foreign_landing_url, thumbnail: 2 });
+		expect(r.results[0]).toEqual({ title: by.title, creator: by.creator, licence: "CC BY 2.0", download_url: by.url, insert_url: `${by.thumbnail}?full_size=true&compressed=true`, landing_url: by.foreign_landing_url, credit: by.attribution, thumbnail: 0 });
+		expect(r.results[2]).toEqual({ title: pdm.title, creator: pdm.creator, licence: "Public Domain Mark 1.0", download_url: pdm.url, insert_url: `${pdm.thumbnail}?full_size=true&compressed=true`, landing_url: pdm.foreign_landing_url, thumbnail: 2 });
 		expect(r.results.map((x) => !!x.credit)).toEqual([true, true, false, false]);
 		expect(r.thumbnails).toEqual([0, 1, 2].map((i) => ({ data: base64(thumbBytes(100 + i)), mimeType: "image/jpeg" })));
 		expect(r.unavailable).toEqual([]);

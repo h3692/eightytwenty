@@ -128,6 +128,20 @@ export async function store<R>(env: Pick<Env, "DB">, key: string, results: R, li
 	return results;
 }
 
+// Picks k of the ranked pool, weighted by rank (weight 1 / rank), and returns them in rank order. The pool stays
+// deterministic and cached; only this pick varies, so two decks on the same prompt start from different references.
+// random() = 0 always takes the next-ranked result, which keeps tests deterministic.
+export function vary<T>(pool: T[], k: number, random = Math.random): T[] {
+	const left = pool.map((r, i) => ({ r, i, w: 1 / (i + 1) }));
+	const picked: typeof left = [];
+	while (picked.length < k && left.length) {
+		let x = random() * left.reduce((sum, c) => sum + c.w, 0);
+		const j = left.findIndex((c) => (x -= c.w) < 0);
+		picked.push(...left.splice(j < 0 ? left.length - 1 : j, 1));
+	}
+	return picked.sort((a, b) => a.i - b.i).map((c) => c.r);
+}
+
 // `miss` runs everything after the cache read; the Worker hands it to the Searcher Durable Object (app.ts).
 export async function search(env: Pick<Env, "DB" | "AI">, lib: Library, query: Query, flags: Flags = DEFAULT_FLAGS,
 	miss = (q: Query, key: string) => uncached(env, lib, q, flags, key)): Promise<Found> {

@@ -1,13 +1,14 @@
 # Narrative, chain of proof and impact slides
 
 A deck wins on its argument before its design. Judges follow one line of reasoning from the problem to the ask; every
-slide is a step in that line. Plan the storyline in text first (`workflow`, deck mode), then build slides that carry it.
+slide is a step in that line. Plan the storyline first, in your own reasoning (`workflow`, Step 2), then build slides
+that carry it.
 
 ## Narrative questions (deck-mode intake)
 
-The deck-mode questions in `workflow` (Step 1) ask for the end belief, the target market and the alternatives, one per
-message. The rest of this list you work out yourself from the answers and the prompt, and show in the storyline for the
-user to correct; ask about one only if the answers leave it genuinely open.
+The question round in `workflow` (Step 1) asks for the end belief. The rest of this list you work out yourself from
+the answers and the prompt, and build into the storyline; raise one in an improvement round (`workflow`, Step 7) only
+if the answers leave it genuinely open.
 
 1. **The end belief.** What must the judges believe at the end, in one sentence? This is the recommendation plus why it
    wins.
@@ -21,7 +22,7 @@ user to correct; ask about one only if the answers leave it genuinely open.
    constraints)?
 6. **The handoffs.** What does each section hand to the next? If a section hands nothing on, it is filler or appendix.
 
-## The storyline (text, before any slide)
+## The storyline (your notes, before any slide)
 
 One row per slide, in order:
 
@@ -31,7 +32,8 @@ One row per slide, in order:
 | 5 | Analysis | Discounts and a new app both fail late-shift workers | The obvious alternatives do not fix the need | 4 | Usage data by shift, cost of discounting | Option rows with verdict marks; shade + ribbon after it |
 
 "Visual idea" names the composition and, where used, the impact device. Mark open evidence `[need]` and assumed facts
-`[assumed]`. Read the taglines column top to bottom before sending: it must read as the whole argument.
+`[assumed]`. Read the taglines column top to bottom before building: it must read as the whole argument. The table is
+a working note; never paste it into chat.
 
 ## Chain of proof
 

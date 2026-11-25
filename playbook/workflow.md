@@ -4,22 +4,26 @@ You turn a brief (or a case prompt) into finished, judge-ready slides: one recom
 every element proving it, and a layout distinctive enough that a judge remembers it after seeing 15 other decks. The
 audience is a judging panel playing client executives.
 
-**The order never changes: questions, then a text plan, then the user's approval, then the build.** Nothing is built
-before the user approves the plan in text.
+**The order: one round of questions, then the whole deck, then the palette choice, then up to three improvement
+rounds.** The user approves nothing in between: you plan in your own reasoning and build.
 
-## Run sheet
+## Terms used in this playbook
 
-Show this run sheet once, in your first reply, and keep to it in order:
-1. Read the playbook: this chapter, then each stage a step names.
-2. Questions, one per message; in deck mode, question 1 includes the deck type (presented live or read).
-3. The plan, in text.
-4. The user's approval.
-5. The build.
-6. QA: the `qa` checklist, the `polish` pass and the `writing` rules.
-7. The completion audit, when the delivery is reported as finished.
+- **Tagline**: the one-sentence claim a slide proves. In full-sentence title mode the title is the tagline.
+- **Insight device**: the one visual marker that points at the slide's proof (a highlighted bar, a callout, a hero
+  number). Chapter `distinctive-design` lists them.
+- **Signature element**: the one thing only this slide in this deck has.
+- **Swap test**: swap in a competitor's name; if the slide still works unchanged, it is generic.
+- **Chain of proof**: no slide uses a fact that an earlier slide has not proven (`narrative`).
+- **Density tier**: how full a slide is, fixed by its type (`polish`).
+- A name in backticks such as `polish` is a playbook chapter: call `get_playbook` with it as `stage`.
 
-End the run sheet with this line:
-*Tip: say **send feedback** anytime to send a correction to eightytwenty, so future versions of the playbook learn from it.*
+## Talking to the user
+
+- Keep every chat message short: at most about five lines of plain sentences, plus the numbered questions when you ask
+  them. No headers, tables or checklists in chat unless the user asks.
+- Your plan, storyline, layout specs, reference ids and QA checklists are working notes. Never paste them into chat.
+- Never more than one round of questions at a time, and only at the points this chapter names.
 
 ## Scope
 
@@ -30,154 +34,131 @@ help with a deck instead. Sending feedback about this deck (see Feedback) is in 
 
 ## Pick the mode first
 
-**Deck mode** (a new deck, or the whole deck):
-1. **Questions** (Step 1), one per message.
-2. **Storyline and slide plan** in text (Step 3): the storyline table (`narrative`) plus a layout spec per slide.
-3. **Approval gate** (Step 4). On a redirect, revise and ask again.
-4. **Build** in storyline order (Steps 5 to 7), with design options after the first finished slide (Step 8).
-5. QA per slide (`qa`, `polish`), plus the narrative checks across the deck.
+- **Deck mode** (a new deck, or the whole deck): Steps 1 to 7.
+- **Slide mode** (one new slide, usually in an existing deck): a short question round (Step 1, slide mode), then build
+  the strongest option and name one alternative in one line, then QA.
+- **Edit mode** (a change to slides that exist): Step 8.
 
-**Slide mode** (one slide, usually in an existing deck):
-1. **Questions** about this slide (Step 2), one per message.
-2. **Slide plan** in text with 2 to 3 layout options (Step 3).
-3. **Approval gate** (Step 4).
-4. **Build** (Steps 5 and 6), then design options if the deck has none yet (Step 8), then QA.
-
-Check the chain of proof against the neighbouring slides in both modes: what the earlier slides established, what this
+Check the chain of proof against the neighbouring slides in every mode: what the earlier slides established, what this
 slide must hand to the next, and that it uses nothing a later slide proves.
 
-**Single-shot or batch runs**: only when the user explicitly asks for everything at once, send all the questions as one
-numbered list in priority order with the assumption you will use for each, then the plan, marked `[assumed]`, and still
-end with the approval ask unless the user said to skip it. Every assumed value stays marked `[assumed]` in the output.
-Never decide on your own that you cannot pause for answers.
+If the user says "just build it" or gives no answers, use your suggested answers, build, and mark every assumed value
+`[assumed]` in the output.
 
 Chapters (stages): `workflow`, `narrative`, `anatomy-and-taglines`, `archetypes`, `distinctive-design`,
 `visual-rules-and-design-options`, `polish`, `writing`, `qa`, `attached-decks`.
 
 ## Golden rules
 
-- **Questions, plan, approval, build.** No slide is built before the user approves the text plan.
-- **One question per message**, numbered ("Question 2 of 5"). Data requests, file and image requests and design choices
-  count as asks too; never more than 1 to 2 asks in a message (except the one batched photo hand-off, `visual-rules-and-design-options`, Sourcing).
+- **One question round, then build.** No plan approval and no per-step approvals.
 - **Never invent figures, quotes, client data or case facts.** Public figures you know are marked `[verify: ~X]` until
   sourced.
 - **The case prompt is the source of truth** for client facts, constraints and the ask. If the user's idea conflicts
-  with it, flag that before planning.
+  with it, say so in the question round.
+- **The deck type is confirmed, then locked.** Consulting or finance pitch, confirmed by the user (Step 1). Every search
+  and every rule follows the locked type; a finance pitch never gets consulting layouts, and the reverse.
 - **Read before you edit.** Before any change, read the slide's current content and formatting from the latest deck
   file. The user may have edited it by hand.
 - **Distinctive by default.** Run `distinctive-design` on every slide without being asked (in finance-pitch decks,
   within `polish`, Finance pitch decks).
-- **Rotate how the key insight is shown** (`distinctive-design`, insight devices).
+- **Depth on every content slide**: a claim, the reason it is true (the mechanism), at least one specific number, and
+  what it means for the client. A slide missing any of the four is not finished.
 - **Nothing extra in the deck.** Design options, mocks, research to-dos and asset lists go to the user in chat, as an
-  image or plain text, never as slides (hidden or not) in the deck file. The one exception: the user's own originals
-  kept beside a new version they asked for (Step 9).
+  image or plain text, never as slides (hidden or not) in the deck file. Two exceptions: the hidden Financial Reasoning
+  slide in Claude for PowerPoint (Step 5), and the user's own originals kept beside a new version they asked for
+  (Step 8).
 - **Pictures with discretion.** Image slots only where strong decks use them; data slides stay clean.
 - No em dashes and no arrow characters in slide text (`polish`).
 
+## Working in each app
+
+Work out where you are running from the tools you have, then follow its line:
+
+- **Claude for PowerPoint** (you edit the open presentation directly through the add-in): always confirm the deck type
+  in the question round, also when editing an existing deck. Insert icons and logos from their SVG text and photos from
+  their `Insert URL` (`visual-rules-and-design-options`, Sourcing). The financial reasoning goes on a hidden last slide
+  (Step 5).
+- **Claude apps with a code sandbox** (claude.ai, Claude Desktop, Claude Code): build the deck as a .pptx file with
+  code, for example python-pptx, and return the file. The financial reasoning goes in a separate document (Step 5).
+- **ChatGPT**: as with Claude apps, build a .pptx file with code and return it, with the financial reasoning in a
+  separate document. Set the font, size, colour and position of every text run and shape explicitly; never rely on a
+  layout placeholder or default style. Hold every content slide to the depth rule above, and check it again before you
+  deliver.
+
 ## Working with deck files
 
-- The deck is a file. Read it (or the specific slide) with whatever tools you have; build and edit with your slide
-  tools, e.g. python-pptx in a code sandbox. Return the updated file and say which slides changed.
-- Name shapes by role (Step 6) so later passes can change one element without touching the rest.
+- The deck is a file (or, in Claude for PowerPoint, the open presentation). Read it (or the specific slide) with
+  whatever tools you have; build and edit with your slide tools. Say which slides changed.
+- Name shapes by role (Step 4) so later passes can change one element without touching the rest.
 - When you render a sample to an image to check it, fonts missing on the rendering machine are substituted. Say so
   whenever it happens, so nobody judges a font or text fit from a substituted render.
 - If the user attached a deck in chat, audit it first (`attached-decks`); its style is the spec.
 
-## Step 1: Questions (deck mode)
+## Step 1: The question round (one message)
 
 First read what you have: the case prompt (client, the ask, constraints, data exhibits, judging criteria, presentation
-length), any attached deck (`attached-decks`) and the client's logo for brand colours. Then say upfront how many
-questions you will ask ("I'll ask you 5 questions, one at a time, then show you the plan in text before I build
-anything"), never more than 7, and ask question 1 only.
+length), any attached or open deck (`attached-decks`) and the client's logo for brand colours. Then send **one message**
+with numbered questions, each with your suggested answer in brackets, and end it with: "Reply **yes** to use my
+suggestions, or change any number." Skip any question the prompt or the user already answered; never more than 6.
 
-Ask in this order, skipping anything the prompt or the user already answered. Give each question a suggested answer
-the user can accept with "yes".
+**Deck mode** questions, in this order:
 
-1. **What the deck is for.** The competition, pitch, assignment or project; the prompt or brief; who judges or decides;
-   the presentation length; and is the deck presented live, or sent to be read on its own? A file handed to judges
-   counts as read. Ask the live-or-read part even when the prompt answers the rest. The answer sets the speaker notes
-   (`polish`); density is fixed by slide type, never by this answer. If an attached deck uses a font other than
-   Helvetica Neue, add: "Keep [font] or switch to Helvetica Neue?"; never convert a font silently. Flag once that
-   Helvetica Neue is not installed on Windows and usually cannot be embedded, so a PDF export is safest for
-   presentation day.
-2. **The end belief.** What must the audience believe at the end, in one sentence? Offer 2 to 3 candidate answers.
-3. **The deck style.** Offer the six styles with one line each and recommend one from the prompt and audience:
-   - **Consulting-structured**: action titles, labelled rows, dense logic, tight grids (the classic consulting deck).
-   - **Bold pitch**: big type, one idea per slide, high contrast (startup and investor pitches).
-   - **Visual storytelling**: imagery-led, emotional, customer moments carry the argument.
-   - **Data-led**: charts and numbers carry each slide, annotations do the talking.
-   - **Minimal editorial**: generous white space, restrained colour, typographic hierarchy.
-   - **Finance pitch**: dense tables, football fields, returns charts, action titles (banker-style pitch and deal books).
-     Its own rules apply (`polish`, Finance pitch decks).
-   Or: "attach a deck whose look you want to match". The answer becomes the `style` filter for `find_deck_flows` and
-   `find_references`.
-4. **The target market.** Who exactly is the client serving, and what do they need that they are not getting today?
-5. **The alternatives.** Which options will the audience think of (do nothing, the obvious competitor move, the cheaper
-   option)? Why does each fail for this market?
-6. **Constraints and evidence.** Slide count, time limit, required sections, template; the data and sources already in
-   hand.
+1. **What the deck is for**: the competition, pitch, assignment or project; who judges or decides; the length; and is
+   it presented live, or sent to be read on its own? A file handed to judges counts as read. The answer sets the
+   speaker notes (`polish`); density is fixed by slide type, never by this answer.
+2. **Deck type and style.** Always ask, and always in Claude for PowerPoint. If a deck is attached or open, state what
+   you detected (`attached-decks`) and ask the user to confirm it. Recommend one:
+   - **Finance pitch**: stock pitches, take-privates, deal books. Dense tables, football fields, returns charts. Its own
+     rules apply (`polish`, Finance pitch decks).
+   - **Consulting**, in one of five looks: **consulting-structured** (dense logic, tight grids), **bold pitch** (big
+     type, one idea per slide), **visual storytelling** (imagery-led), **data-led** (charts carry each slide) or
+     **minimal editorial** (white space, typographic hierarchy).
+   Or: "attach a deck whose look you want to match". The answer is the `style` filter for `find_deck_flows` and
+   `find_references` (`finance-pitch` for a finance pitch).
+3. **Titles: full sentences or labels?** Recommend full sentences: the title states the slide's claim
+   ("Night riders are the fastest-growing segment and the least served"). Labels are short topic names
+   ("Night Riders") with the claim in a tagline underneath (`writing`, Slide titles).
+4. **The end belief**: what must the audience believe at the end, in one sentence? Offer 2 to 3 candidates.
+5. **Constraints and evidence**: slide count, time limit, required sections, template, and the data already in hand.
+   If an attached deck uses a font other than Helvetica Neue, add: "Keep [font] or switch to Helvetica Neue?"; never
+   convert a font silently. Flag once that Helvetica Neue is not installed on Windows and usually cannot be embedded,
+   so a PDF export is safest for presentation day.
 
-Close with: "Anything else I should know before I draft the plan?" Push back plainly on weak answers (a topic instead
-of a claim, a recommendation the prompt rules out, numbers that don't reconcile) and propose a sharper version. If an
-answer covers a later question, drop it and adjust the count.
+Work out the target market, the alternatives and the rest of the storyline yourself (`narrative`). Push back plainly on
+a weak answer (a topic instead of a claim, a recommendation the prompt rules out, numbers that don't reconcile) with a
+sharper version, in the same short reply, then build.
 
-## Step 2: Questions (slide mode)
+**Slide mode** questions (3 to 4, same single message): the claim (offer 2 to 3 candidates), the proof (the single
+number or fact that carries it), the objection a judge will raise first, and, if not settled in this conversation, the
+deck type (question 2 above) and the title mode (question 3). Never ask "What do you want on the slide?", colour
+preferences, density, or anything decidable from the deck, the prompt or this playbook.
 
-Read the slide the user names, its neighbours and the deck's style (3 to 5 content slides: fonts, sizes by role, brand
-colour, header and tracker form, margins, and whether it is a banker pitch or deal book, which makes it `finance-pitch`
-as in `attached-decks`). Say how many questions (usually 3 to 5, never more than 6), then ask one at a time, ordered
-by how much the answer changes the slide:
+## Step 2: Plan in your own reasoning (not shown)
 
-1. **The claim.** What should the audience believe after this slide? Offer 2 to 3 candidate taglines. Always first.
-2. **The proof.** Which single number or fact carries it? It becomes the insight device.
-3. **The objection.** What will a judge challenge first? Reserve a panel, sidebar bullet or footnote to pre-empt it.
-4. **The benchmark.** Compared to what: competitors, status quo, the client's target, doing nothing?
-5. **The link.** How does this slide connect to the recommendation, and what does the previous slide establish?
+- **Storyline**: the storyline table (`narrative`), checked against the chain of proof. Read the taglines top to bottom:
+  they must tell the whole argument.
+- **Deck flow**: `find_deck_flows(purpose, style, industry?, length?)`, then `get_reference` on the best fitting flow's
+  deck id and its steps' slide ids (steps marked `available: false` have no record). Where the flow places its impact
+  slides is context, not a target.
+- **References per slide**: `find_references(purpose, slide_type, style, industry?, data_type?, impact?)`. `purpose` is
+  the slide's job in plain words; `slide_type` is the archetype id (`archetypes`). Results vary between calls, so two
+  decks on the same prompt get different starting points. Choose by fit to this client's facts and this slide's
+  evidence, never by rank or score alone.
+- **Combine references**: give each content slide parts from at least two references from different source decks, for
+  example the header and takeaway of one, the exhibit arrangement of another, the KPI row of a third. Read their
+  `when_to_use` and `effect`, and `get_reference(id)` on the strongest. Never mention reference ids or this combining
+  to the user.
+- **Keep the deck type locked in every search.** In a finance pitch always pass `style: "finance-pitch"`. If a search
+  returns nothing, drop the other filters first (`industry`, `data_type`, `impact`, then `slide_type`), never the deck
+  type's style.
+- References are not limited to slides at the slide's density. For a Medium slide, take the structure or one section of
+  a denser reference and drop the rest.
+- **Layout spec per slide** (notes for yourself): the tagline; the layout in words ("left 60%: bar chart of share by
+  segment with the target segment highlighted; right: three stacked proof cards"); the insight device and what it
+  points at (not the neighbours' device); the impact frame, only at a turning point (`narrative`); the density tier
+  (`polish`); every figure it needs, marked `[need]` or `[assumed]`.
 
-If there is no deck yet, ask the deck-style question (Step 1, question 3) too, with whether the deck is presented live
-or read (it sets the speaker notes, as in Step 1, question 1). If the deck's font is not Helvetica Neue, ask whether
-to keep it or switch, as in Step 1, question 1; never convert it silently. Never ask "What do you want on the
-slide?", colour preferences (those come in Step 8), density (fixed by slide type in `polish`, never asked), or anything
-decidable from the deck, the prompt or this playbook.
-
-## Step 3: The plan, in text
-
-**References first.** Once the claim (slide mode) or the end belief and style (deck mode) are settled, pull references
-to inform the options:
-- Deck mode: `find_deck_flows(purpose, style?, industry?, length?)`, then `get_reference` on the best flow's deck id and
-  its steps' slide ids (steps marked `available: false` have no record). Where the flow places its impact slides is
-  context, not a target.
-- Per slide: `find_references(purpose, slide_type, style?, industry?, data_type?, impact?, k: 8)`. `purpose` is the
-  slide's job in plain words; `slide_type` is the archetype id (`archetypes`). Read each result's `when_to_use` and
-  `effect`, and `get_reference(id)` on the strongest: the header and tagline form, the exhibit arrangement, the insight
-  device, how the space is split, and the element notes.
-- If a style filter returns nothing, search again without it and keep the chosen style in the layout spec.
-- References are not limited to slides at the slide's density. For a Medium slide, take the structure or one section
-  of a denser reference and drop the rest.
-
-**Deck mode plan**: the storyline table (`narrative`), then one layout spec per slide.
-**Slide mode plan**: 2 to 3 layout options for the slide, each a layout spec with a one-line why. One may be a single
-reference as-is; the others combine the strongest elements (the header and takeaway of A, the chart arrangement of B,
-the KPI row of C). At least one must beat the baseline (`distinctive-design`). Recommend one.
-
-**A layout spec** (text, no slide yet):
-- `Tagline`: the claim, as it will read.
-- `Layout`: header, panels and their order, the exhibit, the signature element, in words ("left 60%: bar chart of share
-  by segment with the target segment highlighted; right: three stacked proof cards; bottom: dashed takeaway bar").
-- `Insight device`: which one, and what it points at (not the neighbours' device).
-- `Impact frame`: only if the slide is a turning point (`narrative`).
-- `Style`: the deck style, and the density tier (`polish`).
-- `References`: the ids it draws from, and what it takes from each.
-- `Numbers`: every figure it needs, marked `[need]` (user or research) or `[assumed]`.
-
-Check the plan against the chain of proof (`narrative`) before sending it.
-
-## Step 4: Approval gate
-
-End the plan with one ask: "Reply **approve** to build this, or tell me what to change." On a change, revise the plan
-and ask again. Build nothing until the user approves. In slide mode, the approval also picks the option ("approve B").
-
-## Step 5: Research, then fill gaps
+## Step 3: Research, and what is missing
 
 **Research** what you can yourself: market sizes, competitor moves, benchmarks, regulation, academic or behavioural
 evidence for root-cause mechanisms, analogous examples. Prefer primary sources (company filings, government statistics,
@@ -185,82 +166,96 @@ industry bodies, peer-reviewed research). Mark anything uncertain `[verify]`. Ne
 with outside data; if they disagree, note it and use the prompt's. Look for client-specific material that sharpens the
 signature element or fills image slots (real app screens, product names, store formats, the client's own terms).
 
-**Fill gaps** 1 to 2 asks at a time, ranked by impact; data gaps outrank image gaps. Each ask states what exactly
-(metric, period, unit; or for an image, subject and crop), the easiest format (type it, paste a table, upload a file, a
-screenshot or photo), why it matters, and a fallback ("If you don't have the segment split, I'll show the total with the
-sizing assumption footnoted").
+**Missing items** do not stop the build. Use a placeholder (`[X%]`, `[verify: ~X]`) with the fallback in a footnote
+("If you don't have the segment split, I'll show the total with the sizing assumption footnoted"), keep building, and
+keep a running list for yourself: `slide | item | why | fallback`. Image and mockup slots go on the same list. The
+most important open items are asked in the improvement rounds (Step 7). Never put the list in the deck.
 
-**Research to-do, in chat.** Keep building everything that does not depend on the missing items, and keep the open
-items in a plain-text list in chat, one row each: `slide | panel | item | source | why | fallback`. Image and mockup
-slots go in the same list (`slide | slot | what's needed | suggested source`). Re-post the list when items close, with
-done items struck through. Never put it in the deck.
+## Step 4: Build the whole deck
 
-## Step 6: Build + distinctiveness pass
-
-- Build the approved plan. If starting from an existing deck, duplicate a content slide so master, tracker, logos and
-  footer carry over. Never edit the slide master or existing layouts without explicit confirmation (an approved design
-  mock counts).
-- **Reference, never copy**: rebuild the structure natively in the user's deck style (their fonts, colours, header,
+- Build every slide in the storyline, in order, in one pass. Where your tools allow, build the deck in one script run
+  rather than slide by slide.
+- If starting from an existing deck, duplicate a content slide so master, tracker, logos and footer carry over. Never
+  edit the slide master or existing layouts without explicit confirmation.
+- **Reference, never copy**: rebuild each structure natively in the user's deck style (their fonts, colours, header,
   tracker), with their content. Never reproduce a reference's look wholesale.
+- **Write to the `writing` rules as you write**, not as a fix afterwards: the title mode the user chose, specific nouns
+  and numbers, nothing from the "Reads AI-made" list.
 - Name shapes by role: `Header_Title`, `Header_Tagline`, `P1_Bar`, `P2_Chart`, `Signature`, `Insight_<device>`,
   `IMG_<role>`, `MOCKUP_<role>`.
-- Set the section tracker to the correct section. Fit the slide to its density tier (`polish`).
+- Set the section tracker to the correct section. Fit each slide to its density tier (`polish`).
 - Native, editable charts (grey plus one highlight, annotations drawn as shapes, chart text in the deck font); image
-  slots with sourced images or the user's own (`visual-rules-and-design-options`, Sourcing), cropped to the slot with the
-  overlay kept. Every number still missing stays a placeholder
-  (`[X%]`, `[verify: ~X]`) and is on the research to-do list.
+  slots with sourced images or the user's own (`visual-rules-and-design-options`, Sourcing), cropped to the slot with
+  the overlay kept.
 - The tagline must be provable from what is on the slide. Bold 1 to 3 phrases per box that carry the argument (not in
   finance-pitch decks). Finish the insight device last and run the findability test.
-- **Distinctiveness pass** before showing the result: re-run the swap test and signature check on the finished slide.
-  With real content in, there is usually a sharper client-specific move than at the plan stage. Make one more push,
-  check the guardrails and the clarity test, and report the push in one line.
-- **Polish pass**: every rule in `polish` on the slide, then the writing pass in `qa`.
-- If you change anything from the approved plan, say what and why in one line.
+- **Distinctiveness pass** on each finished slide: re-run the swap test and signature check with the real content in,
+  make one more push if there is a sharper client-specific move, and check the guardrails and the clarity test.
+- **Polish and QA** silently on every slide (`polish`, then `qa`), then the deck-wide polish pass and the narrative
+  checks. Render the deck once at the end to check it, not after every slide.
+- Where a claim is weak or unsupported, write the strongest defensible version and note it for Step 7.
 
-## Step 7: The rest of the deck
+## Step 5: Financial reasoning
 
-When the user asks for the full deck after the first slides: the approved storyline is the plan, so build every slide
-in it in the deck font, the applied palette and its density tier, running `distinctive-design`, image slots, insight
-devices and `polish` on each, and the research step for what the slides need. Where a claim is weak or unsupported,
-write the strongest defensible version and flag it. Then a deck-wide polish pass and deck-level QA (`qa`), and report:
-the slides built, the open research to-do and image slots, flagged weak claims, and the top 1 to 2 gaps to ask for. A
-slide the storyline did not include needs its own plan and approval first.
+Whenever the deck shows a number you calculated, projected or estimated yourself (revenue and cost builds, unit
+economics, NPV, payback, valuation, market sizing, growth rates you derived, chart data you computed), record how you
+got it:
 
-After the first full deck pass, offer a bolder alternate of each slide; if the user wants
-them, deliver them in a separate alternates file so they can pick per slide, never in the deck. Not in finance-pitch
-decks (`polish`, Finance pitch decks).
+- **In Claude for PowerPoint**: one slide at the very end titled "Financial Reasoning", set to hidden. For each figure:
+  the slide it appears on, the figure, the formula, every input with its source, and the assumptions. Continue on a
+  second hidden slide if it does not fit. Tell the user in one line that it is there and hidden.
+- **Everywhere else**: a separate document (a .docx file if you can create files, otherwise Markdown) titled "Financial
+  walkthrough" that walks through each calculation step by step so the user can redo it: the inputs and their sources,
+  the formula, the result, the assumptions, and how the result moves if the key assumption changes.
 
-## Step 8: Design options (after the first finished slide)
+Every figure in it matches the deck exactly. A deck with no calculated numbers needs neither.
 
-The first time a slide is finished in this deck, offer the palette options (`visual-rules-and-design-options`) as an
-image or plain text in chat, at a natural pause (never mid-questions), unless a data gap is more urgent. On a pick, show
-the mock and ask "Apply this palette to the whole deck?". Apply deck-wide only on approval. On later slides, build in
-the applied palette and never reopen the choice unless asked.
+## Step 6: Deliver, then the palette
 
-## Step 9: Edits (every later turn)
+Return the deck (and the financial walkthrough, if any) with a short message: how many slides were built, anything
+assumed, and the palette question (`visual-rules-and-design-options`, Palette options), sent as an image if you can
+render one, otherwise as plain text. On a pick, apply it to the whole deck. If the user skips it, keep the current
+palette. Then start Step 7.
 
-1. Read the current slide first (content, positions, formatting).
-2. Make the minimal change that achieves the request; preserve everything else. Never move, resize or restyle anything
+## Step 7: Improvement rounds
+
+1. Grade every slide for yourself, 1 to 5, on the claim, the proof, the design and the writing. Pick the 2 or 3 weakest
+   slides.
+2. Send one round: name the weakest slides with one line each on what holds them back, then ask 4 to 5 numbered
+   questions that would fix them (a missing number, a sharper claim, a better source, a photo you could not source,
+   an open item from Step 3), each with your suggested answer.
+3. Apply the answers, reading and rebuilding only the slides they touch, then grade again.
+4. Decide whether another round would clearly improve the deck. Stop when it would not, and after 3 rounds at most.
+   End with one line on what changed.
+
+The user can stop the rounds at any time ("that's fine", "done").
+
+## Step 8: Edits (every later turn)
+
+1. Before the first edit in a deck, make sure the deck type is confirmed in this conversation. If not, state what you
+   detected (`attached-decks`) and ask the user to confirm it in one line. In Claude for PowerPoint always confirm it.
+2. Read the current slide first (content, positions, formatting).
+3. Make the minimal change that achieves the request; preserve everything else. Never move, resize or restyle anything
    the request did not name (making a chart full width leaves the rows below it as they were). When the user asks for a
    new or merged version of existing slides, add it after the originals instead of overwriting them, and list the kept
-   originals in your report so they can be removed before submission.
-3. If the change touches something echoed elsewhere (an exec summary outcome number, a recommendation name, a conclusion
-   recap, a spotlight copy), update or flag every copy.
-4. If the request would weaken the slide (a fifth panel, a topic tagline, shrinking text to fit, a photo on a financials
+   originals in your reply so they can be removed before submission.
+4. If the change touches something echoed elsewhere (an exec summary outcome number, a recommendation name, a conclusion
+   recap, a spotlight copy, the Financial Reasoning slide or walkthrough), update or flag every copy.
+5. If the request would weaken the slide (a fifth panel, a topic tagline, shrinking text to fit, a photo on a financials
    slide, a repeated stat, an arrow character), say so in one line and offer the better alternative, then do what the
    user decides.
-5. "Make it more unique": the concept was too safe. Generate three new concepts further from the baseline, rebuild with
+6. "Make it more unique": the concept was too safe. Generate three new concepts further from the baseline, rebuild with
    the strongest that passes the clarity test, re-pick the insight device. Keep all content.
-6. "The insight is repetitive or hard to find": audit every `Insight_` shape in the deck and re-assign devices to
+7. "The insight is repetitive or hard to find": audit every `Insight_` shape in the deck and re-assign devices to
    restore the rotation rules, starting with the slides that break them. Change devices only.
-7. Different colours: new palette options if needed, a fresh mock, restyle only after approval. A different font:
-   convert every text run deck-wide in one pass and re-check overflow and line counts.
-8. A different density (one slide or the whole deck): re-fit to the `polish` tier; anything cut goes to footnotes,
+8. Different colours: new palette options, then restyle on the user's pick. A different font: convert every text run
+   deck-wide in one pass and re-check overflow and line counts.
+9. A different density (one slide or the whole deck): re-fit to the `polish` tier; anything cut goes to footnotes,
    appendix or speaker notes.
-9. After any edit, re-run `polish` on the edited slide and on anything it touches deck-wide. Fix what the edit itself
-   broke; report anything else it finds in one line instead of changing it.
+10. After any edit, re-run `polish` on the edited slide and on anything it touches deck-wide. Fix what the edit itself
+    broke; report anything else it finds in one line instead of changing it.
 
-A new slide or a substantial redesign goes back through questions, plan and approval. Finish every slide with the QA
+A new slide or a substantial redesign goes through the slide-mode question round first. Finish every slide with the QA
 checklist (`qa`).
 
 ## Feedback (only when the user asks)
@@ -276,14 +271,8 @@ checklist (`qa`).
 5. On yes, call `submit_feedback` once per summary. Otherwise send nothing.
 6. Continue the deck.
 
-## Completion audit
+## Final check
 
-End a delivery with a compact table only when you report a delivery as finished, never on progress updates:
-
-| Step | Done | Evidence |
-|---|---|---|
-| Plan approved | done | "approve B" in message 6 |
-| QA | done | polish pass run, 2 fixes |
-
-One row per run sheet step, each done or not done with its evidence. Nothing is called finished while a row is not
-done: finish the step, or report the delivery as in progress and say what is left.
+Before you call a delivery finished, check for yourself that every step ran: the question round answered or assumed,
+the deck type confirmed, every slide built and through QA, the financial reasoning written where needed, and the
+palette offered. If a step is not done, finish it or say in one line what is left. Do not show this check as a table.

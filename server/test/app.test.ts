@@ -6,7 +6,7 @@ import styles from "../../pipeline/schema/style.v1.json";
 import archetypesMd from "../../playbook/archetypes.md";
 import { app, clientKey, STAGES } from "../src/app";
 import type { Limiter } from "../src/limiter";
-import { DEFAULT_FLAGS, EMBED_MODEL, RERANK_MODEL, search, searchFlows } from "../src/search";
+import { DEFAULT_FLAGS, EMBED_MODEL, RERANK_MODEL, search, searchFlows, vary } from "../src/search";
 import { fakeAI, flowFloats, flows, floats, impacts, layouts, library, manifest, rows, seed } from "./fixture";
 import simpleGithub from "./fixtures/images/iconify-simple-icons-github.json";
 import truck from "./fixtures/images/iconify-truck.json";
@@ -16,7 +16,7 @@ import github from "./fixtures/images/simple-icons_github.svg";
 
 const lib = library();
 const worker = app(lib);
-const REMINDER = "Next in the eightytwenty workflow: questions → text plan → approval → build → QA → audit.";
+const REMINDER = "Next in the eightytwenty workflow: one question round, build the whole deck, offer palettes, then up to 3 improvement rounds.";
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
 const assets = {
 	async fetch(req: Request | string) {
@@ -55,6 +55,7 @@ const searcher = () => env.SEARCHER.get(env.SEARCHER.idFromName("global"));
 const searcherAI = (ai: ReturnType<typeof fakeAI>) => runInDurableObject<Rpc.DurableObjectBranded, void>(searcher(), (s: any) => { s.env = { ...s.env, AI: ai }; });
 
 beforeEach(async () => {
+	vi.spyOn(Math, "random").mockReturnValue(0); // vary() then takes the top-ranked results in order
 	await seed(env.DB);
 	await searcherAI(fakeAI(() => floats[0]));
 });
@@ -86,9 +87,11 @@ describe("MCP endpoint", () => {
 		expect(p.style.description).toBeTruthy();
 		expect(tools.find_references.description).toMatch(/one per deck/i);
 		expect(tools.find_references.description).toMatch(/impact filter returns few/i);
+		expect(tools.find_references.description).toMatch(/repeated calls vary/i);
+		expect(p.k.description).toMatch(/default 4/);
 		// when to use them leads each search description; refusal wording stays out of tool descriptions
 		for (const t of [tools.find_references, tools.find_deck_flows]) {
-			expect(t.description.split(". ")[0]).toMatch(/after .*(claim|end belief).* settled.*get_playbook/i);
+			expect(t.description.split(". ")[0]).toMatch(/after .*deck type.* settled.*get_playbook/i);
 			expect(t.description).not.toMatch(/can't be used/i);
 		}
 		expect(tools.find_references.inputSchema.required).toEqual(["purpose"]);
@@ -107,7 +110,8 @@ describe("MCP endpoint", () => {
 		expect(i.inputSchema.properties.query).toMatchObject({ type: "string", minLength: 1, maxLength: 100 });
 		expect(i.inputSchema.properties.k).toMatchObject({ type: "integer", minimum: 1, maximum: 4 });
 		expect(i.inputSchema.required).toEqual(["kind", "query"]);
-		expect(i.description).toMatch(/approved slide.*logo, icon or photo.*get_playbook/i);
+		expect(i.description).toMatch(/building a slide.*logo, icon or photo.*get_playbook/i);
+		expect(i.description).toMatch(/insert link/i);
 		expect(i.description).not.toMatch(/can't be used/i);
 	});
 
@@ -166,16 +170,19 @@ describe("MCP endpoint", () => {
 });
 
 describe("server instructions and prompts", () => {
-	it("sends instructions on initialize: scope and the questions, plan, approval, build order up front", async () => {
+	it("sends instructions on initialize: scope, one question round, deck type, then the whole build, up front", async () => {
 		const { body } = await rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "test", version: "1" } });
 		const ins: string = body.result.instructions;
 		expect(ins.length).toBeLessThan(1000);
-		const head = ins.slice(0, 512);
-		for (const s of ["researching and building decks", "get_playbook", "one per message", "approve", "eightytwenty can't be used for that"])
+		const head = ins.slice(0, 512); // ChatGPT weighs the first 512 characters most
+		for (const s of ["researching and building decks", "get_playbook", "questions in one message", "deck type", "build the whole deck", "improvement rounds", "short"])
 			expect(head).toContain(s);
+		expect(ins).toMatch(/claim, why it is true, a specific number and what it means/);
+		expect(ins).toContain("eightytwenty can't be used for that");
 		expect(ins).toMatch(/never as slides/i);
+		expect(ins).toMatch(/hidden Financial Reasoning slide in Claude for PowerPoint/);
 		expect(ins).toContain("find_images never sources photos of real people; ask the user for those.");
-		expect(head).toMatch(/run sheet.*first reply.*completion audit/i); // ChatGPT weighs the first 512 characters most
+		expect(ins).not.toMatch(/run sheet|completion audit|one per message|approve/i);
 	});
 
 	it("offers a start prompt that opens the guided flow, with optional context", async () => {
@@ -186,7 +193,8 @@ describe("server instructions and prompts", () => {
 		const { body } = await rpc("prompts/get", { name: "start", arguments: { context: "a pitch for a campus food startup" } });
 		const msg = body.result.messages[0];
 		expect(msg.role).toBe("user");
-		for (const s of ["a pitch for a campus food startup", "get_playbook", "one at a time", "approve"]) expect(msg.content.text).toContain(s);
+		for (const s of ["a pitch for a campus food startup", "get_playbook", "questions in one message", "build the whole deck"]) expect(msg.content.text).toContain(s);
+		expect(msg.content.text).not.toMatch(/approve/);
 		const { body: bare } = await rpc("prompts/get", { name: "start", arguments: {} });
 		expect(bare.result.messages[0].content.text).toContain("get_playbook");
 	});
@@ -214,34 +222,97 @@ describe("get_playbook", () => {
 		expect(text).toContain("# Workflow");
 	});
 
-	it("the workflow puts scope, one question per message, a text plan and approval before any build", async () => {
+	it("the workflow puts scope, one question round, then the whole build with no plan approval", async () => {
 		const { body } = await tool("get_playbook");
 		const text = body.result.content[0].text;
-		for (const s of ["eightytwenty can't be used for that.", "One question per message", "Reply **approve**", "Nothing extra in the deck", "Research to-do, in chat"])
+		for (const s of ["eightytwenty can't be used for that.", "One question round, then build", "send **one message**", "Nothing extra in the deck", "## Step 7: Improvement rounds"])
 			expect(text).toContain(s);
+		expect(text).not.toMatch(/Reply \*\*approve\*\*|One question per message|## Run sheet|text plan/);
 		expect(text).not.toMatch(/hidden \*\*Research To-Do\*\* slide|Design Options slide \(hidden\)/);
-		for (const stage of STAGES) {  // no chapter sends anything into the deck or skips the plan
+		for (const stage of STAGES) {  // no chapter sends anything into the deck, waits on a plan approval or points at a removed step
 			const chapter = (await tool("get_playbook", { stage })).body.result.content[0].text;
 			expect(chapter, stage).not.toMatch(/Design Options (slide|asset list)|rough layout/i);
 			expect(chapter, stage).not.toMatch(/ALL CAPS only|small caps with|large caps|gradient background|brand gradient|6 to 7pt/); // designer QA: caps, gradients and tiny footnotes read as AI-made
 			if (stage !== "polish") expect(chapter, stage).not.toMatch(/`[^`\n]*(->|→|=>)[^`\n]*`/); // example slide text never carries an arrow
+			expect(chapter, stage).not.toMatch(/approved plan|completion audit|run sheet|research to-do list in chat|1 to 2 asks|`workflow`, Step 9/i);
 		}
-		expect(text).toMatch(/only when the user explicitly asks for everything at once/i);
-		expect(text).toMatch(/If a style filter returns nothing, search again without it/);
+		expect(text).toMatch(/"Reply \*\*yes\*\* to use my\s+suggestions, or change any number\."/);
+		expect(text).toMatch(/If the user says "just build it" or gives no answers, use your suggested answers/);
+		expect(text).toMatch(/drop the other filters first .*never the deck\s+type's style/s);
 		const polish = (await tool("get_playbook", { stage: "polish" })).body.result.content[0].text;
 		expect(polish).toContain("# Density and polish");
 		expect(polish).toMatch(/No arrow characters/);
 	});
 
+	it("caps improvement at 3 rounds of 4 to 5 questions, on the weakest slides only", async () => {
+		const workflow = (await tool("get_playbook", { stage: "workflow" })).body.result.content[0].text;
+		const step = workflow.slice(workflow.indexOf("## Step 7"), workflow.indexOf("## Step 8"));
+		expect(step).toMatch(/Pick the 2 or 3 weakest/);
+		expect(step).toMatch(/4 to 5\s+numbered\s+questions/);
+		expect(step).toMatch(/after 3 rounds at most/);
+		expect(step).toMatch(/rebuilding only the slides they touch/);
+	});
+
+	it("builds the deck first, then asks for the palette and applies it on the pick", async () => {
+		const workflow = (await tool("get_playbook", { stage: "workflow" })).body.result.content[0].text;
+		expect(workflow).toMatch(/one round of questions, then the whole deck, then the palette choice/);
+		expect(workflow.slice(workflow.indexOf("## Step 6"), workflow.indexOf("## Step 7"))).toMatch(/palette question.*On a pick, apply it to the whole deck/s);
+		const visual = (await tool("get_playbook", { stage: "visual-rules-and-design-options" })).body.result.content[0].text;
+		expect(visual).toContain("## Palette options (after the deck is built)");
+		expect(visual).toMatch(/\*\*Apply on the pick\.\*\* The pick is the approval/);
+		expect(visual).not.toMatch(/Apply this palette to the whole deck\?/);
+	});
+
+	it("confirms and locks the deck type, always in Claude for PowerPoint, with concrete finance signals", async () => {
+		const workflow = (await tool("get_playbook", { stage: "workflow" })).body.result.content[0].text;
+		expect(workflow).toMatch(/\*\*Deck type and style\.\*\* Always ask, and always in Claude for PowerPoint/);
+		expect(workflow).toMatch(/Before the first edit in a deck, make sure the deck type is confirmed/);
+		expect(workflow).toMatch(/In Claude for PowerPoint always confirm it/);
+		expect(workflow).toMatch(/In a finance pitch always pass `style: "finance-pitch"`/);
+		const attached = (await tool("get_playbook", { stage: "attached-decks" })).body.result.content[0].text;
+		for (const s of ["football field", "IRR, MOIC", "issue trees", "never guess", "the type\n    is locked"]) expect(attached).toContain(s);
+	});
+
+	it("asks for full-sentence or label titles and defines both modes", async () => {
+		const workflow = (await tool("get_playbook", { stage: "workflow" })).body.result.content[0].text;
+		expect(workflow).toMatch(/\*\*Titles: full sentences or labels\?\*\* Recommend full sentences/);
+		const writing = (await tool("get_playbook", { stage: "writing" })).body.result.content[0].text;
+		expect(writing).toMatch(/\*\*Full-sentence titles\*\*/);
+		expect(writing).toMatch(/\*\*Label titles\*\*/);
+		const anatomy = (await tool("get_playbook", { stage: "anatomy-and-taglines" })).body.result.content[0].text;
+		expect(anatomy).toMatch(/Full-sentence titles.*no tagline line/s);
+		const qa = (await tool("get_playbook", { stage: "qa" })).body.result.content[0].text;
+		expect(qa).toMatch(/Titles follow the title mode the user chose/);
+	});
+
+	it("explains calculated financials: a hidden last slide in PowerPoint, a separate walkthrough elsewhere", async () => {
+		const workflow = (await tool("get_playbook", { stage: "workflow" })).body.result.content[0].text;
+		const step = workflow.slice(workflow.indexOf("## Step 5"), workflow.indexOf("## Step 6"));
+		expect(step).toMatch(/In Claude for PowerPoint.*titled "Financial Reasoning", set to hidden/s);
+		expect(step).toMatch(/Everywhere else.*separate document.*"Financial\s+walkthrough"/s);
+		expect(step).toMatch(/matches the deck exactly/);
+		const qa = (await tool("get_playbook", { stage: "qa" })).body.result.content[0].text;
+		expect(qa).toMatch(/hidden Financial Reasoning slide in Claude for PowerPoint/);
+	});
+
+	it("keeps chat short, combines references silently and holds every slide to the depth rule", async () => {
+		const workflow = (await tool("get_playbook", { stage: "workflow" })).body.result.content[0].text;
+		expect(workflow).toMatch(/at most about five lines/);
+		expect(workflow).toMatch(/at least two references from different source decks/);
+		expect(workflow).toMatch(/Never mention reference ids or this combining\s+to the user/);
+		expect(workflow).toMatch(/\*\*Depth on every content slide\*\*: a claim, the reason it is true/);
+		expect(workflow).toMatch(/never rely on a\s+layout placeholder or default style/); // ChatGPT formatting
+		expect(workflow).toContain("## Terms used in this playbook"); // shorthand defined for clients that skim
+	});
+
 	it("fixes density by slide type; the live-or-read answer only sets the speaker notes", async () => {
 		const workflow = (await tool("get_playbook", { stage: "workflow" })).body.result.content[0].text;
-		expect(workflow).toMatch(/presented live, or sent to be read on its own\? A file handed to judges\s+counts as read\./);
-		expect(workflow).toMatch(/The answer sets the speaker notes\s+\(`polish`\); density is fixed by slide type,\s+never by this answer/);
+		expect(workflow).toMatch(/presented live, or sent to be read on its own\? A file handed to judges counts as read\./);
+		expect(workflow).toMatch(/The answer sets the\s+speaker notes \(`polish`\); density is fixed by slide type, never by this answer/);
 		expect(workflow).not.toMatch(/presentation tiers|reading tiers/);
-		expect(workflow).toMatch(/density \(fixed by slide type in `polish`, never asked\)/);
-		expect(workflow).toMatch(/For a Medium slide, take the structure or one section\s+of a denser reference and drop the rest/);
-		expect(workflow).toMatch(/ask the deck-style question \(Step 1, question 3\) too, with whether the deck is presented live\s+or read/);
-		const polish = (await tool("get_playbook", { stage: "polish" })).body.result.content[0].text;
+		expect(workflow).toMatch(/Never ask "What do you want on the slide\?", colour\s+preferences, density/);
+		expect(workflow).toMatch(/For a Medium slide, take the structure or one section\s+of\s+a denser reference and drop the rest/);
+				const polish = (await tool("get_playbook", { stage: "polish" })).body.result.content[0].text;
 		expect(polish).not.toContain("Density (fixed)");
 		expect(polish).toContain("## Density, set by the slide type, never asked");
 		expect(polish).toMatch(/\*\*Content slides\*\* at Medium/);
@@ -257,36 +328,28 @@ describe("get_playbook", () => {
 
 	it("tells the assistant to source its own images and to credit only when a result carries a credit", async () => {
 		const chapter = (await tool("get_playbook", { stage: "visual-rules-and-design-options" })).body.result.content[0].text;
-		for (const s of ["find_images", "react-icons", "sharp", "cairosvg", "Credit only when the result carries a `credit` line", "s07-hero.jpg", "exempt from the 1 to 2 asks rule"])
+		for (const s of ["find_images", "react-icons", "sharp", "cairosvg", "Credit only when the result carries a `credit` line", "s07-hero.jpg", "Insert URL", "Office.CoercionType.XmlSvg", "Office.CoercionType.Image"])
 			expect(chapter).toContain(s);
 		expect(chapter).not.toMatch(/Unsplash, Pexels/);
 		const workflow = (await tool("get_playbook", { stage: "workflow" })).body.result.content[0].text;
 		expect(workflow).toContain("sourced images");
-		expect(workflow).toContain("except the one batched photo hand-off");
+		expect(workflow).toMatch(/photos from\s+their `Insert URL`/);
 	});
 
-	it("opens the workflow with a run sheet shown once, and ends a finished delivery with a completion audit", async () => {
+	it("ends a finished delivery with a final check kept to itself, not an audit table", async () => {
 		const workflow = (await tool("get_playbook", { stage: "workflow" })).body.result.content[0].text;
-		expect(workflow.indexOf("## Run sheet")).toBeGreaterThan(workflow.indexOf("**The order never changes"));
-		expect(workflow.indexOf("## Run sheet")).toBeLessThan(workflow.indexOf("## Scope"));
-		expect(workflow).toMatch(/Show this run sheet once, in your first reply, and keep to it in order/);
-		for (const s of ["Read the playbook", "question 1", "deck type", "The plan, in text", "approval", "The build", "`polish`", "`writing`", "The completion audit"])
-			expect(workflow.slice(workflow.indexOf("## Run sheet"), workflow.indexOf("## Scope"))).toContain(s);
-		expect(workflow).toContain("## Completion audit");
-		expect(workflow).toMatch(/only when you report a delivery as finished/i);
-		expect(workflow).toContain("| Step | Done | Evidence |");
-		expect(workflow).toMatch(/Nothing is called finished while a row is not\s+done/);
+		expect(workflow).toContain("## Final check");
+		expect(workflow).toMatch(/Do not show this check as a table/);
+		expect(workflow).not.toContain("| Step | Done | Evidence |");
 		const qa = (await tool("get_playbook", { stage: "qa" })).body.result.content[0].text;
-		expect(qa).toMatch(/- \[ \] A delivery reported as finished ends with the completion audit/);
+		expect(qa).toMatch(/- \[ \] A delivery reported as finished has passed the final check/);
 	});
 
-	it("shows the feedback tip and sends feedback only when the user asks", async () => {
+	it("sends feedback only when the user asks", async () => {
 		const workflow = (await tool("get_playbook", { stage: "workflow" })).body.result.content[0].text;
-		expect(workflow.slice(workflow.indexOf("## Run sheet"), workflow.indexOf("## Scope"))).toContain(
-			"*Tip: say **send feedback** anytime to send a correction to eightytwenty, so future versions of the playbook learn from it.*");
 		expect(workflow.slice(workflow.indexOf("## Scope"), workflow.indexOf("## Pick the mode first"))).toMatch(/Sending feedback about this deck .* is in scope/);
 		expect(workflow).toContain("## Feedback (only when the user asks)");
-		const feedback = workflow.slice(workflow.indexOf("## Feedback"), workflow.indexOf("## Completion audit"));
+		const feedback = workflow.slice(workflow.indexOf("## Feedback"), workflow.indexOf("## Final check"));
 		for (const s of ["send feedback", "/eightytwenty-feedback", "submit_feedback", "`deck_type`", "`stock_pitch`", "`finance-pitch`", "`consulting`", "deck style"])
 			expect(feedback).toContain(s);
 		expect(feedback).toMatch(/never otherwise, and never\s+from an edit request such as "fix" or "change"/);
@@ -300,7 +363,8 @@ describe("get_playbook", () => {
 		const qa = (await tool("get_playbook", { stage: "qa" })).body.result.content[0].text;
 		expect(qa).toMatch(/read it aloud/i);
 		const workflow = (await tool("get_playbook", { stage: "workflow" })).body.result.content[0].text;
-		expect(workflow.slice(workflow.indexOf("## Step 6"), workflow.indexOf("## Step 7"))).toContain("writing pass");
+		expect(workflow.slice(workflow.indexOf("## Step 4"), workflow.indexOf("## Step 5"))).toMatch(/Write to the `writing` rules as you write/);
+		expect(writing).toMatch(/\*\*Shape patterns to avoid\*\*/);
 	});
 
 	it("returns one chapter", async () => {
@@ -362,6 +426,19 @@ describe("find_references", () => {
 		const { body } = await tool("find_references", { purpose: "x", slide_type: "pie" });
 		expect(body.result?.isError ?? !!body.error).toBe(true);
 		expect(JSON.stringify(body)).toContain("executive-summary");
+	});
+
+	it("draws 4 results by default from the top 8, so repeated calls vary, and searches the pool only once", async () => {
+		const ids = (body: any) => body.result.content[0].text.split("\n").filter((l: string) => /^\d\. /.test(l)).map((l: string) => l.split(" | ")[0].slice(3));
+		const first = ids((await tool("find_references", { purpose: "market share" })).body);
+		expect(first).toHaveLength(4);
+		const picks = [0.99, 0.5, 0.3, 0.9];
+		let n = 0;
+		vi.mocked(Math.random).mockImplementation(() => picks[n++ % picks.length]);
+		const noDO = { idFromName: () => { throw new Error("Searcher called on a cache hit"); } };
+		const second = ids((await tool("find_references", { purpose: "market share" }, { e: testEnv({ SEARCHER: noDO }) })).body);
+		expect(second).toHaveLength(4);
+		expect(second).not.toEqual(first);
 	});
 
 	it("says what to change when nothing matches", async () => {
@@ -430,11 +507,11 @@ describe("Searcher Durable Object", () => {
 		const { body } = await tool("find_references", q, { e: testEnv({ AI: noAI }) });
 		expect(body.result.isError).toBeFalsy();
 		expect(ai.calls.map((c) => c.model)).toEqual([EMBED_MODEL, RERANK_MODEL]);
-		const { results } = await search(testEnv(), lib, q, { ...DEFAULT_FLAGS, cache: false });
-		const lines = results.map((r, i) => `${i + 1}. ${r.id} | ${r.slide_type} | score ${r.score}`);
+		const { results: pool } = await search(testEnv(), lib, { ...q, k: 8 }, { ...DEFAULT_FLAGS, cache: false }); // the cached pool
+		const lines = vary(pool, q.k, () => 0).map((r, i) => `${i + 1}. ${r.id} | ${r.slide_type} | score ${r.score}`);
 		expect(body.result.content[0].text.split("\n").filter((l: string) => /^\d\. /.test(l))).toEqual(lines);
 		const cached = await env.DB.prepare("SELECT results, library_version FROM search_cache").all<{ results: string; library_version: string }>();
-		expect(cached.results.map((r) => [JSON.parse(r.results), r.library_version])).toEqual([[results, manifest.library_version]]);
+		expect(cached.results.map((r) => [JSON.parse(r.results), r.library_version])).toEqual([[pool, manifest.library_version]]);
 	});
 
 	it("is not called on a cache hit: the Worker serves it from D1", async () => {
@@ -513,7 +590,7 @@ describe("find_images", () => {
 		const [first, , third] = openverse.results;
 		const [text, reminder, ...images] = body.result.content;
 		expect(reminder).toEqual({ type: "text", text: REMINDER }); // before the thumbnails, so "Thumbnails follow" stays true
-		expect(text.text).toContain(`1. ${first.title} | CC BY 2.0 | thumbnail 1\n   Credit: ${first.attribution}\n   Download: ${first.url}\n   Page: ${first.foreign_landing_url}\n   Creator: ${first.creator}\n`);
+		expect(text.text).toContain(`1. ${first.title} | CC BY 2.0 | thumbnail 1\n   Credit: ${first.attribution}\n   Download: ${first.url}\n   Insert URL: ${first.thumbnail}?full_size=true&compressed=true\n   Page: ${first.foreign_landing_url}\n   Creator: ${first.creator}\n`);
 		expect(text.text).toContain(`3. ${third.title} | Public Domain Mark 1.0 | thumbnail 3\n   Download: ${third.url}`);
 		expect(text.text).toMatch(/Thumbnails follow as images/);
 		expect(images).toEqual([0, 1, 2].map((i) => ({ type: "image", data: b64(JPEG(i)), mimeType: "image/jpeg" })));

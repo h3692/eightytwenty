@@ -40,8 +40,8 @@ already uses. Do not reuse a composition within a section, and never give a slid
 marker for "our recommendation") so the deck reads as one story, not a sampler.
 
 **Guardrails (distinctive is not decorative):**
-- Fonts, colours, header block, tracker and footer stay consistent. They change only deck-wide through an approved
-  design mock, never slide by slide. Distinctiveness lives in the body's structure.
+- Fonts, colours, header block, tracker and footer stay consistent. They change only deck-wide through the palette
+  choice (`visual-rules-and-design-options`), never slide by slide. Distinctiveness lives in the body's structure.
 - Every shape carries meaning. No clip art, gradients, drop shadows, 3D effects, or stock imagery behind text.
 - The metaphor must hold up when explained aloud in one sentence. If it needs a legend, it is too clever; drop to C or A.
 - Numbers stay readable and comparable; never distort a chart for style.
