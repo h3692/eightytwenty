@@ -40,8 +40,8 @@ Run on every finished slide. Fix what you can without asking; report only what n
 - [ ] No `[ ]` placeholders remain unless the user knowingly left them, and each remaining one is on your private
       list of missing items (`workflow`, Step 3).
 - [ ] Nothing extra in the deck file: no options, mock, alternate or to-do slides, hidden or visible. The only
-      exceptions are the hidden Financial Reasoning slide in Claude for PowerPoint (`workflow`, Step 5) and the
-      originals kept beside a new or merged version the user asked for (`workflow`, Step 8), listed in your reply.
+      exception is the originals kept beside a new or merged version the user asked for (`workflow`, Step 8), listed
+      in your reply.
 - [ ] Every sourced photo whose result carried a `credit` line has it in the footnotes; logos, icons and public-domain
       photos carry none.
 - [ ] Every content slide has a claim, the reason it is true, at least one specific number, and what it means for the
@@ -49,8 +49,8 @@ Run on every finished slide. Fix what you can without asking; report only what n
 - [ ] Titles follow the title mode the user chose (`writing`, Slide titles) on every content slide.
 - [ ] The slide follows the confirmed deck type: no consulting devices in a finance pitch, no banker tables standing
       in for a consulting exhibit.
-- [ ] Every calculated, projected or estimated figure is in the Financial Reasoning slide or the financial
-      walkthrough (`workflow`, Step 5), and matches it exactly.
+- [ ] Every calculated, projected or estimated figure appears in the financial appendix (`workflow`, Step 5) and
+      matches it exactly.
 - [ ] Built natively in the deck's style from any references used; nothing copied wholesale from a reference.
 - [ ] A delivery reported as finished has passed the final check (`workflow`), kept to yourself.
 

@@ -70,9 +70,8 @@ Chapters (stages): `workflow`, `narrative`, `anatomy-and-taglines`, `archetypes`
 - **Depth on every content slide**: a claim, the reason it is true (the mechanism), at least one specific number, and
   what it means for the client. A slide missing any of the four is not finished.
 - **Nothing extra in the deck.** Design options, mocks, research to-dos and asset lists go to the user in chat, as an
-  image or plain text, never as slides (hidden or not) in the deck file. Two exceptions: the hidden Financial Reasoning
-  slide in Claude for PowerPoint (Step 5), and the user's own originals kept beside a new version they asked for
-  (Step 8).
+  image or plain text, never as slides (hidden or not) in the deck file. One exception: the user's own originals kept
+  beside a new version they asked for (Step 8).
 - **Pictures with discretion.** Image slots only where strong decks use them; data slides stay clean.
 - No em dashes and no arrow characters in slide text (`polish`).
 
@@ -82,14 +81,12 @@ Work out where you are running from the tools you have, then follow its line:
 
 - **Claude for PowerPoint** (you edit the open presentation directly through the add-in): always confirm the deck type
   in the question round, also when editing an existing deck. Insert icons and logos from their SVG text and photos from
-  their `Insert URL` (`visual-rules-and-design-options`, Sourcing). The financial reasoning goes on a hidden last slide
-  (Step 5).
+  their `Insert URL` (`visual-rules-and-design-options`, Sourcing).
 - **Claude apps with a code sandbox** (claude.ai, Claude Desktop, Claude Code): build the deck as a .pptx file with
-  code, for example python-pptx, and return the file. The financial reasoning goes in a separate document (Step 5).
-- **ChatGPT**: as with Claude apps, build a .pptx file with code and return it, with the financial reasoning in a
-  separate document. Set the font, size, colour and position of every text run and shape explicitly; never rely on a
-  layout placeholder or default style. Hold every content slide to the depth rule above, and check it again before you
-  deliver.
+  code, for example python-pptx, and return the file.
+- **ChatGPT**: as with Claude apps, build a .pptx file with code and return it. Set the font, size, colour and position
+  of every text run and shape explicitly; never rely on a layout placeholder or default style. Hold every content
+  slide to the depth rule above, and check it again before you deliver.
 
 ## Working with deck files
 
@@ -172,8 +169,9 @@ Work out the plan in your own reasoning first:
   (`polish`); every figure it needs, marked `[need]` or `[assumed]`.
 
 Then show the user one concise plan: the deck type and style, the end belief in one line, one line per slide
-(`n. Title or tagline: layout in a few words`), and any `[assumed]` values in one line. No layout-spec blocks, reference
-ids, spec tables or QA notes. In slide mode, show 2 to 3 options, one line each, and recommend one.
+(`n. Title or tagline: layout in a few words`), any appendix slides (Step 5), one line each, and any `[assumed]`
+values in one line. No layout-spec blocks, reference ids, spec tables or QA notes. In slide mode, show 2 to 3 options,
+one line each, and recommend one.
 
 End the plan with: "Reply **approve** to build this, or tell me what to change." On a change, revise the plan and ask
 again. Build nothing until the user approves. In slide mode, the approval also picks the option ("approve B").
@@ -215,27 +213,31 @@ most important open items are asked in the improvement rounds (Step 7). Never pu
   checks. Render the deck once at the end to check it, not after every slide.
 - Where a claim is weak or unsupported, write the strongest defensible version and note it for Step 7.
 
-## Step 5: Financial reasoning
+## Step 5: Financial appendix
 
-Whenever the deck shows a number you calculated, projected or estimated yourself (revenue and cost builds, unit
-economics, NPV, payback, valuation, market sizing, growth rates you derived, chart data you computed), record how you
-got it:
+In deck mode, whenever the deck shows a figure you calculated, projected or estimated yourself (revenue and cost builds,
+unit economics, NPV, payback, valuation, market sizing, growth rates you derived, chart data you computed), back it with
+appendix slides after the conclusion, behind an "Appendix" divider, in every app. In slide and edit mode, update the
+deck's existing appendix when a figure changes; if it has none, offer one in one line instead of adding slides.
 
-- **In Claude for PowerPoint**: one slide at the very end titled "Financial Reasoning", set to hidden. For each figure:
-  the slide it appears on, the figure, the formula, every input with its source, and the assumptions. Continue on a
-  second hidden slide if it does not fit. Tell the user in one line that it is there and hidden.
-- **Everywhere else**: a separate document (a .docx file if you can create files, otherwise Markdown) titled "Financial
-  walkthrough" that walks through each calculation step by step so the user can redo it: the inputs and their sources,
-  the formula, the result, the assumptions, and how the result moves if the key assumption changes.
+- Group by topic (revenue build, cost build, unit economics, valuation or NPV and payback, market sizing, sensitivity):
+  one topic per slide, continuing on a second slide rather than shrinking text.
+- Each slide: a title naming the figure it backs ("Revenue build behind the $42M Year 3 figure"), then native tables
+  with the inputs and their sources, the formula, the assumptions, and the sensitivity of the key assumption. Use the
+  deck's header, tracker, fonts and colours. High density is allowed (`polish`, Density).
+- Find templates first: `find_references(purpose: "appendix backup for <topic>", slide_type: "financials", style)`, in
+  a finance pitch also `valuation`, `comps` or `lbo-returns` with `style: "finance-pitch"`. Combine them as for any
+  slide (Step 2).
+- Appendix slides are exempt from the depth rule and the distinctiveness pass, but go through `polish` and `qa`. They
+  do not count toward the user's slide limit unless the case says the appendix counts.
 
-Every figure in it matches the deck exactly. A deck with no calculated numbers needs neither.
+Every figure matches the main slides exactly. A deck with no calculated figures gets none.
 
 ## Step 6: Deliver, then the palette
 
-Return the deck (and the financial walkthrough, if any) with a short message: how many slides were built, anything
-assumed, and the palette question (`visual-rules-and-design-options`, Palette options), sent as an image if you can
-render one, otherwise as plain text. On a pick, apply it to the whole deck. If the user skips it, keep the current
-palette. Then start Step 7.
+Return the deck with a short message: how many slides were built, anything assumed, and the palette question
+(`visual-rules-and-design-options`, Palette options), sent as an image if you can render one, otherwise as plain text.
+On a pick, apply it to the whole deck. If the user skips it, keep the current palette. Then start Step 7.
 
 ## Step 7: Improvement rounds
 
@@ -260,7 +262,7 @@ The user can stop the rounds at any time ("that's fine", "done").
    new or merged version of existing slides, add it after the originals instead of overwriting them, and list the kept
    originals in your reply so they can be removed before submission.
 4. If the change touches something echoed elsewhere (an exec summary outcome number, a recommendation name, a conclusion
-   recap, a spotlight copy, the Financial Reasoning slide or walkthrough), update or flag every copy.
+   recap, a spotlight copy, the appendix slides), update or flag every copy.
 5. If the request would weaken the slide (a fifth panel, a topic tagline, shrinking text to fit, a photo on a financials
    slide, a repeated stat, an arrow character), say so in one line and offer the better alternative, then do what the
    user decides.
@@ -294,6 +296,6 @@ checklist (`qa`).
 ## Final check
 
 Before you call a delivery finished, check for yourself that every step ran: the question round answered or assumed,
-the deck type confirmed, the plan approved, every slide built and through QA, the financial reasoning written where
+the deck type confirmed, the plan approved, every slide built and through QA, the financial appendix built where
 needed, and the palette offered. If a step is not done, finish it or say in one line what is left.
 Do not show this check as a table.

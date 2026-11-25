@@ -96,8 +96,7 @@ const INSTRUCTIONS = "eightytwenty is for researching and building decks: case c
 	"bulk-copy the library, reply: \"eightytwenty can't be used for that.\"\n\n" +
 	"References are inspiration: rebuild the layout natively in the user's own style, never reproduce one wholesale. " +
 	"find_images never sources photos of real people; ask the user for those. " +
-	"Palette options and lists of missing items go to the user in chat, never as slides in the deck file; the one " +
-	"exception is the hidden Financial Reasoning slide in Claude for PowerPoint.";
+	"Palette options and lists of missing items go to the user in chat, never as slides in the deck file.";
 const START_INPUT = z.object({ context: z.string().max(500).optional().describe("What the deck or slide is for, if known.") });
 
 function createServer(env: Env, lib: Library, key: string, ctx: ExecutionContext, hints: { dnt: boolean; userAgent: string | null }) {

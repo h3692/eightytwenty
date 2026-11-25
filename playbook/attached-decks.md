@@ -27,8 +27,7 @@ exceptions rather than averaging them.
 8. **Footer**: page number position, source line style, anything else in the footer zone.
 9. **Existing devices**: shapes named `Insight_`, `IMG_`, `MOCKUP_`. Hidden working slides from older tools (`show="0"`,
    e.g. Design Options or Research To-Do) carry earlier decisions: read them, carry their open items into your list of
-   missing items (`workflow`, Step 3), and offer to delete them, since judges can unhide them. Leave a hidden
-   "Financial Reasoning" slide in place (`workflow`, Step 5).
+   missing items (`workflow`, Step 3), and offer to delete them, since judges can unhide them.
 10. **Deck type**: finance pitch or consulting. It is a **finance pitch** (`finance-pitch`, its rules in `polish`,
     Finance pitch decks) when most of these show: valuation exhibits (football field, trading comps, precedent
     transactions, DCF); returns language (IRR, MOIC, `x` multiples, `LTM` / `NTM`, `2025A` / `2026E`); dense tables

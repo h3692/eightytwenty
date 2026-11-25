@@ -147,8 +147,8 @@ flowchart LR
 - The deck type (consulting or finance pitch) is always confirmed, also in Claude for PowerPoint and when editing, and
   then locked, with a concrete checklist of finance signals.
 - Full-sentence or label titles, asked up front.
-- Calculated figures come with their reasoning: a hidden Financial Reasoning slide in Claude for PowerPoint, a
-  separate financial walkthrough elsewhere.
+- Calculated figures are backed by appendix slides at the end of the deck, in every app, built from financial
+  slide templates.
 - Photo results carry an `Insert URL` that apps such as PowerPoint add-ins can download from.
 - `find_references` draws its results from the strongest matches, so two decks on the same prompt start from
   different layouts. Writing rules now cover sentence shapes that read as AI-made, not only words.

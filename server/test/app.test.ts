@@ -194,7 +194,8 @@ describe("server instructions and prompts", () => {
 		expect(ins).toMatch(/claim, why it is true, a specific number and what it means/);
 		expect(ins).toContain("eightytwenty can't be used for that");
 		expect(ins).toMatch(/never as slides/i);
-		expect(ins).toMatch(/hidden Financial Reasoning slide in Claude for PowerPoint/);
+		expect(ins).toMatch(/never as slides in the deck file\.$/);
+		expect(ins).not.toMatch(/Financial Reasoning|walkthrough/i);
 		expect(ins).toContain("find_images never sources photos of real people; ask the user for those.");
 		expect(ins).not.toMatch(/run sheet|completion audit/i);
 	});
@@ -262,7 +263,7 @@ describe("get_playbook", () => {
 			expect(chapter, stage).not.toMatch(/Design Options (slide|asset list)|rough layout/i);
 			expect(chapter, stage).not.toMatch(/ALL CAPS only|small caps with|large caps|gradient background|brand gradient|6 to 7pt/); // designer QA: caps, gradients and tiny footnotes read as AI-made
 			if (stage !== "polish") expect(chapter, stage).not.toMatch(/`[^`\n]*(->|→|=>)[^`\n]*`/); // example slide text never carries an arrow
-			expect(chapter.replace(/\s+/g, " "), stage).not.toMatch(/completion audit|run sheet|research to-do list in chat|1 to 2 asks|`workflow`, Step 9|questions in one message|same single message|one message with numbered questions|No plan approval|approves nothing/i);
+			expect(chapter.replace(/\s+/g, " "), stage).not.toMatch(/completion audit|run sheet|research to-do list in chat|1 to 2 asks|`workflow`, Step 9|questions in one message|same single message|one message with numbered questions|No plan approval|approves nothing|Financial Reasoning|walkthrough/i);
 		}
 		expect(flat).toMatch(/If the user says "just build it" or gives no answers, skip the remaining questions and the plan approval: use your suggested answers/);
 		expect(text).toMatch(/drop the other filters first .*never the deck\s+type's style/s);
@@ -313,14 +314,30 @@ describe("get_playbook", () => {
 		expect(qa).toMatch(/Titles follow the title mode the user chose/);
 	});
 
-	it("explains calculated financials: a hidden last slide in PowerPoint, a separate walkthrough elsewhere", async () => {
+	it("backs calculated figures with appendix slides built from financial templates", async () => {
 		const workflow = (await tool("get_playbook", { stage: "workflow" })).body.result.content[0].text;
-		const step = workflow.slice(workflow.indexOf("## Step 5"), workflow.indexOf("## Step 6"));
-		expect(step).toMatch(/In Claude for PowerPoint.*titled "Financial Reasoning", set to hidden/s);
-		expect(step).toMatch(/Everywhere else.*separate document.*"Financial\s+walkthrough"/s);
-		expect(step).toMatch(/matches the deck exactly/);
-		const qa = (await tool("get_playbook", { stage: "qa" })).body.result.content[0].text;
-		expect(qa).toMatch(/hidden Financial Reasoning slide in Claude for PowerPoint/);
+		const flat = workflow.replace(/\s+/g, " ");
+		const step = workflow.slice(workflow.indexOf("## Step 5: Financial appendix"), workflow.indexOf("## Step 6")).replace(/\s+/g, " ");
+		expect(workflow).toContain("## Step 5: Financial appendix");
+		expect(step).toMatch(/In deck mode.*after the conclusion, behind an "Appendix" divider, in every app/);
+		expect(step).toMatch(/In slide and edit mode, update the deck's existing appendix.*offer one in one line/);
+		for (const s of ["revenue build", "cost build", "unit economics", "valuation or NPV and payback", "market sizing", "sensitivity"]) expect(step).toContain(s);
+		expect(step).toMatch(/one topic per slide, continuing on a second slide rather than shrinking text/);
+		expect(step).toMatch(/title naming the figure it backs/);
+		expect(step).toMatch(/native tables with the inputs and their sources, the formula, the assumptions, and the sensitivity of the key assumption/);
+		expect(step).toMatch(/the deck's header, tracker, fonts and colours/);
+		expect(step).toMatch(/High density.*`polish`/);
+		expect(step).toContain('`find_references(purpose: "appendix backup for <topic>", slide_type: "financials", style)`');
+		expect(step).toMatch(/`valuation`, `comps` or `lbo-returns` with `style: "finance-pitch"`/);
+		expect(step).toMatch(/Every figure matches the main slides exactly/);
+		expect(step).toMatch(/exempt from the depth rule and the distinctiveness pass.*`polish` and `qa`/);
+		expect(step).toMatch(/do not count toward the user's slide limit unless the case says the appendix counts/);
+		expect(step).toMatch(/A deck with no calculated figures gets none/);
+		expect(flat.slice(flat.indexOf("## Step 2"), flat.indexOf("## Step 3"))).toMatch(/appendix slides \(Step 5\), one line each/);
+		expect(flat).toMatch(/never as slides \(hidden or not\) in the deck file\. One exception: the user's own originals/);
+		const qa = (await tool("get_playbook", { stage: "qa" })).body.result.content[0].text.replace(/\s+/g, " ");
+		expect(qa).toMatch(/Every calculated, projected or estimated figure appears in the financial appendix \(`workflow`, Step 5\) and matches it exactly/);
+		expect(qa).toMatch(/The only exception is the originals kept beside/);
 	});
 
 	it("keeps chat short, combines references silently and holds every slide to the depth rule", async () => {
