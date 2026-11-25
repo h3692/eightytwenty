@@ -4,6 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
+    "deploy:staging": "wrangler deploy --env staging",
+    "migrate:staging": "wrangler d1 migrations apply eightytwenty-feedback-staging --env staging --remote",
     "test": "vitest run",
     "wasm": "wat2wasm src/dot.wat -o src/dot.wasm"
   },

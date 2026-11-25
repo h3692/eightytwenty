@@ -23,6 +23,7 @@ interface Env {
 	POSTHOG_PROJECT_TOKEN?: string; // secret (wrangler secret put): usage statistics are sent to PostHog only when it is set
 	POSTHOG_HOST?: string;
 	ANALYTICS_SALT?: string; // secret: the HMAC key for the usage statistics' caller ids; unset, every call gets a random id
+	CACHE_SCOPE?: string; // staging only: kept apart from production's search cache rows in the shared library DB
 }
 
 declare namespace Cloudflare {
@@ -44,9 +45,11 @@ declare namespace Cloudflare {
 		POSTHOG_PROJECT_TOKEN?: string;
 		POSTHOG_HOST?: string;
 		ANALYTICS_SALT?: string;
+		CACHE_SCOPE?: string;
 		TEST_MIGRATIONS: import("cloudflare:test").D1Migration[];
 		TEST_FEEDBACK_MIGRATIONS: import("cloudflare:test").D1Migration[];
 		LIVE_AI: string;
 		PLAYBOOK_FILES: string[];
+		WRANGLER_ENVS: Record<"production" | "staging", { name: string; routes: unknown[]; d1_databases: { binding: string; database_name: string; database_id: string }[]; vars: Record<string, unknown> }>;
 	}
 }

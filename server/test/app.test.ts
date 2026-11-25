@@ -147,13 +147,26 @@ describe("MCP endpoint", () => {
 		expect((await rpc("tools/list")).res.status).toBe(200);
 	});
 
-	it("accepts the custom domain, workers.dev and localhost as Host and Origin, and rejects any other Host", async () => {
-		for (const h of ["mcp.eightytwenty.tech", "eightytwenty.socratic.workers.dev", "localhost", "127.0.0.1", "[::1]"]) {
+	it("accepts the custom domain, workers.dev, staging and localhost as Host and Origin, and rejects any other Host", async () => {
+		for (const h of ["mcp.eightytwenty.tech", "eightytwenty.socratic.workers.dev", "eightytwenty-staging.socratic.workers.dev", "localhost", "127.0.0.1", "[::1]"]) {
 			expect((await rpc("tools/list", {}, { headers: { host: h, origin: `https://${h}` } })).res.status).toBe(200);
 			expect((await rpc("tools/list", {}, { headers: { host: h } })).res.status).toBe(200);
 		}
 		expect((await rpc("tools/list", {}, { headers: { host: "evil.example" } })).res.status).toBe(403);
 		expect((await rpc("tools/list", {}, { headers: { host: "mcp.eightytwenty.tech", origin: "https://evil.example" } })).res.status).toBe(403);
+	});
+
+	it("staging never uses the production domain, feedback database or cache", () => {
+		const { production, staging } = env.WRANGLER_ENVS;
+		const db = (c: typeof staging, binding: string) => c.d1_databases.find((d) => d.binding === binding)!;
+		expect(staging.name).toBe("eightytwenty-staging");
+		expect(staging.routes).toEqual([]);
+		expect(db(staging, "FEEDBACK").database_name).toBe("eightytwenty-feedback-staging");
+		expect(db(staging, "FEEDBACK").database_id).not.toBe(db(production, "FEEDBACK").database_id);
+		expect(db(staging, "DB").database_id).toBe(db(production, "DB").database_id);
+		expect(staging.vars.CACHE_SCOPE).toBe("staging");
+		expect(production.vars.CACHE_SCOPE).toBeUndefined();
+		for (const k of Object.keys(production.vars)) expect(staging.vars, k).toHaveProperty(k);
 	});
 
 	it("marks every tool titled, read-only and non-destructive except submit_feedback, and only find_images as open-world", async () => {

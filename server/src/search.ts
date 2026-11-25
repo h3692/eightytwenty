@@ -112,8 +112,9 @@ type Found<R = Result> = { results: R[]; library_version: string };
 export const normalise = (purpose?: string) => (purpose ?? "").normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
 
 // The cache row for a query: hashed, so the query text is never stored; id[0] tags the search ("slides" | "flows" | "images").
-export async function cached(env: Pick<Env, "DB">, id: unknown[]): Promise<[key: string, hit: string | null]> {
-	const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(id)));
+// CACHE_SCOPE (staging) prefixes the id, so a deployment sharing this DB never reads or writes production's rows.
+export async function cached(env: Pick<Env, "DB" | "CACHE_SCOPE">, id: unknown[]): Promise<[key: string, hit: string | null]> {
+	const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(env.CACHE_SCOPE ? [env.CACHE_SCOPE, ...id] : id)));
 	const key = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 	return [key, await env.DB.prepare("SELECT results FROM search_cache WHERE key = ?").bind(key).first<string>("results")];
 }

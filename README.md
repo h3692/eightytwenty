@@ -206,6 +206,22 @@ Self-hosting: usage statistics are off unless the `POSTHOG_PROJECT_TOKEN` secret
 optional `POSTHOG_HOST` var picks the PostHog host and defaults to `https://us.i.posthog.com`. Hashed ids need the
 `ANALYTICS_SALT` secret; without it every record gets a random id.
 
+## Staging (for developers)
+
+Staging is a second Worker at `https://eightytwenty-staging.socratic.workers.dev/mcp` for trying server and playbook
+changes before production. Deploy it from `server/`:
+
+```sh
+cd server
+npm run migrate:staging   # once: creates the tables in the staging feedback database
+npm run deploy:staging
+```
+
+A deploy needs the local `library/` folder. Add the URL as a custom connector: in claude.ai, Settings > Connectors >
+Add custom connector; in Claude Code,
+`claude mcp add --transport http eightytwenty-staging https://eightytwenty-staging.socratic.workers.dev/mcp`. Staging is
+public, has lower daily budgets than production and sends no analytics.
+
 ## FAQ
 
 **How is this different from the Claude skill on eightytwenty.tech?**

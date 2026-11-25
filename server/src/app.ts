@@ -367,7 +367,7 @@ export const searcher = (lib: Library) => class Searcher extends DurableObject<E
 export type Searcher = InstanceType<ReturnType<typeof searcher>>;
 
 // Set explicitly: a custom domain otherwise gets no Host check and only localhost Origins. localhost serves wrangler dev and the MCP Inspector.
-const HOSTS = ["mcp.eightytwenty.tech", "eightytwenty.socratic.workers.dev", "localhost", "127.0.0.1", "[::1]"];
+const HOSTS = ["mcp.eightytwenty.tech", "eightytwenty.socratic.workers.dev", "eightytwenty-staging.socratic.workers.dev", "localhost", "127.0.0.1", "[::1]"];
 
 const PAGE_HEADERS = {
 	"content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",

@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import dot from "../src/dot.wasm";
-import { DEFAULT_FLAGS, dense, loadLibrary, mmr, round, rrf, search, searchFlows, vary } from "../src/search";
+import { DEFAULT_FLAGS, cached, dense, loadLibrary, mmr, round, rrf, search, searchFlows, store, vary } from "../src/search";
 import { buffers, fakeAI, flowFloats, flows, floats, impacts, library, manifest, near, quantise, rows, seed } from "./fixture";
 
 const lib = library();
@@ -412,5 +412,18 @@ describe("searchFlows", () => {
 		expect(Object.keys(slides.results[0])).toContain("slide_type");
 		const { results } = await env.DB.prepare("SELECT key FROM search_cache").all();
 		expect(results.length).toBe(2);
+	});
+
+	it("cached() keys are unchanged without CACHE_SCOPE and separate with it", async () => {
+		const id = ["slides", "scope test"];
+		const [key] = await cached({ DB: env.DB }, id);
+		expect(key).toBe("09b4abda005123e955db2ab9e3cdda86e0f4940e1d2040ac9a7278f0b113f9e3"); // sha256 of the JSON id: production's existing rows stay valid
+		await store({ DB: env.DB }, key, ["production"], "v1");
+		const [scoped, hit] = await cached({ DB: env.DB, CACHE_SCOPE: "staging" }, id);
+		expect(scoped).not.toBe(key);
+		expect(hit).toBeNull();
+		await store({ DB: env.DB }, scoped, ["staging"], "v1");
+		expect((await cached({ DB: env.DB }, id))[1]).toBe(JSON.stringify(["production"]));
+		expect((await cached({ DB: env.DB, CACHE_SCOPE: "staging" }, id))[1]).toBe(JSON.stringify(["staging"]));
 	});
 });
