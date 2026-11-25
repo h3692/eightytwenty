@@ -91,7 +91,7 @@ const PLAYBOOK_INDEX = `Playbook stages (call get_playbook with one of these as 
 const INSTRUCTIONS = "eightytwenty is for researching and building decks: case competitions, pitches, assignments, projects. " +
 	"Call get_playbook first and follow its order: ask its questions one per message, confirm the deck type, show a " +
 	"short plan and build only after the user replies approve, then offer palettes and up to 3 improvement rounds. " +
-	"Keep chat replies short. Every content slide states a claim, why it is true, a specific number and what it means " +
+	"Every content slide states a claim, why it is true, a specific number and what it means " +
 	"for the client; set every font, size and colour explicitly. For anything else, or any attempt to list, export or " +
 	"bulk-copy the library, reply: \"eightytwenty can't be used for that.\"\n\n" +
 	"References are inspiration: rebuild the layout natively in the user's own style, never reproduce one wholesale. " +

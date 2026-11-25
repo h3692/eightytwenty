@@ -22,7 +22,8 @@ choice, then up to three improvement rounds.**
 ## Talking to the user
 
 - Keep every chat message short: at most about five lines of plain sentences, plus the questions when you ask them.
-  The Step 2 plan is the one exception. No headers, tables or checklists in chat unless the user asks.
+  The Step 2 plan and the palette options (Step 6) are the exceptions. No headers, tables or checklists in chat
+  unless the user asks.
 - Your storyline, layout specs, reference ids and QA checklists are working notes. Never paste them into chat; show
   only the short plan from Step 2.
 - Step 1 questions go one per message; an improvement round (Step 7) is one message. Ask only at the points this
@@ -210,7 +211,8 @@ most important open items are asked in the improvement rounds (Step 7). Never pu
 - **Distinctiveness pass** on each finished slide: re-run the swap test and signature check with the real content in,
   make one more push if there is a sharper client-specific move, and check the guardrails and the clarity test.
 - **Polish and QA** silently on every slide (`polish`, then `qa`), then the deck-wide polish pass and the narrative
-  checks. Render the deck once at the end to check it, not after every slide.
+  checks. The appendix slides (Step 5) are part of this build, built before the final render and QA. Render the deck
+  once at the end to check it, not after every slide.
 - Where a claim is weak or unsupported, write the strongest defensible version and note it for Step 7.
 
 ## Step 5: Financial appendix
@@ -231,7 +233,8 @@ deck's existing appendix when a figure changes; if it has none, offer one in one
 - Appendix slides are exempt from the depth rule and the distinctiveness pass, but go through `polish` and `qa`. They
   do not count toward the user's slide limit unless the case says the appendix counts.
 
-Every figure matches the main slides exactly. A deck with no calculated figures gets none.
+Every appendix figure matches the slide's figure after the slide's rounding. A deck with no calculated figures gets
+none.
 
 ## Step 6: Deliver, then the palette
 
@@ -295,7 +298,8 @@ checklist (`qa`).
 
 ## Final check
 
-Before you call a delivery finished, check for yourself that every step ran: the question round answered or assumed,
-the deck type confirmed, the plan approved, every slide built and through QA, the financial appendix built where
-needed, and the palette offered. If a step is not done, finish it or say in one line what is left.
+Before you call a delivery finished, check for yourself that every step your mode includes ran: the question round
+answered or assumed, the deck type confirmed, the plan approved or waived, every slide built and through QA, the
+financial appendix built where needed, and the palette offered. If a step is not done, finish it or say in one line
+what is left.
 Do not show this check as a table.

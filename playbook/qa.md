@@ -2,6 +2,7 @@
 
 Run on every finished slide. Fix what you can without asking; report only what needs the user's decision. On an edit
 (`workflow`, Step 8), fix only what the edit itself broke and report the rest in one line.
+Appendix slides (`workflow`, Step 5) skip the insight-device, swap-test, signature, composition and depth checks.
 
 - [ ] Tagline (or the full-sentence title) is a claim, `[DRAFT]` removed, and every panel supports it.
 - [ ] The insight device points at the proof, passes the findability test (2 seconds), and does not repeat the tagline's
@@ -49,8 +50,8 @@ Run on every finished slide. Fix what you can without asking; report only what n
 - [ ] Titles follow the title mode the user chose (`writing`, Slide titles) on every content slide.
 - [ ] The slide follows the confirmed deck type: no consulting devices in a finance pitch, no banker tables standing
       in for a consulting exhibit.
-- [ ] Every calculated, projected or estimated figure appears in the financial appendix (`workflow`, Step 5) and
-      matches it exactly.
+- [ ] In deck mode, every calculated, projected or estimated figure appears in the financial appendix (`workflow`,
+      Step 5) and matches it after the slide's rounding; in slide and edit mode, only where the deck has an appendix.
 - [ ] Built natively in the deck's style from any references used; nothing copied wholesale from a reference.
 - [ ] A delivery reported as finished has passed the final check (`workflow`), kept to yourself.
 

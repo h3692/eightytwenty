@@ -198,6 +198,7 @@ describe("server instructions and prompts", () => {
 		expect(ins).not.toMatch(/Financial Reasoning|walkthrough/i);
 		expect(ins).toContain("find_images never sources photos of real people; ask the user for those.");
 		expect(ins).not.toMatch(/run sheet|completion audit/i);
+		expect(ins).not.toContain("Keep chat replies short"); // the playbook says it; no behaviour coaching here
 	});
 
 	it("offers a start prompt that opens the guided flow, with optional context", async () => {
@@ -329,14 +330,17 @@ describe("get_playbook", () => {
 		expect(step).toMatch(/High density.*`polish`/);
 		expect(step).toContain('`find_references(purpose: "appendix backup for <topic>", slide_type: "financials", style)`');
 		expect(step).toMatch(/`valuation`, `comps` or `lbo-returns` with `style: "finance-pitch"`/);
-		expect(step).toMatch(/Every figure matches the main slides exactly/);
+		expect(step).toMatch(/Every appendix figure matches the slide's figure after the slide's rounding/);
 		expect(step).toMatch(/exempt from the depth rule and the distinctiveness pass.*`polish` and `qa`/);
 		expect(step).toMatch(/do not count toward the user's slide limit unless the case says the appendix counts/);
 		expect(step).toMatch(/A deck with no calculated figures gets none/);
 		expect(flat.slice(flat.indexOf("## Step 2"), flat.indexOf("## Step 3"))).toMatch(/appendix slides \(Step 5\), one line each/);
 		expect(flat).toMatch(/never as slides \(hidden or not\) in the deck file\. One exception: the user's own originals/);
 		const qa = (await tool("get_playbook", { stage: "qa" })).body.result.content[0].text.replace(/\s+/g, " ");
-		expect(qa).toMatch(/Every calculated, projected or estimated figure appears in the financial appendix \(`workflow`, Step 5\) and matches it exactly/);
+		expect(qa).toMatch(/In deck mode, every calculated, projected or estimated figure appears in the financial appendix \(`workflow`, Step 5\) and matches it after the slide's rounding; in slide and edit mode, only where the deck has an appendix/);
+		expect(qa.slice(0, qa.indexOf("- [ ]"))).toContain("Appendix slides (`workflow`, Step 5) skip the insight-device, swap-test, signature, composition and depth checks.");
+		const build = flat.slice(flat.indexOf("## Step 4"), flat.indexOf("## Step 5"));
+		expect(build).toMatch(/appendix slides \(Step 5\) are part of this build, built before the final render and QA/);
 		expect(qa).toMatch(/The only exception is the originals kept beside/);
 	});
 
@@ -386,7 +390,7 @@ describe("get_playbook", () => {
 		const workflow = (await tool("get_playbook", { stage: "workflow" })).body.result.content[0].text;
 		expect(workflow).toContain("## Final check");
 		expect(workflow).toMatch(/Do not show this check as a table/);
-		expect(workflow).toMatch(/the plan\s+approved/);
+		expect(workflow.replace(/\s+/g, " ")).toMatch(/every step your mode includes ran: .*the plan approved or waived/);
 		expect(workflow).not.toContain("| Step | Done | Evidence |");
 		const qa = (await tool("get_playbook", { stage: "qa" })).body.result.content[0].text;
 		expect(qa).toMatch(/- \[ \] A delivery reported as finished has passed the final check/);
@@ -396,6 +400,7 @@ describe("get_playbook", () => {
 		const workflow = (await tool("get_playbook", { stage: "workflow" })).body.result.content[0].text;
 		const talking = workflow.slice(workflow.indexOf("## Talking to the user"), workflow.indexOf("## Scope"));
 		expect(talking).toMatch(/first reply/);
+		expect(talking.replace(/\s+/g, " ")).toContain("The Step 2 plan and the palette options (Step 6) are the exceptions.");
 		expect(talking).toContain("*Tip: say **send feedback** anytime to send a correction to eightytwenty, so future versions of the playbook learn from it.*");
 		expect(workflow.slice(workflow.indexOf("## Scope"), workflow.indexOf("## Pick the mode first"))).toMatch(/Sending feedback about this deck .* is in scope/);
 		expect(workflow).toContain("## Feedback (only when the user asks)");
