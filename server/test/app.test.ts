@@ -338,7 +338,7 @@ describe("get_playbook", () => {
 		expect(flat).toMatch(/never as slides \(hidden or not\) in the deck file\. One exception: the user's own originals/);
 		const qa = (await tool("get_playbook", { stage: "qa" })).body.result.content[0].text.replace(/\s+/g, " ");
 		expect(qa).toMatch(/In deck mode, every calculated, projected or estimated figure appears in the financial appendix \(`workflow`, Step 5\) and matches it after the slide's rounding; in slide and edit mode, only where the deck has an appendix/);
-		expect(qa.slice(0, qa.indexOf("- [ ]"))).toContain("Appendix slides (`workflow`, Step 5) skip the insight-device, swap-test, signature, composition and depth checks.");
+		expect(qa.slice(0, qa.indexOf("- [ ]"))).toContain("Appendix slides (`workflow`, Step 5) skip the tagline-claim, insight-device, swap-test, signature, composition and depth checks.");
 		const build = flat.slice(flat.indexOf("## Step 4"), flat.indexOf("## Step 5"));
 		expect(build).toMatch(/appendix slides \(Step 5\) are part of this build, built before the final render and QA/);
 		expect(qa).toMatch(/The only exception is the originals kept beside/);

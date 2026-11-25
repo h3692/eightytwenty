@@ -2,7 +2,8 @@
 
 Run on every finished slide. Fix what you can without asking; report only what needs the user's decision. On an edit
 (`workflow`, Step 8), fix only what the edit itself broke and report the rest in one line.
-Appendix slides (`workflow`, Step 5) skip the insight-device, swap-test, signature, composition and depth checks.
+Appendix slides (`workflow`, Step 5) skip the tagline-claim, insight-device, swap-test, signature, composition and
+depth checks.
 
 - [ ] Tagline (or the full-sentence title) is a claim, `[DRAFT]` removed, and every panel supports it.
 - [ ] The insight device points at the proof, passes the findability test (2 seconds), and does not repeat the tagline's
