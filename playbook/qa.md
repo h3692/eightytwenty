@@ -1,9 +1,11 @@
 # QA (fix silently, report only decisions)
 
 Run on every finished slide. Fix what you can without asking; report only what needs the user's decision. On an edit
-(`workflow`, Step 9), fix only what the edit itself broke and report the rest in one line.
+(`workflow`, Step 8), fix only what the edit itself broke and report the rest in one line.
+Appendix slides (`workflow`, Step 5) skip the tagline-claim, insight-device, swap-test, signature, composition and
+depth checks.
 
-- [ ] Tagline is a claim, `[DRAFT]` removed, and every panel supports it.
+- [ ] Tagline (or the full-sentence title) is a claim, `[DRAFT]` removed, and every panel supports it.
 - [ ] The insight device points at the proof, passes the findability test (2 seconds), and does not repeat the tagline's
       words.
 - [ ] Insight device differs from both neighbours; no device on more than about a third of content slides; so-what bars
@@ -31,22 +33,28 @@ Run on every finished slide. Fix what you can without asking; report only what n
       a milestone row, the risk matrix as the hero, KPIs and assumptions numbered.
 - [ ] Finance-pitch decks follow `polish`, Finance pitch decks.
 - [ ] Imagery present where the slide type calls for it, absent from analytical slides, within the per-slide budget;
-      every unfilled slot on the research to-do list in chat; text over photos has an overlay and is readable.
+      every unfilled slot on your list of missing items (`workflow`, Step 3); text over photos has an overlay and is
+      readable.
 - [ ] Any non-standard font flagged for embedding; any font substituted in a check render flagged.
 - [ ] Body text >= 8pt; nothing overlapping (titles colliding with chart titles is a common bug); no overflow (re-check
       after any font change); edges aligned; footer zone clear.
 - [ ] Composition not reused within the section; not the same structure as either neighbour (impact slides excepted).
-- [ ] No `[ ]` placeholders remain unless the user knowingly left them, and each remaining one is on the research
-      to-do list in chat.
+- [ ] No `[ ]` placeholders remain unless the user knowingly left them, and each remaining one is on your private
+      list of missing items (`workflow`, Step 3).
 - [ ] Nothing extra in the deck file: no options, mock, alternate or to-do slides, hidden or visible. The only
-      exception is the originals kept beside a new or merged version the user asked for (`workflow`, Step 9), listed
-      in the report.
+      exception is the originals kept beside a new or merged version the user asked for (`workflow`, Step 8), listed
+      in your reply.
 - [ ] Every sourced photo whose result carried a `credit` line has it in the footnotes; logos, icons and public-domain
       photos carry none.
-- [ ] What was built matches the approved plan; any change from it was named in chat.
+- [ ] Every content slide has a claim, the reason it is true, at least one specific number, and what it means for the
+      client (the depth rule in `workflow`).
+- [ ] Titles follow the title mode the user chose (`writing`, Slide titles) on every content slide.
+- [ ] The slide follows the confirmed deck type: no consulting devices in a finance pitch, no banker tables standing
+      in for a consulting exhibit.
+- [ ] In deck mode, every calculated, projected or estimated figure appears in the financial appendix (`workflow`,
+      Step 5) and matches it after the slide's rounding; in slide and edit mode, only where the deck has an appendix.
 - [ ] Built natively in the deck's style from any references used; nothing copied wholesale from a reference.
-- [ ] A delivery reported as finished ends with the completion audit (`workflow`): every run sheet step done, with
-      evidence.
+- [ ] A delivery reported as finished has passed the final check (`workflow`), kept to yourself.
 
 **Narrative checks** (on every slide against its neighbours; across the whole deck in deck mode):
 
@@ -67,5 +75,5 @@ Run on every finished slide. Fix what you can without asking; report only what n
       one exists.
 - [ ] Honest to the data: no tagline or caption claims more than its chart shows (a narrowing gap is not "falling
       behind").
-- [ ] Nothing from the "Reads AI-made" list in `writing`: no banned words, em dashes, triplet cadence, rhetorical-question
-      headers, stacked hedges, exclamation marks or emoji.
+- [ ] Nothing from the "Reads AI-made" list in `writing`, shape patterns included: no banned words, em dashes, triplet
+      cadence, rhetorical-question headers, stacked hedges, exclamation marks or emoji.

@@ -39,5 +39,28 @@
     // Usage statistics go here. POSTHOG_PROJECT_TOKEN is a secret (wrangler secret put); unset, nothing is sent.
     // ANALYTICS_SALT (the HMAC key for the hashed caller ids) is a secret too; unset, every call gets a random id.
     "POSTHOG_HOST": "https://us.i.posthog.com"
+  },
+  "env": {
+    // Staging (npm run deploy:staging): workers.dev only, its own feedback database, and the production library DB with
+    // its search cache rows kept apart by CACHE_SCOPE. A library change needs its own DB, not this one.
+    "staging": {
+      "routes": [],
+      "workers_dev": true,
+      "d1_databases": [
+        { "binding": "DB", "database_name": "eightytwenty-db", "database_id": "0dfdc973-0aec-43de-b125-aa2501aa86e9", "migrations_dir": "migrations" },
+        { "binding": "FEEDBACK", "database_name": "eightytwenty-feedback-staging", "database_id": "21303dbc-4001-4d49-b07f-e9e1d96c7475", "migrations_dir": "feedback-migrations" }
+      ],
+      "ai": { "binding": "AI", "remote": true },
+      "durable_objects": { "bindings": [{ "name": "LIMITER", "class_name": "Limiter" }, { "name": "SEARCHER", "class_name": "Searcher" }] },
+      "vars": {
+        "LIMIT_PER_MINUTE": 20,
+        "LIMIT_PER_MINUTE_SHARED": 300,
+        "DAILY_SEARCH_BUDGET": 300,
+        "DAILY_PHOTO_BUDGET": 100,
+        "DAILY_FEEDBACK_BUDGET": 20,
+        "POSTHOG_HOST": "https://us.i.posthog.com",
+        "CACHE_SCOPE": "staging"
+      }
+    }
   }
 }

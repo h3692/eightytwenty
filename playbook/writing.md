@@ -6,18 +6,31 @@ is invented. Each section gives the rules, then before and after pairs.
 
 ## Slide titles
 
+The user picks one of two title modes in the question round (`workflow`, Step 1). Use it on every content slide; title,
+divider and appendix slides keep their own forms (`archetypes`).
+
+**Full-sentence titles** (recommended; stronger in most decks):
+- The title is the slide's claim, written to the tagline rules below (8 to 15 words, sentence case, no full stop).
+- No separate tagline under it. A small eyebrow label above the title (`Market`, `Recommendation 1`) may carry the
+  section if the deck uses one.
+- The claim must still be provable from what is on the slide.
+
+**Label titles**:
 - A topic label of 2 to 4 words, the length strong decks use; past 6 words it is a tagline in the wrong place. The
-  claim lives in the tagline.
+  claim lives in the tagline under it.
 - Title Case, no end punctuation, no `-ing` openers, no questions.
 - Name the subject in the client's terms, not a generic heading.
 - Titles may repeat across a short run of slides in one section; the taglines under them never do.
 
-| Before | After |
-|---|---|
-| `An Overview of the Present Rival Situation` | `Rival Fare Plans` |
-| `Understanding Our Riders` | `Night Riders` |
+| Before | Label title | Full-sentence title |
+|---|---|---|
+| `An Overview of the Present Rival Situation` | `Rival Fare Plans` | `Both rivals cut night fares, but neither added late routes` |
+| `Understanding Our Riders` | `Night Riders` | `Night riders are the fastest-growing segment and the least served` |
 
 ## Taglines (action titles)
+
+In full-sentence title mode these rules apply to the title itself.
+
 
 - One sentence that states the finding. Strong case decks average about 10 words and pitch books about 13; nine in ten
   fall between 7 and 18. Aim for 8 to 15.
@@ -177,7 +190,23 @@ Pitch-book text is terser and more exact than a case deck (the full finance-pitc
 
 ## Reads AI-made
 
-These mark text as machine-written. In the strong decks read, exclamation marks and em dashes appear on fewer than 1
+Write this way from the first draft; a word swap at the end does not fix a sentence built like a machine's. Most of
+the tell is in the shape of the text, not the words.
+
+**Shape patterns to avoid** (they survive a banned-word list):
+- Every title or tagline the same length and rhythm. Let them vary with the claim: a short one where the point is
+  simple, a longer one where it needs the mechanism.
+- The same construction on slide after slide ("X, driven by Y and Z"; "From X to Y"; "Not X, but Y"). Use each one
+  at most twice in a deck.
+- Three items by default: three bullets, three adjectives, three pillars. Use as many as the evidence holds; two or
+  four are fine.
+- Every box's bold lead built the same way ("**Faster growth.**", "**Lower cost.**", "**Wider reach.**"). Keep the
+  bold lead, but vary its form: a number, a name, a short claim.
+- Abstract summary lines that could close any slide ("This positions the client for long-term success"). End on the
+  specific number or consequence, or end without a summary.
+- Perfectly balanced pairs and mirrored clauses in every sentence. Real analysts write some sentences plain.
+
+**Words and marks to replace**. These mark text as machine-written. In the strong decks read, exclamation marks and em dashes appear on fewer than 1
 in 20 of roughly 1,100 slides, and question marks mostly in headers that restate the case question, in survey quotes
 and on closing slides. Replace on sight.
 

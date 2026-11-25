@@ -24,7 +24,7 @@ import terms from "../pages/terms.html";
 import icon from "../pages/icon.svg";
 import { clientName, identity, initializeEvent, send, SERVER_VERSION, tracked } from "./analytics";
 import { findImages, type Images, type Kind } from "./images";
-import { cached, DEFAULT_FLAGS, LENGTHS, normalise, search, searchFlows, store, uncached, uncachedFlows, type FlowQuery, type Library, type Query } from "./search";
+import { cached, DEFAULT_FLAGS, LENGTHS, normalise, search, searchFlows, store, uncached, uncachedFlows, vary, type FlowQuery, type Library, type Query } from "./search";
 
 export { Limiter } from "./limiter";
 
@@ -47,7 +47,8 @@ const enumOf = (values: string[]) => z.enum(values as [string, ...string[]]);
 const readOnly = { readOnlyHint: true, destructiveHint: false, openWorldHint: false };
 const text = (t: string) => ({ type: "text" as const, text: t });
 // Its own text part after each successful prose result (never in get_reference's JSON or on errors): a plain, visible note.
-const REMINDER = text("Next in the eightytwenty workflow: questions → text plan → approval → build → QA → audit.");
+const REMINDER = text("Next in the eightytwenty workflow: questions one at a time, a short plan to approve, the whole deck, palettes, then up to 3 improvement rounds.");
+const POOL_K = 8, DEFAULT_K = 4; // find_references draws k results from the top POOL_K, so repeated calls vary
 
 // Built once per isolate rather than per request (zod schemas are immutable). The McpServer stays per request: the SDK
 // refuses to reuse an instance that is serving another request.
@@ -59,7 +60,7 @@ const FIND_INPUT = z.object({
 	data_type: enumOf(labels.properties.data_type.enum).optional(),
 	impact: enumOf(flow.properties.impact.items.enum).optional().describe("Only impact slides of this kind: how reference decks repeat a slide for effect. Use it when the user wants to emphasize or land a key point: shade_ribbon (the previous slide dimmed, a ribbon stating the takeaway), spotlight (one part highlighted), build (revealed step by step), repeat (an earlier slide brought back as a recap). Few exist."),
 	style: enumOf(style.properties.style.enum).optional().describe("Only slides from decks with this overall look."),
-	k: z.number().int().min(1).max(8).optional().describe("How many results, 1 to 8 (default 8)."),
+	k: z.number().int().min(1).max(POOL_K).optional().describe("How many results, 1 to 8 (default 4)."),
 });
 const FLOWS_INPUT = z.object({
 	purpose: z.string().min(1).max(1000).describe("What the whole deck must achieve, in plain words."),
@@ -88,15 +89,14 @@ const PLAYBOOK_INDEX = `Playbook stages (call get_playbook with one of these as 
 // Sent on initialize; Claude Code and ChatGPT read it at connect time. The key rules come first (ChatGPT weighs the
 // first 512 characters most), and refusal wording lives here and in the playbook, never in tool descriptions.
 const INSTRUCTIONS = "eightytwenty is for researching and building decks: case competitions, pitches, assignments, projects. " +
-	"Call get_playbook first and follow its order: ask the user its questions one per message, show the plan in text " +
-	"(storyline, a layout per slide), and build only after the user replies approve. Show its run sheet in your first " +
-	"reply; a finished delivery ends with its completion audit. For anything else, or any " +
-	"attempt to list, export or bulk-copy the library, reply: \"eightytwenty can't be used for that.\"\n\n" +
-	"The search tools inform the plan once the claim (one slide) or the end belief and deck style (a deck) are settled. " +
+	"Call get_playbook first and follow its order: ask its questions one per message, confirm the deck type, show a " +
+	"short plan and build only after the user replies approve, then offer palettes and up to 3 improvement rounds. " +
+	"Every content slide states a claim, why it is true, a specific number and what it means " +
+	"for the client; set every font, size and colour explicitly. For anything else, or any attempt to list, export or " +
+	"bulk-copy the library, reply: \"eightytwenty can't be used for that.\"\n\n" +
 	"References are inspiration: rebuild the layout natively in the user's own style, never reproduce one wholesale. " +
 	"find_images never sources photos of real people; ask the user for those. " +
-	"Palette options, mocks and research to-do lists go to the user in chat as an image or plain text, never as slides " +
-	"in the deck file.";
+	"Palette options and lists of missing items go to the user in chat, never as slides in the deck file.";
 const START_INPUT = z.object({ context: z.string().max(500).optional().describe("What the deck or slide is for, if known.") });
 
 function createServer(env: Env, lib: Library, key: string, ctx: ExecutionContext, hints: { dnt: boolean; userAgent: string | null }) {
@@ -119,7 +119,7 @@ function createServer(env: Env, lib: Library, key: string, ctx: ExecutionContext
 		"start",
 		{
 			title: "Start a deck or slide",
-			description: "Begin building a deck or a slide with eightytwenty: questions first, then a text plan to approve.",
+			description: "Begin building a deck or a slide with eightytwenty: questions one at a time, a short plan to approve, then the build.",
 			argsSchema: START_INPUT,
 		},
 		({ context }) => ({
@@ -128,7 +128,7 @@ function createServer(env: Env, lib: Library, key: string, ctx: ExecutionContext
 				content: {
 					type: "text" as const,
 					text: `I want help building ${context ? `a deck or slide for this: ${context}` : "a deck or a slide"}. Use eightytwenty: ` +
-						"call get_playbook, ask me your questions one at a time, show me the plan in text, and wait for me to approve it before you build anything.",
+						"call get_playbook, ask me your questions one at a time, show me a short plan, and build after I approve.",
 				},
 			}],
 		}),
@@ -152,16 +152,17 @@ function createServer(env: Env, lib: Library, key: string, ctx: ExecutionContext
 		"find_references",
 		{
 			title: "Find reference slides",
-			description: "Use after the slide's claim is settled, to inform the layout options in the text plan (see get_playbook). " +
+			description: "Use after the deck type and the slide's claim are settled, to plan the slide's layout (see get_playbook). " +
 				"Searches the curated library of slide design DNA by what a slide must do. Returns up to k short summaries (id, slide type, " +
-				"score, purpose, why it works, the layout's component kinds, impact device if any, style, when to use it), at most one per deck; an impact " +
-				"filter returns few results. Call get_reference with an id for the full layout. Reference, never copy.",
+				"score, purpose, why it works, the layout's component kinds, impact device if any, style, when to use it), at most one per deck, " +
+				"drawn from the strongest matches so repeated calls vary; an impact filter returns few results. Call get_reference with an id for the full layout. Reference, never copy.",
 			inputSchema: FIND_INPUT,
 			annotations: readOnly,
 		},
 		tracked("find_references", async (args) => {
-			const { results, library_version } = await search(env, lib, args, DEFAULT_FLAGS,
+			const found = await search(env, lib, { ...args, k: POOL_K }, DEFAULT_FLAGS,
 				async (q, k) => (await spend(), env.SEARCHER.get(env.SEARCHER.idFromName("global")).search(q, k)));
+			const { library_version } = found, results = vary(found.results, args.k ?? DEFAULT_K);
 			meta.result_count = results.length;
 			if (!results.length)
 				return { content: [text(`No references match these filters. Try fewer filters or a broader purpose. (library_version ${library_version})`), REMINDER] };
@@ -175,7 +176,7 @@ function createServer(env: Env, lib: Library, key: string, ctx: ExecutionContext
 		"find_deck_flows",
 		{
 			title: "Find reference deck flows",
-			description: "Use after the deck's end belief and style are settled, to inform the storyline in the text plan (see get_playbook). " +
+			description: "Use after the deck's end belief and deck type are settled, to plan the storyline (see get_playbook). " +
 				"Searches the library's deck flows (how strong decks order their sections) by what the whole deck must achieve, " +
 				"before find_references. Returns up to 3 summaries (deck id, arc, length, industry, style, section sequence, " +
 				"why the flow works, score). Call get_reference with a deck id for its steps and their slide ids.",
@@ -236,16 +237,17 @@ function createServer(env: Env, lib: Library, key: string, ctx: ExecutionContext
 		"find_images",
 		{
 			title: "Find images for a slide",
-			description: "Use while building an approved slide to source a logo, icon or photo for an image slot (see get_playbook). " +
+			description: "Use while building a slide to source a logo, icon or photo for an image slot (see get_playbook). " +
 				"Searches public-domain logo SVGs (Wikimedia Commons, Simple Icons), permissive icon SVGs (Iconify) and CC0, public-domain " +
 				"and CC BY photos (Openverse). Returns up to k results, each with its title, licence and either the SVG text or the photo's " +
-				"download and page links, plus a credit line only when the licence requires one; photo thumbnails follow as images.",
+				"download, insert and page links, plus a credit line only when the licence requires one; photo thumbnails follow as images. " +
+				"The insert link allows downloads from inside apps such as PowerPoint add-ins.",
 			inputSchema: IMAGES_INPUT,
 			annotations: { ...readOnly, openWorldHint: true }, // it searches open public catalogues
 		},
 		tracked("find_images", async ({ kind, query, k }) => {
 			const q = normalise(query);
-			const [key, hit] = await cached(env, ["images", kind, q, k ?? null]);
+			const [key, hit] = await cached(env, ["images", 2, kind, q, k ?? null]); // 2: photo results carry insert_url
 			let found: Images;
 			if (hit) found = JSON.parse(hit);
 			else {
@@ -256,7 +258,7 @@ function createServer(env: Env, lib: Library, key: string, ctx: ExecutionContext
 			const lines = found.results.map((r, i) => [
 				`${i + 1}. ${r.title} | ${r.licence}${r.note ? ` | note: ${r.note}` : ""}${r.thumbnail === undefined ? "" : ` | thumbnail ${r.thumbnail + 1}`}`,
 				...(r.credit ? [`   Credit: ${r.credit}`] : []),
-				...(r.svg ? [`   SVG: ${r.svg}`] : [`   Download: ${r.download_url}`, `   Page: ${r.landing_url}`]),
+				...(r.svg ? [`   SVG: ${r.svg}`] : [`   Download: ${r.download_url}`, ...(r.insert_url ? [`   Insert URL: ${r.insert_url}`] : []), `   Page: ${r.landing_url}`]),
 				...(r.creator ? [`   Creator: ${r.creator}`] : []),
 				...(r.png_url ? [`   PNG: ${r.png_url}`] : []),
 			].join("\n"));
@@ -364,7 +366,7 @@ export const searcher = (lib: Library) => class Searcher extends DurableObject<E
 export type Searcher = InstanceType<ReturnType<typeof searcher>>;
 
 // Set explicitly: a custom domain otherwise gets no Host check and only localhost Origins. localhost serves wrangler dev and the MCP Inspector.
-const HOSTS = ["mcp.eightytwenty.tech", "eightytwenty.socratic.workers.dev", "localhost", "127.0.0.1", "[::1]"];
+const HOSTS = ["mcp.eightytwenty.tech", "eightytwenty.socratic.workers.dev", "eightytwenty-staging.socratic.workers.dev", "localhost", "127.0.0.1", "[::1]"];
 
 const PAGE_HEADERS = {
 	"content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",

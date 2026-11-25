@@ -112,8 +112,9 @@ type Found<R = Result> = { results: R[]; library_version: string };
 export const normalise = (purpose?: string) => (purpose ?? "").normalize("NFKC").toLowerCase().replace(/\s+/g, " ").trim();
 
 // The cache row for a query: hashed, so the query text is never stored; id[0] tags the search ("slides" | "flows" | "images").
-export async function cached(env: Pick<Env, "DB">, id: unknown[]): Promise<[key: string, hit: string | null]> {
-	const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(id)));
+// CACHE_SCOPE (staging) prefixes the id, so a deployment sharing this DB never reads or writes production's rows.
+export async function cached(env: Pick<Env, "DB" | "CACHE_SCOPE">, id: unknown[]): Promise<[key: string, hit: string | null]> {
+	const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(env.CACHE_SCOPE ? [env.CACHE_SCOPE, ...id] : id)));
 	const key = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 	return [key, await env.DB.prepare("SELECT results FROM search_cache WHERE key = ?").bind(key).first<string>("results")];
 }
@@ -126,6 +127,20 @@ export async function store<R>(env: Pick<Env, "DB">, key: string, results: R, li
 		if (stored) return JSON.parse(stored);
 	}
 	return results;
+}
+
+// Picks k of the ranked pool, weighted by rank (weight 1 / rank), and returns them in rank order. The pool stays
+// deterministic and cached; only this pick varies, so two decks on the same prompt start from different references.
+// random() = 0 always takes the next-ranked result, which keeps tests deterministic.
+export function vary<T>(pool: T[], k: number, random = Math.random): T[] {
+	const left = pool.map((r, i) => ({ r, i, w: 1 / (i + 1) }));
+	const picked: typeof left = [];
+	while (picked.length < k && left.length) {
+		let x = random() * left.reduce((sum, c) => sum + c.w, 0);
+		const j = left.findIndex((c) => (x -= c.w) < 0);
+		picked.push(...left.splice(j < 0 ? left.length - 1 : j, 1));
+	}
+	return picked.sort((a, b) => a.i - b.i).map((c) => c.r);
 }
 
 // `miss` runs everything after the cache read; the Worker hands it to the Searcher Durable Object (app.ts).

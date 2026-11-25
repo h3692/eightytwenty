@@ -28,9 +28,10 @@
 ---
 
 eightytwenty gives your assistant the method strong case-competition teams use to build decks. It asks the right questions
-first, writes the storyline and a plan for every slide, waits for your approval, then builds and checks the deck. While it
-plans, it searches a library of more than 900 slide layouts and 39 whole-deck flows taken from strong case-competition
-and investment-banking decks, so each slide starts from a layout that has already worked.
+one at a time, shows a short plan for you to approve, builds and checks the whole deck, offers palettes, then improves
+the weakest slides with you. While it plans, it searches a library of more than 900 slide layouts and 39 whole-deck
+flows taken from strong case-competition and investment-banking decks, so each slide starts from a layout that has
+already worked.
 
 The library holds no original slides. Every entry is an abstract wireframe with its layout, why it works and when to use it.
 Your assistant rebuilds the idea in your own style.
@@ -102,7 +103,7 @@ In Claude you can also start from the connector's `start` prompt.
 
 | Tool | What it does |
 |---|---|
-| `get_playbook` | The method: workflow and intake questions, storyline and impact slides, slide types, taglines, writing conventions, design options, QA and the completion audit |
+| `get_playbook` | The method: workflow and intake questions, storyline and impact slides, slide types, taglines, writing conventions, design options, QA and improvement rounds |
 | `find_references` | Search slide layouts by what the slide needs to do, filtered by slide type, industry, data type, impact kind or deck style |
 | `find_deck_flows` | Search whole-deck flows: section order, pacing and arc, by industry, length or style |
 | `get_reference` | One result in full: its layout record, component layout and wireframe, or one deck flow |
@@ -138,6 +139,20 @@ flowchart LR
 | `pipeline/` | Extraction, labelling worksheets, the leak check, packaging and the one-command release |
 
 ## What's new
+
+**November 25, 2026**
+- Questions one at a time, as clickable choices in Claude apps that show them, then a short plan (one line per slide)
+  to approve, then the whole deck in one go. The palette choice comes after the build, and up to 3 improvement rounds
+  of 4 to 5 questions target the weakest slides.
+- The deck type (consulting or finance pitch) is always confirmed, also in Claude for PowerPoint and when editing, and
+  then locked, with a concrete checklist of finance signals.
+- Full-sentence or label titles, asked up front.
+- Calculated figures are backed by appendix slides at the end of the deck, in every app, built from financial
+  slide templates.
+- Photo results carry an `Insert URL` that apps such as PowerPoint add-ins can download from.
+- `find_references` draws its results from the strongest matches, so two decks on the same prompt start from
+  different layouts. Writing rules now cover sentence shapes that read as AI-made, not only words.
+- Shorter chat replies: no run sheet or audit table. The first reply ends with the tip on sending feedback.
 
 **November 21, 2026**
 - Send feedback: say "send feedback" (or run `/eightytwenty-feedback` in the plugin) to send a slide correction after
@@ -192,6 +207,22 @@ products. Full policy: [Privacy](https://mcp.eightytwenty.tech/privacy) and
 Self-hosting: usage statistics are off unless the `POSTHOG_PROJECT_TOKEN` secret is set (`wrangler secret put`). The
 optional `POSTHOG_HOST` var picks the PostHog host and defaults to `https://us.i.posthog.com`. Hashed ids need the
 `ANALYTICS_SALT` secret; without it every record gets a random id.
+
+## Staging (for developers)
+
+Staging is a second Worker at `https://eightytwenty-staging.socratic.workers.dev/mcp` for trying server and playbook
+changes before production. Deploy it from `server/`:
+
+```sh
+cd server
+npm run migrate:staging   # once: creates the tables in the staging feedback database
+npm run deploy:staging
+```
+
+A deploy needs the local `library/` folder. Add the URL as a custom connector: in claude.ai, Settings > Connectors >
+Add custom connector; in Claude Code,
+`claude mcp add --transport http eightytwenty-staging https://eightytwenty-staging.socratic.workers.dev/mcp`. Staging is
+public, has lower daily budgets than production and sends no analytics.
 
 ## FAQ
 

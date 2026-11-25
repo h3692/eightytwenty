@@ -2,7 +2,7 @@
 // SVGs (Iconify) and CC0 / public-domain / CC BY photos (Openverse). Only these fixed hosts are called and the query is
 // only ever a URL-encoded search term; a failing source is named in `unavailable` while the others still answer.
 export type Kind = "logo" | "icon" | "photo";
-export type ImageResult = { title: string; licence: string; svg?: string; png_url?: string; note?: string; creator?: string; download_url?: string; landing_url?: string; credit?: string; thumbnail?: number };
+export type ImageResult = { title: string; licence: string; svg?: string; png_url?: string; note?: string; creator?: string; download_url?: string; insert_url?: string; landing_url?: string; credit?: string; thumbnail?: number };
 type Thumbnail = { data: string; mimeType: string };
 export type Images = { results: ImageResult[]; thumbnails: Thumbnail[]; unavailable: string[] };
 // `token` is the caller's per-isolate cache of the Openverse app token, refreshed in place.
@@ -111,6 +111,8 @@ async function photos(deps: ImageDeps, query: string, k: number, missed: () => v
 			title: r.title, creator: r.creator ?? undefined,
 			licence: `${PHOTO_LICENCES.get(r.license)}${r.license_version ? ` ${r.license_version}` : ""}`,
 			download_url: r.url, landing_url: r.foreign_landing_url,
+			// Openverse's full-size thumb endpoint answers with Access-Control-Allow-Origin: *, so in-browser code (PowerPoint add-ins) can fetch it
+			...(r.thumbnail?.startsWith(OPENVERSE) && { insert_url: `${r.thumbnail}?full_size=true&compressed=true` }),
 			...(r.license === "by" && { credit: r.attribution }), // only CC BY requires credit
 			...(fits(thumbs[n]) && { thumbnail: thumbnails.push(thumbs[n]!) - 1 }), // its position in `thumbnails`
 		})),

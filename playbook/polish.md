@@ -13,7 +13,7 @@ choose a density.
 - **Finance-pitch decks** (style `finance-pitch`): content slides at High too, matching the finance-pitch references.
 - **Low** only when the user asks ("make this one lighter", "make the whole deck Low").
 
-Question 1 in `workflow` (presented live, or read) sets only the speaker notes and where cut detail goes. Every slide
+Question 1 of the question round in `workflow` (presented live, or read) sets only the speaker notes and where cut detail goes. Every slide
 must stand on its own either way.
 
 **Speaker notes** (deck presented live): for each slide, write what to say aloud and the numbers behind the slide that
@@ -149,7 +149,7 @@ playbook, it wins for this style only; case-competition and other decks keep the
 - **No novelty visuals and no client-world metaphors** (tanks, clocks, equation strips, boarding passes). Use the
   deck's own chart types: stacked columns, bars, waterfalls, line charts. Distinctiveness comes from concept C only
   (`distinctive-design`): the signature element is the exhibit chosen for the data, and the swap test passes on
-  content. No bolder alternates (`workflow`, Step 7).
+  content. No bolder alternates.
 - **Charts**: the highlighted series in the primary dark, the rest grey; `$` data labels on the bars (an exception to
   the units-once rule in `writing`); 8pt chart text; small square legends; callout boxes with pointer lines.
 - **Plain register**: no bold mid-sentence, no callout-style phrasing (an exception to bolding the

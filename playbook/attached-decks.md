@@ -26,13 +26,21 @@ exceptions rather than averaging them.
    full-bleed, overlay), mockup frames.
 8. **Footer**: page number position, source line style, anything else in the footer zone.
 9. **Existing devices**: shapes named `Insight_`, `IMG_`, `MOCKUP_`. Hidden working slides from older tools (`show="0"`,
-   e.g. Design Options or Research To-Do) carry earlier decisions: read them, carry their open items into the research
-   to-do list in chat, and offer to delete them, since judges can unhide them.
-10. **Deck style**: a banker-style stock pitch, take-private or deal book is `finance-pitch`, and its rules apply
-    (`polish`, Finance pitch decks).
+   e.g. Design Options or Research To-Do) carry earlier decisions: read them, carry their open items into your list of
+   missing items (`workflow`, Step 3), and offer to delete them, since judges can unhide them.
+10. **Deck type**: finance pitch or consulting. It is a **finance pitch** (`finance-pitch`, its rules in `polish`,
+    Finance pitch decks) when most of these show: valuation exhibits (football field, trading comps, precedent
+    transactions, DCF); returns language (IRR, MOIC, `x` multiples, `LTM` / `NTM`, `2025A` / `2026E`); dense tables
+    of figures with `$` labels; deal sections (transaction overview, sources and uses, situation overview,
+    investment thesis, catalysts, risks to the thesis); plain register with no bold mid-sentence. It is
+    **consulting** when most slides carry a problem or recommendation story: issue trees, customer segments,
+    recommendation pillars, implementation roadmaps, KPIs, client-world imagery. A consulting deck with one
+    financials section is still consulting. If it is mixed or unclear, say what you saw and ask; never guess.
+    Always confirm your read with the user before the first change (`workflow`, Step 8); once confirmed, the type
+    is locked.
 
-Summarise the spec in a few lines (fonts, sizes, brand hex, header/tracker form, box styles, deck style) and state it to
-the user once, so a wrong read is caught early. Then build every new slide to it.
+Summarise the spec in two or three short lines (fonts, brand hex, header form, deck type) and state it to the user once,
+with the deck type as a question to confirm, so a wrong read is caught early. Then build every new slide to it.
 
 ## Using it
 
@@ -41,5 +49,7 @@ the user once, so a wrong read is caught early. Then build every new slide to it
 - Weak spots in their style (process taglines, a so-what bar on every slide, body text under 8pt) are worth one line
   each with the better alternative. Change them only if the user agrees; consistency with their deck comes first.
 - If the deck has an applied Design Options choice, that choice is the spec, not the older slides.
+- The deck's title form tells you the title mode: claims as titles mean full-sentence mode, short topic titles with a
+  tagline mean label mode. Keep it unless the user asks to switch.
 - If they attach a deck only as a visual reference (not the deck being built), take its principles (structure, type
   hierarchy, how the insight is shown) and apply them in the working deck's style.

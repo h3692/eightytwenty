@@ -5,10 +5,10 @@
 - **Palette**: the client's brand colour as the single primary, plus black/dark grey text, mid and light grey fills,
   white. Take the primary from the client's logo in the case files, then their published brand colour, then the
   prompt's tone, and apply it from the first slide. Red/green only for explicit bad/good (weaknesses vs strengths,
-  check/cross, heat maps). No second accent unless the logo has one, the deck already has one, or the approved palette
+  check/cross, heat maps). No second accent unless the logo has one, the deck already has one, or the chosen palette
   adds one. Use only the palette's named tokens (`polish`).
 - **Type: one deck font.** Helvetica Neue by default, or the deck's existing font if the user chose to keep it
-  (`workflow`, question 1). Bold for titles, header bars, card titles and big numbers; regular for body; light for
+  (`workflow`, Step 1). Bold for titles, header bars, card titles and big numbers; regular for body; light for
   taglines and secondary text (if the font has no light weight, regular in the secondary grey). Titles ~18pt, taglines
   ~11 to 12pt, body size by the density tier (`polish`), card numbers 24 to 30pt (hero numbers larger), footnotes 7pt.
   Charts, tables and pasted text are converted to the deck font too; no Calibri, Aptos or stray Arial.
@@ -20,22 +20,18 @@
   matrix for choosing.
 - **Imagery**: see image slots below. Every image carries meaning; no decorative stock.
 
-## Palette options, mock, apply (after the first finished slide)
+## Palette options (after the deck is built)
 
 Decks that stand out look like they belong to their client and prompt, not to a generic consulting template. A
 healthcare foundation, a youth-focused gifting campaign and an airline's self-service rollout should not share a look.
-The font is settled in the first question, so the palette is the main lever on mood. A mock of a real slide comes before
-any change because swatches don't show how a full slide feels.
+The font is settled in the question round, so the palette is the main lever on mood. Build the deck in the brand-derived
+default (C0), then offer the options with the delivery (`workflow`, Step 6). **None of this goes into the deck file**:
+the options go to the user in chat.
 
-Three stages, each gated on the user. Nothing in the deck changes until stage 3, and **none of this goes into the deck
-file**: the options and the mock go to the user in chat.
-
-**Stage 1: Palette options, in chat.** Once the first slide is finished (`workflow`), send the options board as an
-**image** if you can render one (an SVG or HTML artifact, or a PNG drawn in your code sandbox), otherwise as **plain
-text**. It holds:
-1. **Prompt read** (one line): 3 to 5 tone words the prompt calls for and why ("Warm, trustworthy, community: nonprofit
-   healthcare donor audience"), where the brand colour came from ("primary #1F5FA8 sampled from the logo in the case
-   PDF"), and the deck font.
+**The options, in chat.** Send the options board as an **image** if you can render one (an SVG or HTML artifact, or a
+PNG drawn in your code sandbox), otherwise as **plain text**. It holds:
+1. **Prompt read** (one line): 3 to 5 tone words the prompt calls for, where the brand colour came from ("primary
+   #1F5FA8 sampled from the logo in the case PDF"), and the deck font.
 2. **Six palettes**, each with a short name, swatches with hex codes and roles (primary, primary dark, accent, light
    fill, mid grey, text), a one-line reason it fits the prompt, and in the image version a mini sample (a header bar, a
    card and a big number in that palette):
@@ -50,25 +46,17 @@ text**. It holds:
    Every palette is anchored on the client's brand colour and chosen for this prompt. Check text contrast on every fill
    (`polish` rule 16); drop or adjust any palette that fails. Finance-pitch decks get only C0, C3 and C4, shades of the
    deck's own palette with no new hues (`polish`, Finance pitch decks).
-3. **Image and mockup slots**: the open rows of the research to-do list (`workflow`, Step 5).
 
 Ask one question: "Which palette: C0 no change, C1 warm, C2 cool, C3 neutral, C4 monochrome or C5 bold?" (finance-pitch:
-offer only C0, C3 and C4). If the user picks C0, skip to the next slide.
+offer only C0, C3 and C4). C0 or no answer keeps the deck as it is.
 
-**Stage 2: Mock, in chat.** Restyle a copy of the most representative finished slide (a header bar, a card, a big number
-and a chart is ideal) in the chosen palette, with the shape language and image treatment that fit it (corner radius,
-line weight, dashed vs solid callouts, icon style, photo treatment). Show it as a **rendered preview image**, or as a
-separate one-slide file if you cannot render; never as a slide in the user's deck. One line on what changed, then
-"Apply this palette to the whole deck?" The user can approve, switch ("try C4") or tweak ("accent less orange"); rebuild
-the mock and ask again, one ask per round.
+**Apply on the pick.** The pick is the approval, including changing the theme colours on the master. Restyle every
+content slide's fills, lines, text colours and chart colours with the shape language that fits the palette (corner
+radius, line weight, dashed vs solid callouts, icon style, photo treatment), keep all content and positions, make sure
+every text run is in the deck font, then re-run the QA style checks. Report in one line how many slides changed and
+anything that needs a human eye.
 
-**Stage 3: Apply deck-wide.** Only after the mock is approved; approval also confirms changing the theme colours on the
-master. Restyle every content slide's fills, lines, text colours and chart colours, keep all content and positions,
-make sure every text run is in the deck font, then re-run the QA style checks. Report in one line how many slides
-changed and anything that needs a human eye.
-
-**Later changes**: a different palette after applying goes back to stage 2; never restyle the deck without a freshly
-approved mock.
+**Later changes**: a different palette later is a fresh pick from the options, applied the same way.
 
 ## Image and mockup slots
 
@@ -92,7 +80,7 @@ clean.
 Budget: one hero image or up to three small images per slide. If more than half the content slides carry photos, cut
 the weakest.
 
-**How to block a slot** (in the layout spec, and on finished slides until filled):
+**How to block a slot** (in your layout spec, and on finished slides until filled):
 - **Photo**: light grey shape in the final crop shape (rectangle, circle, full-bleed with the overlay already applied)
   with a bracketed label: `[PHOTO: young couple unpacking boxes in first home | full-bleed, darkened 40% | why: sets up
   the homeowner milestone]`. Name it `IMG_<role>` (`IMG_Persona`, `IMG_Hero`).
@@ -102,7 +90,7 @@ the weakest.
   client's real app.
 - **Logos and maps**: `[LOGO: client, two partner logos]`, `[MAP: country, pins at four largest cities]`. Maps can
   usually be built from a provided image or simple shapes.
-- Log every slot on the research to-do list in chat (`workflow`, Step 5).
+- Log every open slot on your list of missing items (`workflow`, Step 3).
 
 **Sourcing** (you find the images; the user is the last resort):
 1. **Icons, and single-colour brand marks:**
@@ -116,16 +104,24 @@ the weakest.
 3. **Photos** (scenes, settings, persona portraits): `find_images(kind: "photo", query)`. Describe the scene, not the
    argument ("nurse at a hospital reception desk", not "healthcare access"). Look at the thumbnails and pick the one
    that fits the slot's crop, mood and palette.
-4. **Turn each pick into a file:**
+4. **Turn each pick into a file** (Claude apps with a code sandbox, ChatGPT):
    - **SVG text** (logos, icons): write it to a `.svg` file and rasterise it to PNG at the slot's size. Use whichever
      tool your sandbox has: `sharp`, then `cairosvg`, then `rsvg-convert`, then `soffice --convert-to png`. Recolour
      icons and single-colour marks to the palette's tokens; keep multi-colour logos as they are. Never turn on a
      rasteriser's unsafe or external-resource options.
-   - **Photos:** download `download_url` inside your sandbox.
-5. **If your sandbox can't download (step two, by hand):** send one message that lists every photo slot. For each, give
-   the photo's title, creator, landing link, direct link, and a file name to save it as (`s07-hero.jpg`), so the
-   user's uploads map back to slots. This one batched ask is exempt from the 1 to 2 asks rule. Keep building everything
-   else, and track open slots on the research to-do list in chat.
+   - **Photos:** download `download_url` inside your sandbox; if that host refuses, download the `Insert URL`.
+   **In Claude for PowerPoint** there is no file step; insert straight into the slide with Office.js:
+   - **SVG text**: select the target slide, then `Office.context.document.setSelectedDataAsync(svg, { coercionType:
+     Office.CoercionType.XmlSvg })`, then move and size the new shape to the slot.
+   - **Photos**: `fetch` the result's `Insert URL` (it allows downloads from inside PowerPoint; the `Download` link may
+     not), turn the response into base64, then `Office.context.document.setSelectedDataAsync(base64, { coercionType:
+     Office.CoercionType.Image, imageLeft, imageTop, imageWidth, imageHeight })` with the slot's position in points.
+   - A logo's `PNG` link can be inserted the same way as a photo.
+   - If an insert fails, keep the labelled slot placeholder and go on (step 5).
+5. **If you can't download or insert a photo (step two, by hand):** keep building, and in the delivery message or the
+   first improvement round send one list of every open photo slot. For each, give the photo's title, creator, landing
+   link, direct link, and a file name to save it as (`s07-hero.jpg`), so the user's uploads or inserts map back to
+   slots.
 6. **Place it** cropped to the slot shape, with the overlay kept. **Credit only when the result carries a `credit` line**
    (openly licensed photos that require attribution): put it in the footnote. Logos, icons and public-domain photos
    need none.
